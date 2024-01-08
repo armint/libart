@@ -22,7 +22,7 @@ FetchContent_Declare(ArduinoJson
 FetchContent_MakeAvailable(ArduinoJson)
 
 FetchContent_Declare(utils-lists
-        GIT_REPOSITORY ssh://git@gitlab.vandertogt.org:3022/ht-oven/utils-lists-xpack.git
+        GIT_REPOSITORY https://github.com/armint/utils-lists-xpack.git
         GIT_TAG d63335a397d548a48365fb2107bf59a4714f50cd
 )
 
