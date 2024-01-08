@@ -65,3 +65,5 @@ target_link_libraries(libArT PUBLIC micro-os-plus::utils-lists)
 target_link_libraries(libArT PUBLIC micro-os-plus::diag-trace)
 target_link_libraries(libArT PUBLIC etl::etl)
 target_link_libraries(libArT PUBLIC ArduinoJson)
+
+add_library(libArT::libArT ALIAS libArT)
