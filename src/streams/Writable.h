@@ -1,9 +1,11 @@
 
 #pragma once
+#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <span>
+
 #include <utils/Timeout.h>
 #include <utils/endian.h>
 
