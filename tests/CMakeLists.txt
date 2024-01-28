@@ -37,12 +37,12 @@ FetchContent_MakeAvailable(diag-trace)
 
 if (NOT DEFINED PROJECT_NAME)
     # We are not in a subproject
-    project(tests C CXX)
+    project(libArT-tests C CXX)
 endif ()
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
-# Unit tests
+# Unit libArT-tests
 include(CTest)
 include(Catch)
 
@@ -78,26 +78,26 @@ file(GLOB ADDITIONAL_SOURCES
 )
 
 
-add_executable(tests ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
+add_executable(libArT-tests ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
 
-target_compile_options(tests PUBLIC -O0 -g)
-target_include_directories(tests PRIVATE
+target_compile_options(libArT-tests PUBLIC -O0 -g)
+target_include_directories(libArT-tests PRIVATE
         ../src
         include
 )
 
 # strlcpy support
-target_compile_options(tests PUBLIC -include "bsd/string.h")
-target_link_libraries(tests PUBLIC bsd)
-target_link_libraries(tests PUBLIC micro-os-plus::utils-lists)
-target_link_libraries(tests PUBLIC micro-os-plus::diag-trace)
+target_compile_options(libArT-tests PUBLIC -include "bsd/string.h")
+target_link_libraries(libArT-tests PUBLIC bsd)
+target_link_libraries(libArT-tests PUBLIC micro-os-plus::utils-lists)
+target_link_libraries(libArT-tests PUBLIC micro-os-plus::diag-trace)
 
 # ETL
-target_link_libraries(tests PRIVATE etl::etl)
+target_link_libraries(libArT-tests PRIVATE etl::etl)
 # Catch2
-target_link_libraries(tests PUBLIC Catch2::Catch2WithMain)
+target_link_libraries(libArT-tests PUBLIC Catch2::Catch2WithMain)
 # JSON library
-target_link_libraries(tests PUBLIC ArduinoJson)
+target_link_libraries(libArT-tests PUBLIC ArduinoJson)
 
-# Discover all tests
-catch_discover_tests(tests)
+# Discover all libArT-tests
+catch_discover_tests(libArT-tests)
