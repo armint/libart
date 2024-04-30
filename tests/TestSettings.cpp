@@ -1,7 +1,6 @@
 #include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <iostream>
-#include <streams/ArrayReadable.h>
 #include <streams/ArrayWritable.h>
 #include <streams/StringReadable.h>
 #include <settings/Setting.h>
@@ -16,6 +15,7 @@ TEST_CASE("[Settings] storeSettings", "[Settings]") {
    auto res = SettingsManager::getInstance().save(writable);
    REQUIRE(res);
    std::cout << writable.written() << " bytes written: \n" << buffer;
+   REQUIRE(writable.written() == 95);
 }
 
 TEST_CASE("[Settings] loadSettings", "[Settings]") {

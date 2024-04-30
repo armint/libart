@@ -27,11 +27,7 @@ std::expected<void, Readable::Error> SettingsManager::load(Readable &readable) {
 }
 std::expected<size_t, Writable::Error> SettingsManager::save(Writable &writable) {
    StaticJsonDocument<3000> doc;
-   // This is silly, but there doesn't seem to be another way to create a root object
-   doc[""] = nullptr;
-   doc.remove("");
-   doc.garbageCollect();
-   auto root = doc.as<JsonObject>();
+   auto root = doc.to<JsonObject>();
    for(auto &setting : _settings) {
       auto result = setting.save(root);
       if(!result) {

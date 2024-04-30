@@ -6,7 +6,7 @@
 
 class StringReadable : public ArrayReadable {
    public:
-   StringReadable(const char *str)
+   explicit StringReadable(const char *str)
       : ArrayReadable(std::span<const char>(str, strlen(str))) {
    }
 };
