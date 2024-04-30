@@ -4,6 +4,7 @@
 #include <cstring>
 /**
  * A writable that maintains a buffer, and will only write to the sink when the buffer is full, or when flush is called
+ * Useful for writing to block devices such as FLASH storage or for packet based communication
  */
 template <typename T>
 class BufferedWritable : public Writable {

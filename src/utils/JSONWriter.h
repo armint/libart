@@ -13,7 +13,7 @@ class JSONWriter {
    public:
    /**
     * Wrap the Writable in a JSONReader for ArduinoJson
-    * @param writable the readable to wrap
+    * @param writable the writable to wrap
     */
    JSONWriter(Writable &writable)
       : _writable(writable) {
