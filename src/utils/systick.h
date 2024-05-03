@@ -10,6 +10,8 @@ typedef uint32_t duration_t;
 
 timestamp_t getSysTick();
 
+timestamp_t getMicroTicks();
+
 void sysTickUpdateHook(timestamp_t sysTick);
 #if defined(__cplusplus)
 }
