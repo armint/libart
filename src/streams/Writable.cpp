@@ -2,8 +2,8 @@
 #include "utils/tfp_printf.h"
 
 void Writable::writeCharacter(void *ptr, char c) {
-   Writable &writable = *static_cast<TfpHelper *>(ptr)->first;
-   auto &result = static_cast<TfpHelper *>(ptr)->second;
+   Writable &writable = *(static_cast<TfpHelper *>(ptr)->writable);
+   auto &result = static_cast<TfpHelper *>(ptr)->result;
    auto res = writable.write(c);
    if(res && result) {
       result.value() += res.value();
@@ -38,7 +38,7 @@ std::expected<size_t, Writable::Error> Writable::printf(const char *format, ...)
 }
 
 std::expected<size_t, Writable::Error> Writable::vprintf(const char *format, va_list va_l) {
-   TfpHelper helper(this, 0);
+   TfpHelper helper{ this, 0 };
    tfp_format(&helper, &writeCharacter, format, va_l);
-   return helper.second;
+   return helper.result;
 }

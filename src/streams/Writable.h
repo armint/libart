@@ -18,7 +18,10 @@ class Writable {
    enum { CouldNotWrite = 0, Overflow };
 
    protected:
-   using TfpHelper = std::pair<Writable *, std::expected<size_t, Error>>;
+   struct TfpHelper {
+      Writable* writable;
+      std::expected<size_t, Error> result;
+   };
    static void writeCharacter(void *ptr, char c);
 
    public:
@@ -63,6 +66,9 @@ class Writable {
 
    std::expected<size_t, Error> vprintf(const char *format, va_list va_l);
 
+   inline std::expected<size_t, Error> println() {
+      return write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("\r\n"), 2));
+   }
    std::expected<size_t, Error> println(const char *format, ...);
 
    /**
