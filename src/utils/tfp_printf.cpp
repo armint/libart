@@ -30,6 +30,7 @@
  */
 
 #include "tfp_printf.h"
+#include <cmath>
 
 typedef void (*putcf)(void *, char);
 
@@ -107,7 +108,8 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          putf(putp, ch);
       else {
          char lz = 0;
-         int w = 0;
+         int minChars = 0;
+         int decimals = 3;
          bool ll = false;
          ch = *(fmt++);
          if(ch == '0') {
@@ -115,7 +117,13 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             lz = 1;
          }
          if(ch >= '0' && ch <= '9') {
-            ch = a2i(ch, &fmt, 10, &w);
+            ch = a2i(ch, &fmt, 10, &minChars);
+         }
+         if(ch == '.') {
+            ch = *(fmt++);
+            if(ch >= '0' && ch <= '9') {
+               ch = a2i(ch, &fmt, 10, &decimals);
+            }
          }
          if(ch == 'l') {
             ch = *(fmt++);
@@ -133,7 +141,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             } else {
                ui2a(va_arg(va, uint32_t), 10, 0, bf);
             }
-            putchw(putp, putf, w, lz, bf);
+            putchw(putp, putf, minChars, lz, bf);
             break;
          }
          case 'b': {
@@ -142,7 +150,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             } else {
                ui2a(va_arg(va, uint32_t), 2, 0, bf);
             }
-            putchw(putp, putf, w, lz, bf);
+            putchw(putp, putf, minChars, lz, bf);
             break;
          }
          case 'i':
@@ -153,32 +161,45 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             } else {
                i2a(va_arg(va, int32_t), bf);
             }
-            putchw(putp, putf, w, lz, bf);
+            putchw(putp, putf, minChars, lz, bf);
             break;
          }
          case 'p':
             // Pointer
             lz = 1;
-            w = 8;
-            // fall through
+            minChars = 8;
+            // Fall through
          case 'x':
+            // Fall through
          case 'X':
             if(ll) {
                ui2a(va_arg(va, uint64_t), 16, (ch == 'X'), bf);
             } else {
                ui2a(va_arg(va, uint32_t), 16, (ch == 'X'), bf);
             };
-            putchw(putp, putf, w, lz, bf);
+            putchw(putp, putf, minChars, lz, bf);
             break;
          case 'c':
             putf(putp, (char)(va_arg(va, int)));
             break;
          case 's':
-            putchw(putp, putf, w, 0, va_arg(va, char *));
+            putchw(putp, putf, minChars, 0, va_arg(va, char *));
             break;
+         case 'f':
+            // Fall through
+         case 'F': {
+            float num = va_arg(va, double);
+            i2a(truncf(num), bf);
+            putchw(putp, putf, minChars, lz, bf);
+            putf(putp, '.');
+            num -= truncf(num);
+            float rest = num * powf(10.0f, decimals);
+            i2a(truncf(rest), bf);
+            putchw(putp, putf, 1, decimals, bf);
+         } break;
          case '%':
             putf(putp, ch);
-            // no break
+            // Fall through
          default:
             break;
          }
