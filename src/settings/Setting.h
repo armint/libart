@@ -29,7 +29,7 @@ class Setting : public SettingBase {
     * Create a setting with a name and a default value
     *
     * @param name the name of the setting. Only the pointer is saved in the setting object, so the c-string name
-    * points to should remain valid as long as the Setting object is valid!
+    * points to should remain valid and constant for as long as the Setting object is valid!
     * @param defaultValue The default value for this setting
     */
    Setting(const char *name, T defaultValue)
@@ -40,9 +40,9 @@ class Setting : public SettingBase {
     * Create a setting with a name and a default value, in a section
     *
     * @param section the name of the section this setting belongs to. Only the pointer is saved in the setting object,
-    * so the c-string section points to should remain valid as long as the Setting object is valid!
+    * so the c-string section points to should remain valid and constant for as long as the Setting object is valid!
     * @param name the name of the setting. Only the pointer is saved in the Setting object, so the c-string name
-    * points to should remain valid as long as the Setting object is valid!
+    * points to should remain valid and constant for as long as the Setting object is valid!
     * @param defaultValue the default value for this setting
     */
    Setting(const char *section, const char *name, T defaultValue)
@@ -50,7 +50,7 @@ class Setting : public SettingBase {
       , _value(defaultValue){};
 
    /**
-    * Load this setting, which is a child of the provided JsonObject
+    * Load the value of this setting from json, the setting is a child of the provided JsonObject
     *
     * @param parent the JsonObject this setting is a child of
     * @return An error if the setting could not be loaded
