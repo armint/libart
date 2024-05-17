@@ -195,7 +195,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             num -= truncf(num);
             float rest = num * powf(10.0f, decimals);
             i2a(truncf(rest), bf);
-            putchw(putp, putf, 1, decimals, bf);
+            putchw(putp, putf, decimals, 1, bf);
          } break;
          case '%':
             putf(putp, ch);
