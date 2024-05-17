@@ -15,6 +15,7 @@
 #define USART_IRQn(x) GLUE2(USART, GLUE(x, _IRQn))
 #define USART_IRQHandler(x) GLUE2(USART, GLUE(x, _IRQHandler))
 
+
 #define SPI(x) GLUE(SPI, x)
 #define SPI_BASE(x) GLUE2(SPI, GLUE(x, _BASE))
 
@@ -24,7 +25,11 @@
 #define COMP(x) GLUE(COMP, x)
 
 #define TIMER(x) GLUE(TIM, x)
+#define TIMER_BASE(x) GLUE2(TIM, GLUE(x, _BASE))
 #define LL_TIM_CHANNEL(x) (1ul << (4 * (x - 1)))
+#define TIMER_IRQn(x) GLUE2(TIM, GLUE(x, _IRQn))
+#define TIMER_IRQHandler(x) GLUE2(TIM, GLUE(x, _IRQHandler))
+
 
 #define ADC_CHANNEL(port, pin) GLUE2(ADC_CHANNEL_P, GLUE(port, pin))
 
