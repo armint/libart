@@ -239,5 +239,8 @@ size_t tfp_vsnprintf(char *s, size_t len, const char *format, va_list va_l) {
    h.pos = 0;
    h.max = len;
    tfp_format(&h, _snputc, format, va_l);
+   if(h.pos < len) {
+      h.target[h.pos] = 0;
+   }
    return h.pos;
 }
