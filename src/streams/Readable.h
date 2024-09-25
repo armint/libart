@@ -80,8 +80,29 @@ class Readable {
 
    protected:
    std::expected<char, Error> scanfRead();
+   /**
+    * Reads a signed integer from this readable source.
+    *
+    * @param firstChar An optional initial character, if already read, to be included in the integer parse.
+    *                  If not provided, the method will attempt to read the first character itself.
+    * @param base      The numerical base (e.g., 10 for decimal, 16 for hexadecimal) used for reading the integer.
+    * @param maxDigits Maximum number of digits to read for the integer.
+    *
+    * @return A std::expected<int64_t, Readable::Error> containing the read signed integer value, or an error on failure.
+    */
    std::expected<int64_t, Error>
    readSigned(std::optional<char> firstChar, int base, size_t maxDigits = std::numeric_limits<size_t>::max());
+   /**
+    * Reads an unsigned integer from the stream. The reading process starts with the provided first character
+    * (if any), and continues parsing subsequent characters based on the specified base until either the maximum
+    * number of digits has been read or a non-digit character is encountered.
+    *
+    * @param firstChar An optional initial character to begin parsing with. If not provided, the method starts by reading from the stream.
+    * @param base The base to use for parsing the digits, which should be between 2 and 36 inclusive.
+    * @param maxDigits The maximum number of digits to read.
+    *
+    * @return A std::expected containing the parsed unsigned integer if successful, or an error code of type Readable::Error.
+    */
    std::expected<uint64_t, Error>
    readUnsigned(std::optional<char> firstChar, int base, size_t maxDigits = std::numeric_limits<size_t>::max());
 };
