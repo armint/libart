@@ -103,4 +103,3 @@ inline utils::Timeout operator""_ms(unsigned long long timeout) {
 inline utils::Timeout operator""_s(unsigned long long timeout) {
    return utils::Timeout(timeout * 1000);
 }
-} // namespace utils
