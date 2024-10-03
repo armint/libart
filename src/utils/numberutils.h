@@ -2,7 +2,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
-#include <etl/type_traits.h>
 #include <expected>
 #include <span>
 #include <type_traits>
@@ -92,7 +91,7 @@ size_t encodeRLE(T value, std::span<uint8_t> dest) {
  */
 template <typename T, typename = std::enable_if_t<std::is_signed_v<T>, T>>
 size_t encodeRLEZigZag(T value, std::span<uint8_t> dest) {
-   T zigzag;
+   typename std::make_unsigned<T>::type zigzag;
    if(value < 0) {
       zigzag = ~(static_cast<T>(value) << 1);
    } else {
@@ -140,9 +139,9 @@ std::expected<size_t, DecodeError> decodeRLE(T &dest, std::span<uint8_t> src) {
  */
 template <typename T, typename = std::enable_if_t<std::is_signed_v<T>, T>>
 std::expected<size_t, DecodeError> decodeRLEZigZag(T &dest, std::span<uint8_t> src) {
-   typename std::make_unsigned_t<T>::type value = 0;
+   typename std::make_unsigned<T>::type value = 0;
    auto result = decodeRLE(value, src);
-   if(!result.is_error()) {
+   if(result) {
       if(value & 1) {
          dest = static_cast<T>(~(value >> 1));
       } else {
