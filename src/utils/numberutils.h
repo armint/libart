@@ -63,19 +63,15 @@ size_t encodeRLE(T value, std::span<uint8_t> dest) {
       dest[0] = static_cast<uint8_t>(value);
       return 1;
    }
-   uint8_t buf[sizeof(T)];
    size_t i = 0;
    while(value != 0) {
-      buf[i++] = (value & 0x7F) | 0x80;
+      dest[i++] = (value & 0x7F) | 0x80;
       if(i > dest.size()) {
          return 0;
       }
       value >>= 7;
    }
-   buf[i - 1] &= 0x7F; /* Unset top bit on last byte */
-   for(size_t j = i - 1; j > 0; --j) {
-      dest[j] = buf[j - 1];
-   }
+   dest[i - 1] &= 0x7F; /* Unset top bit on last byte */
    return i;
 }
 
@@ -91,11 +87,12 @@ size_t encodeRLE(T value, std::span<uint8_t> dest) {
  */
 template <typename T, typename = std::enable_if_t<std::is_signed_v<T>, T>>
 size_t encodeRLEZigZag(T value, std::span<uint8_t> dest) {
-   typename std::make_unsigned<T>::type zigzag;
+   using unsigned_type = typename std::make_unsigned<T>::type;
+   unsigned_type zigzag;
    if(value < 0) {
-      zigzag = ~(static_cast<T>(value) << 1);
+      zigzag = ~(static_cast<unsigned_type>(value) << 1);
    } else {
-      zigzag = static_cast<T>(value) << 1;
+      zigzag = static_cast<unsigned_type>(value) << 1;
    }
    return encodeRLE(zigzag, dest);
 }
@@ -139,7 +136,8 @@ std::expected<size_t, DecodeError> decodeRLE(T &dest, std::span<uint8_t> src) {
  */
 template <typename T, typename = std::enable_if_t<std::is_signed_v<T>, T>>
 std::expected<size_t, DecodeError> decodeRLEZigZag(T &dest, std::span<uint8_t> src) {
-   typename std::make_unsigned<T>::type value = 0;
+   using unsigned_type = typename std::make_unsigned<T>::type;
+   unsigned_type value = 0;
    auto result = decodeRLE(value, src);
    if(result) {
       if(value & 1) {
