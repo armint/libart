@@ -13,7 +13,7 @@ namespace utils {
  * and to retrieve the remaining time.
  */
 class Timeout {
-   const timestamp_t _deadline;
+   timestamp_t _deadline;
 
    public:
    /**
@@ -33,7 +33,7 @@ class Timeout {
     * @return Returns true if the current system tick is past the deadline, false otherwise.
     */
    inline bool hasExpired() const {
-      return _deadline < getSysTick();
+      return _deadline <= getSysTick();
    }
 
    /**
