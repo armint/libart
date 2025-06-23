@@ -4,7 +4,7 @@
 #include <streams/Readable.h>
 
 /**
- * An adapter to use any Readable with the ArduinoJson library
+ * An adapter to let the ArduinoJson library read from a @see Readable object
  */
 class JSONReader {
    Readable &_source;

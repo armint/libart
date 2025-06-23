@@ -3,7 +3,8 @@
 #include "Writable.h"
 #include <cstring>
 /**
- * A writable that maintains a buffer, and will only write to the sink when the buffer is full, or when flush is called
+ * A writable that maintains a buffer, and will only write to the sink when the buffer is full, or when flush is called.
+ * Once the buffer is full (or flush is called) ALL the available data will be written to the sink.
  * Useful for writing to block devices such as FLASH storage or for packet based communication
  */
 template <typename T>

@@ -10,7 +10,8 @@
 #include <utils/endian.h>
 
 /**
- * Writable is an interface for a 'sink' stream
+ * Represents an interface or abstraction for writable resources or objects,
+ * allowing data to be written to them.
  */
 class Writable {
    public:

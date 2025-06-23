@@ -9,7 +9,8 @@
 #include <span>
 
 /**
- * Readable is an interface for a 'source' stream
+ * Interface for a readable source of data, providing various methods to read and process characters or data
+ * from the stream. All derived classes are expected to implement this interface as appropriate.
  */
 class Readable {
    public:

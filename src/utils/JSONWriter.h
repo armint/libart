@@ -5,14 +5,14 @@
 #include <streams/Writable.h>
 
 /**
- * An adapter to use any Writable with the ArduinoJson library
+ * An adapter to use let the ArduinoJson library write to a @see Writable object
  */
 class JSONWriter {
    Writable &_writable;
 
    public:
    /**
-    * Wrap the Writable in a JSONReader for ArduinoJson
+    * Wrap the @see Writable in a JSONWriter for ArduinoJson
     * @param writable the writable to wrap
     */
    JSONWriter(Writable &writable)

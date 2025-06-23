@@ -3,6 +3,9 @@
 
 #include "Readable.h"
 
+/**
+ * Represents a readable stream with bounded access, extending the functionalities of a readable interface.
+ */
 class BoundedReadable : public Readable {
    public:
    /**

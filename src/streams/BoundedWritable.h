@@ -3,6 +3,12 @@
 
 #include "CountingWritable.h"
 
+/**
+ * Represents a writable stream with a bounded capacity.
+ * BoundedWritable adds the concept of a maximum capacity
+ * to the Writable interface and provides methods to manage
+ * and query the writable state.
+ */
 class BoundedWritable : public CountingWritable {
    size_t capacity;
 
