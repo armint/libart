@@ -9,14 +9,14 @@ include(GNUInstallDirs)
 FetchContent_Declare(
         etl
         GIT_REPOSITORY https://github.com/ETLCPP/etl.git
-        GIT_TAG 20.37.0
+        GIT_TAG 20.41.7
 )
 
 FetchContent_MakeAvailable(etl)
 
 FetchContent_Declare(ArduinoJson
         GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git
-        GIT_TAG v6.21.3
+        GIT_TAG v6.21.5
 )
 
 FetchContent_MakeAvailable(ArduinoJson)
