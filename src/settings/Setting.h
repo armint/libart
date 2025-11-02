@@ -24,6 +24,16 @@ class Setting : public SettingBase {
       }
    }
 
+   // Allow implicit conversion to the underlying value type
+   operator T() const {
+      return _value;
+   }
+
+   Setting<T> &operator=(T value) {
+      setValue(value);
+      return *this;
+   }
+
    public:
    /**
     * Create a setting with a name and a default value
