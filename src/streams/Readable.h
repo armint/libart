@@ -3,10 +3,13 @@
 #include <array>
 #include <cstdarg>
 #include <cstdint>
+#include <cstring>
 #include <expected>
 #include <limits>
 #include <optional>
 #include <span>
+
+#include <utils/endian.h>
 
 /**
  * Interface for a readable source of data, providing various methods to read and process characters or data
@@ -15,6 +18,7 @@
 class Readable {
    protected:
    uint32_t timeout_ = 0;
+
    public:
    using Error = int32_t;
    enum { EndOfStream = 0, ReadError, Timeout, NotFound };
@@ -28,6 +32,26 @@ class Readable {
 
 
    std::expected<size_t, Error> read(std::span<uint8_t> target);
+
+   /** Read a number from the readable, converting endianness if requested
+    *  \tparam T the type to read
+    *  \tparam E the expected endianness of the incoming bytes
+    *  \return an std::expected containing the read value, or a Readable::Error if something went wrong
+    */
+   template <typename T, Endian E = SystemEndian>
+   inline std::expected<T, Error> readNumber() {
+      uint8_t buffer[sizeof(T)];
+      auto r = read(buffer);
+      return r.and_then([&](size_t bytesRead) -> std::expected<T, Error> {
+         if(bytesRead != sizeof(T)) {
+            return std::unexpected(Timeout);
+         }
+         T tmp{};
+         std::memcpy(&tmp, buffer, sizeof(T));
+         T val = convertEndian<E, T>(tmp);
+         return val;
+      });
+   }
 
    /**
     * Check if a read for this readable would result in blocking or an error
@@ -83,7 +107,7 @@ class Readable {
    std::expected<size_t, Error> vscanf(const char *format, va_list args);
 
    [[nodiscard]] uint32_t getTimeout() const {
-   return timeout_;
+      return timeout_;
    }
 
    void setTimeout(uint32_t timeout) {
@@ -119,5 +143,4 @@ class Readable {
     */
    std::expected<uint64_t, Error>
    readUnsigned(std::optional<char> firstChar, int base, size_t maxDigits = std::numeric_limits<size_t>::max());
-
 };

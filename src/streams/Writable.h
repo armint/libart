@@ -44,7 +44,7 @@ class Writable {
    template <typename T, Endian E = SystemEndian>
    inline std::expected<size_t, Error> writeNumber(T number) {
       const T tmpVal = convertEndian<E, T>(number);
-      return write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>(&tmpVal), sizeof(T)));
+      return write(std::span(reinterpret_cast<const uint8_t *>(&tmpVal), sizeof(T)));
    }
 
    /**

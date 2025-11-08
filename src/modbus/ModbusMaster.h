@@ -47,7 +47,7 @@ class ModbusMaster {
       explicit CRCReadable(Readable &source)
          : DigestReadable(source, digest_) {}
 
-      bool checkCRC();
+      bool readCRCAndValidate();
    };
 
    class CRCWritable : public DigestWritable {

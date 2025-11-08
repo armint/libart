@@ -12,7 +12,7 @@ ModbusMaster::ModbusMaster(Readable &readable, Writable &writable)
    enableRX();
 }
 
-bool ModbusMaster::CRCReadable::checkCRC() {
+bool ModbusMaster::CRCReadable::readCRCAndValidate() {
    uint16_t expected;
    digest_.getDigest(std::span(reinterpret_cast<uint8_t *>(&expected), 2));
    uint16_t crc;
@@ -102,7 +102,7 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::parseResponse(std::span<uin
    }
 
    // Check the packet CRC
-   if(!crcReadable.checkCRC()) {
+   if(!crcReadable.readCRCAndValidate()) {
       return std::unexpected(ResponseStatus::CRCMismatch);
    }
    // Everything went Ok
