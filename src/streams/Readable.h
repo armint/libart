@@ -13,6 +13,8 @@
  * from the stream. All derived classes are expected to implement this interface as appropriate.
  */
 class Readable {
+   protected:
+   uint32_t timeout_ = 0;
    public:
    using Error = int32_t;
    enum { EndOfStream = 0, ReadError, Timeout, NotFound };
@@ -23,6 +25,9 @@ class Readable {
     * @return An std::expected<char, Error> containing the read character, or an error on failure
     */
    virtual std::expected<char, Error> read() = 0;
+
+
+   std::expected<size_t, Error> read(std::span<uint8_t> target);
 
    /**
     * Check if a read for this readable would result in blocking or an error
@@ -77,6 +82,14 @@ class Readable {
    std::expected<size_t, Error> scanf(const char *format, ...);
    std::expected<size_t, Error> vscanf(const char *format, va_list args);
 
+   [[nodiscard]] uint32_t getTimeout() const {
+   return timeout_;
+   }
+
+   void setTimeout(uint32_t timeout) {
+      timeout_ = timeout;
+   }
+
    virtual ~Readable() = default;
 
    protected:
@@ -106,4 +119,5 @@ class Readable {
     */
    std::expected<uint64_t, Error>
    readUnsigned(std::optional<char> firstChar, int base, size_t maxDigits = std::numeric_limits<size_t>::max());
+
 };

@@ -6,6 +6,17 @@
 #include "Readable.h"
 
 
+std::expected<size_t, Readable::Error> Readable::read(std::span<uint8_t> target) {
+   for(auto i = target.begin(); i < target.end(); ++i) {
+      auto res = read();
+      if(!res) {
+         return std::unexpected(res.error());
+      }
+      *i = res.value();
+   }
+   return target.size();
+}
+
 std::expected<size_t, Readable::Error>
 Readable::readUntil(std::initializer_list<const char *> toFind, std::span<char> buffer, size_t *charsRead) {
    size_t _charsRead = 0;
