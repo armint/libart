@@ -90,7 +90,6 @@ TEST_CASE("[Modbus] Master builds correct Write Single Register frame", "[Modbus
       0xD5, 0x7D  // CRC16-IBM (lo, hi)
    };
 
-
    // Assert
    const size_t written = writable.position();
    REQUIRE(written == std::size(expected)); // 8-byte RTU frame
@@ -98,10 +97,11 @@ TEST_CASE("[Modbus] Master builds correct Write Single Register frame", "[Modbus
    REQUIRE(std::equal(std::begin(expected), std::end(expected), txBuffer));
 }
 
-TEST_CASE("[Modbus] Master builds correct Write Multiple Registers frame", "[Modbus]") {
+TEST_CASE("[Modbus] Master builds correct Write Multiple Registers frame and parses response", "[Modbus]") {
    // Arrange
-   uint8_t rxBuffer[1]{}; // empty input to force timeout after write
-   ArrayReadable readable({rxBuffer, 0});
+   // Provided response for function 0x10 (addr=0x01, start=0x0002, qty=0x0002, CRC=0x08E0 [lo,hi=E0,08])
+   const uint8_t rxData[] = {0x01, 0x10, 0x00, 0x02, 0x00, 0x02, 0xE0, 0x08};
+   ArrayReadable readable({const_cast<uint8_t*>(rxData), std::size(rxData)});
    uint8_t txBuffer[64]{};
    ArrayWritable writable(txBuffer);
 
@@ -112,9 +112,9 @@ TEST_CASE("[Modbus] Master builds correct Write Multiple Registers frame", "[Mod
    const uint8_t values[4] = {0x11, 0x22, 0x33, 0x44};
 
    // Act
-   (void)master.writeMultipleRegisters(0x0002, {values, 4});
+   auto res = master.writeMultipleRegisters(0x0002, {values, 4});
 
-   // Assert
+   // Assert (TX frame correctness)
    const size_t written = writable.position();
    REQUIRE(written == 13); // 1(addr)+1(fn)+2(start)+2(qty)+1(bytecnt)+4(data)+2(CRC) = 13
 
@@ -129,4 +129,36 @@ TEST_CASE("[Modbus] Master builds correct Write Multiple Registers frame", "[Mod
    };
 
    REQUIRE(std::equal(std::begin(expected), std::end(expected), txBuffer));
+
+   // And (RX response parsing)
+   REQUIRE(res.has_value());
+   REQUIRE(res.value() == 4); // response payload length for 0x10 is 4 (start addr + qty)
+}
+
+TEST_CASE("[Modbus] Master parses given Read Input Registers response", "[Modbus]") {
+   // Provided response bytes (address, function, byte count, data[4], CRC lo, CRC hi)
+   const uint8_t rxData[] = {0x01, 0x04, 0x04, 0x43, 0x66, 0x33, 0x34, 0x1B, 0x38};
+   ArrayReadable readable({const_cast<uint8_t*>(rxData), std::size(rxData)});
+
+   uint8_t txBuffer[32]{}; // capture the request frame (not asserted here)
+   ArrayWritable writable(txBuffer);
+
+   ModbusMaster master(readable, writable);
+   master.setAddress(0x01);
+
+   uint8_t out[4]{}; // expect to read 4 data bytes (2 input registers)
+   auto res = master.readInputRegisters(0x0000, out);
+
+   REQUIRE(res.has_value());
+   REQUIRE(res.value() == 4);
+
+   const uint8_t expectedPayload[] = {0x43, 0x66, 0x33, 0x34};
+
+   REQUIRE(std::equal(std::begin(expectedPayload), std::end(expectedPayload), out));
+
+   // Convert payload from big-endian to float and verify it's 230.2
+   uint8_t floatBytes[4] = {out[3], out[2], out[1], out[0]};
+   float floatValue;
+   std::memcpy(&floatValue, floatBytes, sizeof(float));
+   REQUIRE(floatValue == Catch::Approx(230.2f));
 }

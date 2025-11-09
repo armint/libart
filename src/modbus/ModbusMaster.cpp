@@ -94,7 +94,7 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::parseResponse(std::span<uin
    const size_t read = std::min(byteCount, buffer.size());
    for(size_t i = 0; i < read; i++) {
       auto readByte = crcReadable.read();
-      if(readByte) {
+      if(!readByte) {
          // log.warn("Not receiving expected amount of bytes");
          return std::unexpected(ResponseStatus::ReadTimeout);
       }

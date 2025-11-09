@@ -3,7 +3,7 @@
 #include "ModbusCodes.h"
 #include "streams/DigestWritable.h"
 #include "streams/Writable.h"
-#include "utils/IBMCRC16Digest.h"
+#include "utils/IBMCRC16FastDigest.h"
 #include "utils/systick.h"
 
 #include <streams/DigestReadable.h>
@@ -43,7 +43,7 @@ class ModbusMaster {
       public:
       using Readable::read;
 
-      IBMCRC16Digest digest_;
+      IBMCRC16FastDigest digest_;
 
       explicit CRCReadable(Readable &source)
          : DigestReadable(source, digest_) {}
@@ -53,7 +53,7 @@ class ModbusMaster {
 
    class CRCWritable : public DigestWritable {
       public:
-      IBMCRC16Digest digest_;
+      IBMCRC16FastDigest digest_;
 
       explicit CRCWritable(Writable &sink)
          : DigestWritable(sink, digest_) {}
