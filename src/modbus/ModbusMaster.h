@@ -40,7 +40,7 @@ constexpr const char *responseStatusToString(ResponseStatus r) {
 
 class ModbusMaster {
    public:
-   using enabler_t = std::function<void()>;
+   using enabler_t = std::function<void(bool)>;
 
    protected:
    class CRCReadable : public DigestReadable {
@@ -75,16 +75,16 @@ class ModbusMaster {
    std::expected<uint8_t, ResponseStatus> parseResponse(std::span<uint8_t> buffer, uint8_t functionCode);
    std::expected<uint8_t, ResponseStatus> readRegisters(uint8_t type, uint16_t startAddress, std::span<uint8_t> buffer);
 
-   enabler_t txEnabler = nullptr;
-   enabler_t rxEnabler = nullptr;
+   enabler_t txEnabler = {};
+   enabler_t rxEnabler = {};
    void enableTx() const {
       if(txEnabler) {
-         txEnabler();
+         txEnabler(true);
       }
    }
    void enableRx() const {
       if(rxEnabler) {
-         rxEnabler();
+         rxEnabler(true);
       }
    }
 

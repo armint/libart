@@ -13,13 +13,13 @@ ModbusMaster::ModbusMaster(Readable &readable, Writable &writable)
 }
 
 bool ModbusMaster::CRCReadable::readCRCAndValidate() {
-   uint16_t expected;
-   digest_.getDigest(std::span(reinterpret_cast<uint8_t *>(&expected), 2));
-   uint16_t crc;
-   if(auto res = read(std::span(reinterpret_cast<uint8_t *>(&crc), 2)); !res) {
+   uint8_t expected[2];
+   digest_.getDigest(std::span(expected, 2));
+   uint8_t calculated[2];
+   if(auto res = read(calculated); !res) {
       return false;
    }
-   return crc == expected;
+   return std::memcmp(expected, calculated, 2) == 0;
 }
 
 std::expected<size_t, Writable::Error> ModbusMaster::CRCWritable::writeCRC() {
