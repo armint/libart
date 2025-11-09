@@ -1,6 +1,6 @@
 
 #include "ArrayReadable.h"
-ArrayReadable::ArrayReadable(std::span<const char> data)
+ArrayReadable::ArrayReadable(std::span<const uint8_t> data)
    : data(data) {
 }
 
