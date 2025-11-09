@@ -39,7 +39,7 @@ class Readable {
     *  \return an std::expected containing the read value, or a Readable::Error if something went wrong
     */
    template <typename T, Endian E = SystemEndian>
-   inline std::expected<T, Error> readNumber() {
+   std::expected<T, Error> readNumber() {
       uint8_t buffer[sizeof(T)];
       auto r = read(buffer);
       return r.and_then([&](size_t bytesRead) -> std::expected<T, Error> {

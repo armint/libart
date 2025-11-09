@@ -9,7 +9,7 @@ namespace modbus {
 ModbusMaster::ModbusMaster(Readable &readable, Writable &writable)
    : readable_(readable)
    , writable_(writable) {
-   enableRX();
+   enableRx();
 }
 
 bool ModbusMaster::CRCReadable::readCRCAndValidate() {
@@ -109,26 +109,8 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::parseResponse(std::span<uin
    return read;
 }
 
-
-void ModbusMaster::enableTX() {
-   // if(_rxe != nullptr) {
-   //    _rxe->deactivate();
-   // }
-   // _txe->activate();
-   // // We need to wait after enabling tx, for the lines to settle. Otherwise, the slave may interpret the line change
-   // // as a bit, and the first message we send will not be interpreted properly
-   // delaymS(5);
-}
-
-void ModbusMaster::enableRX() {
-   // _txe->deactivate();
-   // if(_rxe != nullptr) {
-   //    _rxe->activate();
-   // }
-}
-
 std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(uint8_t type, uint16_t startAddress, std::span<uint8_t> buffer) {
-   enableTX();
+   enableTx();
    writable_.flush();
    {
       CRCWritable crcWritable(writable_);
@@ -143,14 +125,14 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(uint8_t type,
       }
       writable_.flush();
    }
-   enableRX();
+   enableRx();
 
    return parseResponse(buffer, type);
 }
 
 
 std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(uint16_t startAddress, std::span<uint8_t> buffer) {
-   enableTX();
+   enableTx();
    writable_.flush();
    CRCWritable crcWritable(writable_);
    auto result = crcWritable.write(_address)
@@ -168,13 +150,13 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(uint16_t star
    }
    // Switch to reading again
 
-   enableRX();
+   enableRx();
 
    return parseResponse(buffer, FunctionCode::ReadWriteMultipleRegisters);
 }
 
 std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint16_t address, std::span<const uint8_t> values) {
-   enableTX();
+   enableTx();
    writable_.flush();
 
    CRCWritable crcWritable(writable_);
@@ -197,7 +179,7 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint
       writable_.flush();
       return std::unexpected(ResponseStatus::WriteError);
    }
-   enableRX();
+   enableRx();
    uint8_t response[4];
    // don't expect a response on a broadcast
    if(_address == 0) {
@@ -207,7 +189,7 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint
 }
 
 std::expected<uint8_t, ResponseStatus> ModbusMaster::writeSingleRegister(uint16_t address, uint16_t value) {
-   enableTX();
+   enableTx();
    writable_.flush();
 
    CRCWritable crcWritable(writable_);
@@ -220,7 +202,7 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeSingleRegister(uint16_
       writable_.flush();
       return std::unexpected(ResponseStatus::WriteError);
    }
-   enableRX();
+   enableRx();
    uint8_t response[4];
    // don't expect a response on a broadcast
    if(_address == 0) {

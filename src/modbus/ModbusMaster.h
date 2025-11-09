@@ -9,6 +9,7 @@
 #include <streams/DigestReadable.h>
 
 #include <cstdint>
+#include <functional>
 
 namespace modbus {
 
@@ -38,6 +39,9 @@ constexpr const char *responseStatusToString(ResponseStatus r) {
 
 
 class ModbusMaster {
+   public:
+   using enabler_t = std::function<void()>;
+
    protected:
    class CRCReadable : public DigestReadable {
       public:
@@ -71,10 +75,20 @@ class ModbusMaster {
    std::expected<uint8_t, ResponseStatus> parseResponse(std::span<uint8_t> buffer, uint8_t functionCode);
    std::expected<uint8_t, ResponseStatus> readRegisters(uint8_t type, uint16_t startAddress, std::span<uint8_t> buffer);
 
-   public:
-   void enableTX();
-   void enableRX();
+   enabler_t txEnabler = nullptr;
+   enabler_t rxEnabler = nullptr;
+   void enableTx() const {
+      if(txEnabler) {
+         txEnabler();
+      }
+   }
+   void enableRx() const {
+      if(rxEnabler) {
+         rxEnabler();
+      }
+   }
 
+   public:
    ModbusMaster(Readable &readable, Writable &writable);
 
    void setAddress(uint8_t address) {
@@ -105,6 +119,13 @@ class ModbusMaster {
 
    [[nodiscard]] uint8_t getExceptionCode() const {
       return _exceptionCode;
+   }
+
+   void set_tx_enabler(const enabler_t &tx_enabler) {
+      txEnabler = tx_enabler;
+   }
+   void set_rx_enabler(const enabler_t &rx_enabler) {
+      rxEnabler = rx_enabler;
    }
 };
 
