@@ -82,18 +82,18 @@ TEST_CASE("[Modbus] Master builds correct Write Single Register frame", "[Modbus
 
    // Act: write 0x1234 at address 0x0001
    (void)master.writeSingleRegister(0x0001, 0x1234);
-
-   // Assert
-   const size_t written = writable.position();
-   REQUIRE(written == 8); // 8-byte RTU frame
-
-   const uint8_t expected[] = {
+   constexpr uint8_t expected[] = {
       0x01, // address
-      FunctionCode::WriteSingleRegister, // 0x06
+      FunctionCode::WriteSingleHoldingRegister, // 0x06
       0x00, 0x01, // register address
       0x12, 0x34, // value (big-endian)
       0xD5, 0x7D  // CRC16-IBM (lo, hi)
    };
+
+
+   // Assert
+   const size_t written = writable.position();
+   REQUIRE(written == std::size(expected)); // 8-byte RTU frame
 
    REQUIRE(std::equal(std::begin(expected), std::end(expected), txBuffer));
 }
@@ -120,7 +120,7 @@ TEST_CASE("[Modbus] Master builds correct Write Multiple Registers frame", "[Mod
 
    const uint8_t expected[] = {
       0x01, // address
-      FunctionCode::WriteMultipleRegisters, // 0x10
+      FunctionCode::WriteMultipleHoldingRegisters, // 0x10
       0x00, 0x02, // start address
       0x00, 0x02, // quantity of registers = 2
       0x04,       // byte count

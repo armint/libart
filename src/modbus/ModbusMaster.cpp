@@ -64,8 +64,8 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::parseHeader(Readable &r, ui
 
       case FunctionCode::WriteSingleCoil:
       case FunctionCode::WriteMultipleCoils:
-      case FunctionCode::WriteSingleRegister:
-      case FunctionCode::WriteMultipleRegisters:
+      case FunctionCode::WriteSingleHoldingRegister:
+      case FunctionCode::WriteMultipleHoldingRegisters:
          return std::expected<uint8_t, ResponseStatus>(4);
 
       case FunctionCode::MaskWriteRegister:
@@ -179,14 +179,15 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint
 
    CRCWritable crcWritable(writable_);
    auto result = crcWritable.write(_address)
-                 .and_then([&](auto) { return crcWritable.write(FunctionCode::WriteMultipleRegisters); })
+                 .and_then([&](auto) { return crcWritable.write(FunctionCode::WriteMultipleHoldingRegisters); })
                  .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(address); })
                  .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(values.size() / 2); })
                  .and_then([&](auto) { return crcWritable.write(values.size()); })
                  .and_then([&](auto) {
                     for(auto value : values) {
-                       if(!crcWritable.write(value)) {
-                          return crcWritable.write(value);
+                       auto res = crcWritable.write(value);
+                       if(!res) {
+                          return res;
                        }
                     }
                     return crcWritable.writeCRC();
@@ -202,11 +203,30 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint
    if(_address == 0) {
       return 0;
    }
-   return parseResponse(response, FunctionCode::WriteMultipleRegisters);
+   return parseResponse(response, FunctionCode::WriteMultipleHoldingRegisters);
 }
 
 std::expected<uint8_t, ResponseStatus> ModbusMaster::writeSingleRegister(uint16_t address, uint16_t value) {
-   return writeMultipleRegisters(address, { reinterpret_cast<uint8_t *>(&value), 2 });
+   enableTX();
+   writable_.flush();
+
+   CRCWritable crcWritable(writable_);
+   auto result = crcWritable.write(_address)
+                 .and_then([&](auto) { return crcWritable.write(FunctionCode::WriteSingleHoldingRegister); })
+                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(address); })
+                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(value); })
+                 .and_then([&](auto) { return crcWritable.writeCRC(); });
+   if(!result) {
+      writable_.flush();
+      return std::unexpected(ResponseStatus::WriteError);
+   }
+   enableRX();
+   uint8_t response[4];
+   // don't expect a response on a broadcast
+   if(_address == 0) {
+      return 0;
+   }
+   return parseResponse(response, FunctionCode::WriteSingleHoldingRegister);
 }
 
 } // namespace modbus

@@ -59,7 +59,7 @@ std::expected<void, Writable::Error> ModbusSlave::writeReadResponse(uint8_t func
 std::expected<void, Writable::Error> ModbusSlave::writeWriteMultiResponse(uint16_t start, uint16_t count) {
    CRCWritable w(writable_);
    auto res = w.write(address_)
-              .and_then([&](auto) { return w.write(FunctionCode::WriteMultipleRegisters); })
+              .and_then([&](auto) { return w.write(FunctionCode::WriteMultipleHoldingRegisters); })
               .and_then([&](auto) { return w.writeNumber<uint16_t, Endian::Big>(start); })
               .and_then([&](auto) { return w.writeNumber<uint16_t, Endian::Big>(count); })
               .and_then([&](auto) { return w.writeCRC(); })
@@ -181,7 +181,7 @@ bool ModbusSlave::poll() {
    case FunctionCode::ReadInputRegisters: {
       return readInputRegisters(r, function, isBroadcast);
    }
-   case FunctionCode::WriteMultipleRegisters: {
+   case FunctionCode::WriteMultipleHoldingRegisters: {
       return writeMultipleRegisters(r, function, isBroadcast);
    }
    default:
