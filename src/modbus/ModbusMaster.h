@@ -38,6 +38,7 @@ constexpr const char *responseStatusToString(ResponseStatus r) {
 
 
 class ModbusMaster {
+   protected:
    class CRCReadable : public DigestReadable {
       public:
       using Readable::read;

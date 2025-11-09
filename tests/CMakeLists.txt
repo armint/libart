@@ -55,6 +55,8 @@ file(GLOB TEST_SOURCES
         TestReadable.cpp
         TestSettings.cpp
         TestCharacterSkippingReadable.cpp
+        TestModbusMaster.cpp
+        TestIBMCRC16.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
@@ -65,6 +67,9 @@ file(GLOB TO_TEST_SOURCES
         ../src/streams/CharacterSkippingReadable.cpp
         ../src/streams/StringReadable.cpp
         ../src/streams/Writable.cpp
+        ../src/streams/DigestReadable.cpp
+        ../src/streams/DigestWritable.cpp
+        ../src/modbus/ModbusMaster.cpp
         ../src/settings/SettingBase.cpp
         ../src/settings/SettingsManager.cpp
 )
@@ -75,6 +80,8 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/JSONReader.cpp
         ../src/utils/JSONWriter.cpp
         ../src/utils/streamutils.cpp
+        ../src/utils/IBMCRC16Digest.cpp
+        ../src/utils/IBMCRC16FastDigest.cpp
 )
 
 
