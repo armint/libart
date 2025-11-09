@@ -56,6 +56,7 @@ file(GLOB TEST_SOURCES
         TestSettings.cpp
         TestCharacterSkippingReadable.cpp
         TestModbusMaster.cpp
+        TestModbusSlave.cpp
         TestIBMCRC16.cpp
 )
 
@@ -70,6 +71,7 @@ file(GLOB TO_TEST_SOURCES
         ../src/streams/DigestReadable.cpp
         ../src/streams/DigestWritable.cpp
         ../src/modbus/ModbusMaster.cpp
+        ../src/modbus/ModbusSlave.cpp
         ../src/settings/SettingBase.cpp
         ../src/settings/SettingsManager.cpp
 )

@@ -12,10 +12,12 @@
 #include <expected>
 #include <functional>
 #include <span>
+#include <utility>
 
 namespace modbus {
 
 class ModbusSlave {
+   protected:
    class CRCReadable : public DigestReadable {
       public:
       using Readable::read;
@@ -35,30 +37,40 @@ class ModbusSlave {
 
    Readable &readable_;
    Writable &writable_;
-   uint8_t address_ = 1;            // default slave address
-   uint32_t requestTimeout_ = 1000; // time to wait for the first byte of a frame
-   uint32_t interCharTimeout_ = 20; // time between subsequent bytes in a frame
+   uint8_t address_ = 1; // default slave address
+   std::span<uint16_t> buffer_;
 
    public:
-   using ReadRegsCb = std::function<bool(uint16_t start, uint16_t count, std::span<uint16_t> out)>;
-   using WriteRegsCb = std::function<bool(uint16_t start, std::span<const uint16_t> values)>;
+   using ReadRegisterCallback_t = std::function<bool(uint16_t address, uint16_t count, Writable& writable)>;
+   using WriteRegsCb = std::function<bool(uint16_t address, std::span<const uint16_t> values)>;
+   using enabler_t = std::function<void(bool)>;
+
 
    protected:
-   ReadRegsCb readHolding_{};
-   ReadRegsCb readInput_{};
+   ReadRegisterCallback_t readHolding_{};
+   ReadRegisterCallback_t readInput_{};
    WriteRegsCb writeHolding_{};
 
+   enabler_t txEnabler_;
+   enabler_t rxEnabler_;
+
+   void enableTx(bool enable) const {
+      if(txEnabler_) {
+         txEnabler_(enable);
+      }
+   }
+   void enableRx(bool enable) const {
+      if(rxEnabler_) {
+         rxEnabler_(enable);
+      }
+   }
    // helpers
-   std::expected<void, Writable::Error> writeException(uint8_t function, uint8_t exceptionCode);
-   std::expected<void, Writable::Error> writeReadResponse(uint8_t function, std::span<const uint16_t> regs);
-   std::expected<void, Writable::Error> writeWriteMultiResponse(uint16_t start, uint16_t count);
-   bool readInputRegisters(CRCReadable r, uint8_t function, bool isBroadcast);
-   bool writeMultipleRegisters(CRCReadable r, uint8_t function, bool isBroadcast);
+   std::expected<size_t, Writable::Error> writeException(uint8_t function, uint8_t exceptionCode);
+   bool readRegisters(CRCReadable& r, uint8_t function, bool isBroadcast);
+   bool writeMultipleRegisters(CRCReadable& r, uint8_t function, bool isBroadcast);
 
    public:
-   ModbusSlave(Readable &readable, Writable &writable)
-      : readable_(readable)
-      , writable_(writable) {}
+   ModbusSlave(Readable &readable, Writable &writable, std::span<uint16_t> buffer, enabler_t rxEnabler = {}, enabler_t txEnabler = {});
 
    void setAddress(uint8_t addr) {
       address_ = addr;
@@ -67,20 +79,18 @@ class ModbusSlave {
       return address_;
    }
 
-   void setRequestTimeout(uint32_t t) {
-      requestTimeout_ = t;
-   }
    void setInterCharTimeout(uint32_t t) {
-      interCharTimeout_ = t;
+      readable_.setTimeout(t);
    }
 
-   void onReadHolding(ReadRegsCb cb) {
+
+   void setReadHoldingCallback(ReadRegisterCallback_t cb) {
       readHolding_ = std::move(cb);
    }
-   void onReadInput(ReadRegsCb cb) {
+   void setReadInputCallback(ReadRegisterCallback_t cb) {
       readInput_ = std::move(cb);
    }
-   void onWriteHolding(WriteRegsCb cb) {
+   void setWriteHoldingCallback(WriteRegsCb cb) {
       writeHolding_ = std::move(cb);
    }
 

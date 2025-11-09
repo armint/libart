@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 enum class Endian { Little, Big };
@@ -41,10 +42,40 @@ inline constexpr T convertEndian(T in) {
    if constexpr(sizeof(T) == 1) {
       return in;
    } else if constexpr(sizeof(T) == 2) {
-      return static_cast<T>(__builtin_bswap16(static_cast<uint16_t>(in)));
+      if constexpr(std::is_floating_point_v<T>) {
+         // float/double with 2 bytes (unlikely but handle for completeness)
+         uint16_t temp;
+         std::memcpy(&temp, &in, sizeof(T));
+         temp = __builtin_bswap16(temp);
+         T result;
+         std::memcpy(&result, &temp, sizeof(T));
+         return result;
+      } else {
+         return static_cast<T>(__builtin_bswap16(static_cast<uint16_t>(in)));
+      }
    } else if constexpr(sizeof(T) == 4) {
-      return static_cast<T>(__builtin_bswap32(static_cast<uint32_t>(in)));
+      if constexpr(std::is_floating_point_v<T>) {
+         // Handle float (32-bit)
+         uint32_t temp;
+         std::memcpy(&temp, &in, sizeof(T));
+         temp = __builtin_bswap32(temp);
+         T result;
+         std::memcpy(&result, &temp, sizeof(T));
+         return result;
+      } else {
+         return static_cast<T>(__builtin_bswap32(static_cast<uint32_t>(in)));
+      }
    } else if constexpr(sizeof(T) == 8) {
-      return static_cast<T>(__builtin_bswap64(static_cast<uint64_t>(in)));
+      if constexpr(std::is_floating_point_v<T>) {
+         // Handle double (64-bit)
+         uint64_t temp;
+         std::memcpy(&temp, &in, sizeof(T));
+         temp = __builtin_bswap64(temp);
+         T result;
+         std::memcpy(&result, &temp, sizeof(T));
+         return result;
+      } else {
+         return static_cast<T>(__builtin_bswap64(static_cast<uint64_t>(in)));
+      }
    }
 }
