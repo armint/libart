@@ -146,8 +146,9 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint
    // Function code
    header[1] = FunctionCode::WriteMultipleHoldingRegisters;
    // Register address
-   convertEndianToArray<Endian::Big>(address, header, 2);
+   convertEndianToArray<Endian::Big, uint16_t>(address, header, 2);
    // Number of registers
+   convertEndianToArray<Endian::Big, uint16_t>(values.size() / 2, header, 4);
    // Number of bytes remaining in message
    header[6] = static_cast<uint8_t>(values.size());
    // Write header
