@@ -1,7 +1,5 @@
 #include "ModbusMaster.h"
 
-#include "catch2/generators/catch_generators.hpp"
-
 #include <streams/ArrayReadable.h>
 #include <utils/endian.h>
 
@@ -68,13 +66,13 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::parseHeader(Readable &r, ui
       case FunctionCode::WriteMultipleCoils:
       case FunctionCode::WriteSingleHoldingRegister:
       case FunctionCode::WriteMultipleHoldingRegisters:
-         return std::expected<uint8_t, ResponseStatus>(4);
+         return 4;
 
       case FunctionCode::MaskWriteRegister:
-         return std::expected<uint8_t, ResponseStatus>(6);
+         return 6;
 
       default:
-         return std::expected<uint8_t, ResponseStatus>(0);
+         return 0;
       }
    });
 }
@@ -150,7 +148,6 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint
    // Register address
    convertEndianToArray<Endian::Big>(address, header, 2);
    // Number of registers
-   convertEndianToArray<Endian::Big, uint16_t>(values.size() / 2, header, 4);
    // Number of bytes remaining in message
    header[6] = static_cast<uint8_t>(values.size());
    // Write header
