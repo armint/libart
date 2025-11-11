@@ -1,5 +1,7 @@
 #include "ModbusMaster.h"
 
+#include "catch2/generators/catch_generators.hpp"
+
 #include <streams/ArrayReadable.h>
 #include <utils/endian.h>
 
@@ -109,69 +111,56 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::parseResponse(std::span<uin
    return read;
 }
 
-std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(uint8_t type, uint16_t startAddress, std::span<uint8_t> buffer) {
-   enableTx();
-   writable_.flush();
-   {
-      CRCWritable crcWritable(writable_);
-      auto result = crcWritable.write(_address)
-                    .and_then([&](auto) { return crcWritable.write(type); })
-                    .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(startAddress); })
-                    .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(buffer.size() / 2); })
-                    .and_then([&](auto) { return crcWritable.writeCRC(); });
-
-      if(!result) {
-         return std::unexpected(ResponseStatus::WriteError);
-      }
-      writable_.flush();
-   }
-   enableRx();
-
-   return parseResponse(buffer, type);
-}
-
-
-std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(uint16_t startAddress, std::span<uint8_t> buffer) {
+std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(FunctionCode code, uint16_t address, std::span<uint8_t> buffer) {
    enableTx();
    writable_.flush();
    CRCWritable crcWritable(writable_);
-   auto result = crcWritable.write(_address)
-                 .and_then([&](auto) { return crcWritable.write(FunctionCode::ReadWriteMultipleRegisters); })
-                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(startAddress); })
-                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(buffer.size() / 2); })
-                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(startAddress); })
-                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(0); })
-                 .and_then([&](auto) { return crcWritable.write(0); })
+   uint8_t header[6];
+   // Device address
+   header[0] = _address;
+   // Function code
+   header[1] = code;
+   // Register address
+   convertEndianToArray<Endian::Big>(address, header, 2);
+   // Register count
+   convertEndianToArray<Endian::Big, uint16_t>(buffer.size() / 2, header, 4);
+
+   auto result = crcWritable.write(header)
                  .and_then([&](auto) { return crcWritable.writeCRC(); });
 
    if(!result) {
       return std::unexpected(ResponseStatus::WriteError);
-      writable_.flush();
    }
-   // Switch to reading again
-
+   writable_.flush();
    enableRx();
 
-   return parseResponse(buffer, FunctionCode::ReadWriteMultipleRegisters);
+   return parseResponse(buffer, code);
 }
+
 
 std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint16_t address, std::span<const uint8_t> values) {
    enableTx();
    writable_.flush();
-
    CRCWritable crcWritable(writable_);
-   auto result = crcWritable.write(_address)
-                 .and_then([&](auto) { return crcWritable.write(FunctionCode::WriteMultipleHoldingRegisters); })
-                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(address); })
-                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(values.size() / 2); })
-                 .and_then([&](auto) { return crcWritable.write(values.size()); })
+   uint8_t header[7];
+   // Device address
+   header[0] = _address;
+   // Function code
+   header[1] = FunctionCode::WriteMultipleHoldingRegisters;
+   // Register address
+   convertEndianToArray<Endian::Big>(address, header, 2);
+   // Number of registers
+   convertEndianToArray<Endian::Big, uint16_t>(values.size() / 2, header, 4);
+   // Number of bytes remaining in message
+   header[6] = static_cast<uint8_t>(values.size());
+   // Write header
+   auto result = crcWritable.write(header)
                  .and_then([&](auto) {
-                    for(auto value : values) {
-                       auto res = crcWritable.write(value);
-                       if(!res) {
-                          return res;
-                       }
-                    }
+                    // write data
+                    return crcWritable.write(values);
+                 })
+                 .and_then([&](auto) {
+                    // write CRC
                     return crcWritable.writeCRC();
                  });
 
@@ -191,13 +180,18 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint
 std::expected<uint8_t, ResponseStatus> ModbusMaster::writeSingleRegister(uint16_t address, uint16_t value) {
    enableTx();
    writable_.flush();
-
+   uint8_t header[4];
+   // Device address
+   header[0] = _address;
+   // Function code
+   header[1] = FunctionCode::WriteSingleHoldingRegister;
+   // Register address
+   convertEndianToArray<Endian::Big>(address, header, 2);
    CRCWritable crcWritable(writable_);
-   auto result = crcWritable.write(_address)
-                 .and_then([&](auto) { return crcWritable.write(FunctionCode::WriteSingleHoldingRegister); })
-                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(address); })
-                 .and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(value); })
-                 .and_then([&](auto) { return crcWritable.writeCRC(); });
+   auto result =
+   crcWritable.write(header).and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(value); }).and_then([&](auto) {
+      return crcWritable.writeCRC();
+   });
    if(!result) {
       writable_.flush();
       return std::unexpected(ResponseStatus::WriteError);

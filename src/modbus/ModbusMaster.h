@@ -73,7 +73,7 @@ class ModbusMaster {
 
    std::expected<uint8_t, ResponseStatus> parseHeader(Readable &r, uint8_t expectedFunctionCode);
    std::expected<uint8_t, ResponseStatus> parseResponse(std::span<uint8_t> buffer, uint8_t functionCode);
-   std::expected<uint8_t, ResponseStatus> readRegisters(uint8_t type, uint16_t startAddress, std::span<uint8_t> buffer);
+   std::expected<uint8_t, ResponseStatus> readRegisters(FunctionCode code, uint16_t address, std::span<uint8_t> buffer);
 
    enabler_t txEnabler = {};
    enabler_t rxEnabler = {};
@@ -107,7 +107,6 @@ class ModbusMaster {
       _responseTimeout = timeout;
    }
 
-   std::expected<uint8_t, ResponseStatus> readRegisters(uint16_t startAddress, std::span<uint8_t> buffer);
    std::expected<uint8_t, ResponseStatus> readInputRegisters(uint16_t startAddress, std::span<uint8_t> buffer) {
       return readRegisters(FunctionCode::ReadInputRegisters, startAddress, buffer);
    }
