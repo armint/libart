@@ -66,14 +66,14 @@ class ModbusMaster {
    };
    Readable &readable_;
    Writable &writable_;
-   uint8_t _address = 0;
    duration_t _responseTimeout = 3000;
    duration_t symbolTimeout_ = 20;
    uint8_t _exceptionCode = 0;
 
-   std::expected<uint8_t, ResponseStatus> parseHeader(Readable &r, uint8_t expectedFunctionCode);
-   std::expected<uint8_t, ResponseStatus> parseResponse(std::span<uint8_t> buffer, uint8_t functionCode);
-   std::expected<uint8_t, ResponseStatus> readRegisters(FunctionCode code, uint16_t address, std::span<uint8_t> buffer);
+   std::expected<uint8_t, ResponseStatus> parseHeader(uint8_t deviceAddress, Readable &r, uint8_t expectedFunctionCode);
+   std::expected<uint8_t, ResponseStatus> parseResponse(uint8_t deviceAddress, std::span<uint8_t> buffer, uint8_t functionCode);
+   std::expected<uint8_t, ResponseStatus>
+   readRegisters(uint8_t deviceAddress, FunctionCode code, uint16_t address, std::span<uint8_t> buffer);
 
    enabler_t txEnabler = {};
    enabler_t rxEnabler = {};
@@ -91,14 +91,6 @@ class ModbusMaster {
    public:
    ModbusMaster(Readable &readable, Writable &writable);
 
-   void setAddress(uint8_t address) {
-      _address = address;
-   }
-
-   uint8_t getAddress() const {
-      return _address;
-   }
-
    duration_t getResponseTimeout() const {
       return _responseTimeout;
    }
@@ -107,14 +99,16 @@ class ModbusMaster {
       _responseTimeout = timeout;
    }
 
-   std::expected<uint8_t, ResponseStatus> readInputRegisters(uint16_t startAddress, std::span<uint8_t> buffer) {
-      return readRegisters(FunctionCode::ReadInputRegisters, startAddress, buffer);
+   std::expected<uint8_t, ResponseStatus> readInputRegisters(uint8_t deviceAddress, uint16_t startAddress, std::span<uint8_t> buffer) {
+      return readRegisters(deviceAddress, FunctionCode::ReadInputRegisters, startAddress, buffer);
    }
-   std::expected<uint8_t, ResponseStatus> readHoldingRegisters(uint16_t startAddress, std::span<uint8_t> buffer) {
-      return readRegisters(FunctionCode::ReadHoldingRegisters, startAddress, buffer);
+   std::expected<uint8_t, ResponseStatus>
+   readHoldingRegisters(uint8_t deviceAddress, uint16_t startAddress, std::span<uint8_t> buffer) {
+      return readRegisters(deviceAddress, FunctionCode::ReadHoldingRegisters, startAddress, buffer);
    }
-   std::expected<uint8_t, ResponseStatus> writeMultipleRegisters(uint16_t address, std::span<const uint8_t> values);
-   std::expected<uint8_t, ResponseStatus> writeSingleRegister(uint16_t address, uint16_t value);
+   std::expected<uint8_t, ResponseStatus>
+   writeMultipleRegisters(uint8_t deviceAddress, uint16_t startAddress, std::span<const uint8_t> values);
+   std::expected<uint8_t, ResponseStatus> writeSingleRegister(uint8_t deviceAddress, uint16_t registerAddress, uint16_t value);
 
    [[nodiscard]] uint8_t getExceptionCode() const {
       return _exceptionCode;

@@ -28,13 +28,13 @@ std::expected<size_t, Writable::Error> ModbusMaster::CRCWritable::writeCRC() {
    return sink_.write(crc);
 }
 
-std::expected<uint8_t, ResponseStatus> ModbusMaster::parseHeader(Readable &r, uint8_t expectedFunctionCode) {
+std::expected<uint8_t, ResponseStatus> ModbusMaster::parseHeader(uint8_t deviceAddress, Readable &r, uint8_t expectedFunctionCode) {
    r.setTimeout(_responseTimeout);
 
    return r.read()
    .transform_error([](auto) { return ResponseStatus::ReadTimeout; })
    .and_then([&](uint8_t address) -> std::expected<uint8_t, ResponseStatus> {
-      if(address != _address) {
+      if(address != deviceAddress) {
          return std::unexpected(ResponseStatus::AddressMismatch);
       }
       r.setTimeout(symbolTimeout_);
@@ -77,10 +77,11 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::parseHeader(Readable &r, ui
    });
 }
 
-std::expected<uint8_t, ResponseStatus> ModbusMaster::parseResponse(std::span<uint8_t> buffer, uint8_t expectedFunctionCode) {
+std::expected<uint8_t, ResponseStatus>
+ModbusMaster::parseResponse(uint8_t deviceAddress, std::span<uint8_t> buffer, uint8_t expectedFunctionCode) {
    CRCReadable crcReadable(readable_);
    // First parse the header
-   auto res = parseHeader(crcReadable, expectedFunctionCode);
+   auto res = parseHeader(deviceAddress, crcReadable, expectedFunctionCode);
    if(!res) {
       // log.warn("Could not parse response header");
       return res;
@@ -109,13 +110,14 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::parseResponse(std::span<uin
    return read;
 }
 
-std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(FunctionCode code, uint16_t address, std::span<uint8_t> buffer) {
+std::expected<uint8_t, ResponseStatus>
+ModbusMaster::readRegisters(uint8_t deviceAddress, FunctionCode code, uint16_t address, std::span<uint8_t> buffer) {
    enableTx();
    writable_.flush();
    CRCWritable crcWritable(writable_);
    uint8_t header[6];
    // Device address
-   header[0] = _address;
+   header[0] = deviceAddress;
    // Function code
    header[1] = code;
    // Register address
@@ -123,8 +125,7 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(FunctionCode 
    // Register count
    convertEndianToArray<Endian::Big, uint16_t>(buffer.size() / 2, header, 4);
 
-   auto result = crcWritable.write(header)
-                 .and_then([&](auto) { return crcWritable.writeCRC(); });
+   auto result = crcWritable.write(header).and_then([&](auto) { return crcWritable.writeCRC(); });
 
    if(!result) {
       return std::unexpected(ResponseStatus::WriteError);
@@ -132,21 +133,22 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::readRegisters(FunctionCode 
    writable_.flush();
    enableRx();
 
-   return parseResponse(buffer, code);
+   return parseResponse(deviceAddress, buffer, code);
 }
 
 
-std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint16_t address, std::span<const uint8_t> values) {
+std::expected<uint8_t, ResponseStatus>
+ModbusMaster::writeMultipleRegisters(uint8_t deviceAddress, uint16_t startAddress, std::span<const uint8_t> values) {
    enableTx();
    writable_.flush();
    CRCWritable crcWritable(writable_);
    uint8_t header[7];
    // Device address
-   header[0] = _address;
+   header[0] = deviceAddress;
    // Function code
    header[1] = FunctionCode::WriteMultipleHoldingRegisters;
    // Register address
-   convertEndianToArray<Endian::Big, uint16_t>(address, header, 2);
+   convertEndianToArray<Endian::Big, uint16_t>(startAddress, header, 2);
    // Number of registers
    convertEndianToArray<Endian::Big, uint16_t>(values.size() / 2, header, 4);
    // Number of bytes remaining in message
@@ -169,22 +171,23 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeMultipleRegisters(uint
    enableRx();
    uint8_t response[4];
    // don't expect a response on a broadcast
-   if(_address == 0) {
+   if(deviceAddress == 0) {
       return 0;
    }
-   return parseResponse(response, FunctionCode::WriteMultipleHoldingRegisters);
+   return parseResponse(deviceAddress, response, FunctionCode::WriteMultipleHoldingRegisters);
 }
 
-std::expected<uint8_t, ResponseStatus> ModbusMaster::writeSingleRegister(uint16_t address, uint16_t value) {
+std::expected<uint8_t, ResponseStatus>
+ModbusMaster::writeSingleRegister(uint8_t deviceAddress, uint16_t registerAddress, uint16_t value) {
    enableTx();
    writable_.flush();
    uint8_t header[4];
    // Device address
-   header[0] = _address;
+   header[0] = deviceAddress;
    // Function code
    header[1] = FunctionCode::WriteSingleHoldingRegister;
    // Register address
-   convertEndianToArray<Endian::Big>(address, header, 2);
+   convertEndianToArray<Endian::Big>(registerAddress, header, 2);
    CRCWritable crcWritable(writable_);
    auto result =
    crcWritable.write(header).and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(value); }).and_then([&](auto) {
@@ -197,10 +200,10 @@ std::expected<uint8_t, ResponseStatus> ModbusMaster::writeSingleRegister(uint16_
    enableRx();
    uint8_t response[4];
    // don't expect a response on a broadcast
-   if(_address == 0) {
+   if(deviceAddress == 0) {
       return 0;
    }
-   return parseResponse(response, FunctionCode::WriteSingleHoldingRegister);
+   return parseResponse(deviceAddress, response, FunctionCode::WriteSingleHoldingRegister);
 }
 
 } // namespace modbus
