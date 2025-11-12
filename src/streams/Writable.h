@@ -20,7 +20,7 @@ class Writable {
 
    protected:
    struct TfpHelper {
-      Writable* writable;
+      Writable *writable;
       std::expected<size_t, Error> result;
    };
    static void writeCharacter(void *ptr, char c);
@@ -44,7 +44,8 @@ class Writable {
    template <typename T, Endian E = SystemEndian>
    inline std::expected<size_t, Error> writeNumber(T number) {
       const T tmpVal = convertEndian<E, T>(number);
-      return write(std::span(reinterpret_cast<const uint8_t *>(&tmpVal), sizeof(T)));
+      const auto data = reinterpret_cast<const uint8_t *>(&tmpVal);
+      return write(std::span<const uint8_t>(data, sizeof(T)));
    }
 
    /**
