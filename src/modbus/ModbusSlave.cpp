@@ -35,11 +35,10 @@ std::expected<size_t, Writable::Error> ModbusSlave::CRCWritable::writeCRC() {
 
 std::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t function, uint8_t exceptionCode) {
    CRCWritable w(writable_);
-   auto res = w.write(address_)
-              .and_then([&](auto) { return w.write(static_cast<uint8_t>(function | 0x80)); })
-              .and_then([&](auto) { return w.write(exceptionCode); })
+   uint8_t header[3] = {address_, static_cast<uint8_t>(function | 0x80), exceptionCode};
+   auto res = w.write(header)
               .and_then([&](auto) { return w.writeCRC(); })
-              .transform([](auto) { return 4; });
+              .transform([](auto) { return 3; });
    writable_.flush();
    return res;
 }
@@ -76,17 +75,15 @@ bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable &r, const uint8_t funct
    }
    if(!isBroadcast) {
       CRCWritable w(writable_);
-      auto res = w.write(address_)
-                 .and_then([&](auto) { return w.write(function); })
-                 .and_then([&](auto) { return w.write(static_cast<uint8_t>(count * 2)); })
+      uint8_t header[3] = { address_, function, static_cast<uint8_t>(count * 2) };
+      auto res = w.write(header)
                  .and_then([&](auto) {
                     if(!cb(start, count, w)) {
                        return writeException(function, ResultCode::ILLEGAL_ADDRESS);
                     }
                     return std::expected<size_t, Writable::Error>(0);
                  })
-                 .and_then([&](auto) { return w.writeCRC(); })
-                 .transform([](auto) { return; });
+                 .and_then([&](auto) { return w.writeCRC(); });
       writable_.flush();
 
       if(!res) {
@@ -161,15 +158,15 @@ bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable &r, const uint
 }
 
 bool ModbusSlave::poll() {
-   CRCReadable r(readable_);
-   if(!r.available()) {
+   if(!readable_.available()) {
       return false;
    }
-   auto a = r.read();
-   if(!a) {
+   CRCReadable r(readable_);
+   auto address = r.read();
+   if(!address) {
       return false; // no data / timeout
    }
-   const auto rxAddress = static_cast<uint8_t>(a.value());
+   const auto rxAddress = static_cast<uint8_t>(address.value());
    // Read function code
    auto f = r.read();
    if(!f) {
