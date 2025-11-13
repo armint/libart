@@ -1,10 +1,13 @@
 #include "ModbusSlave.h"
+#include "ModbusCodes.h"
+
+#include "streams/ArrayReadable.h"
 
 #include <array>
 
 namespace modbus {
 
-ModbusSlave::ModbusSlave(Readable &readable, Writable &writable, std::span<uint16_t> buffer, enabler_t rxEnabler, enabler_t txEnabler)
+ModbusSlave::ModbusSlave(Readable &readable, Writable &writable, std::span<uint8_t> buffer, enabler_t rxEnabler, enabler_t txEnabler)
    : readable_(readable)
    , writable_(writable)
    , buffer_(buffer)
@@ -41,7 +44,7 @@ std::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t funct
    return res;
 }
 
-bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable& r, const uint8_t function, const bool isBroadcast) {
+bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable &r, const uint8_t function, const bool isBroadcast) {
    auto startRes = r.readNumber<uint16_t, Endian::Big>();
    if(!startRes) {
       return false;
@@ -92,7 +95,7 @@ bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable& r, const uint8_t funct
    }
    return true;
 }
-bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable& r, const uint8_t function, const bool isBroadcast) {
+bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable &r, const uint8_t function, const bool isBroadcast) {
    auto startRes = r.readNumber<uint16_t, Endian::Big>();
    if(!startRes) {
       return false;
@@ -109,7 +112,7 @@ bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable& r, const uint
    }
    const uint8_t byteCount = static_cast<uint8_t>(byteCountRes.value());
    // We cannot accept more registers than we can buffer
-   if(count == 0 || count > std::size(buffer_) || byteCount != count * 2) {
+   if(count == 0 || byteCount > buffer_.size() || byteCount != count * 2) {
       if(!isBroadcast) {
          r.readCRCAndValidate();
          (void)writeException(function, ResultCode::ILLEGAL_VALUE);
@@ -117,12 +120,9 @@ bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable& r, const uint
       return true;
    }
    // Read the data into the buffer
-   for(size_t i = 0; i < count; ++i) {
-      auto reg = r.readNumber<uint16_t, Endian::Big>();
-      if(!reg) {
-         return false;
-      }
-      buffer_[i] = reg.value();
+   auto readResult = r.read(buffer_.subspan(0, byteCount));
+   if(!readResult) {
+      return false;
    }
    // Check the CRC
    if(!r.readCRCAndValidate()) {
@@ -135,7 +135,8 @@ bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable& r, const uint
       return true;
    }
    // Send the data to the user application
-   const bool ok = writeHolding_(start, buffer_.subspan(0, count));
+   ArrayReadable readable(buffer_.subspan(0, byteCount));
+   const bool ok = writeHolding_(start, readable);
    if(!ok) {
       if(!isBroadcast) {
          (void)writeException(function, ResultCode::ILLEGAL_ADDRESS);
@@ -145,12 +146,12 @@ bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable& r, const uint
    // Send a response
    if(!isBroadcast) {
       CRCWritable w(writable_);
-      auto res = w.write(address_)
-                 .and_then([&](auto) { return w.write(FunctionCode::WriteMultipleHoldingRegisters); })
-                 .and_then([&](auto) { return w.writeNumber<uint16_t, Endian::Big>(start); })
-                 .and_then([&](auto) { return w.writeNumber<uint16_t, Endian::Big>(count); })
-                 .and_then([&](auto) { return w.writeCRC(); })
-                 .transform([](auto) { return; });
+      uint8_t response[6];
+      response[0] = address_;
+      response[1] = FunctionCode::WriteMultipleHoldingRegisters;
+      convertEndianToArray<Endian::Big, uint16_t>(start, response, 2);
+      convertEndianToArray<Endian::Big, uint16_t>(count, response, 4);
+      auto res = w.write(response).and_then([&](auto) { return w.writeCRC(); });
       writable_.flush();
       if(!res) {
          // TODO LOGGING!
