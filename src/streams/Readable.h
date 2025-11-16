@@ -10,6 +10,7 @@
 #include <span>
 
 #include <utils/endian.h>
+#include <utils/numberutils.h>
 
 /**
  * Interface for a readable source of data, providing various methods to read and process characters or data
@@ -21,7 +22,7 @@ class Readable {
 
    public:
    using Error = int32_t;
-   enum { EndOfStream = 0, ReadError, Timeout, NotFound };
+   enum { EndOfStream = 0, ReadError, Timeout, NotFound, NumberTooBig };
 
    /**
     * Read a single character from this stream. This method should be implemented by all derived classes
@@ -51,6 +52,57 @@ class Readable {
          T val = convertEndian<E, T>(tmp);
          return val;
       });
+   }
+
+   /**
+    * Decodes a Run-Length Encoded (RLE/varint) unsigned integer from this readable by repeatedly calling read().
+    *
+    * @tparam T Unsigned integer type to decode into.
+    * @param dest Reference to destination variable that will receive the decoded value on success.
+    * @return The number of bytes consumed on success; otherwise a DecodeError.
+    */
+   template <typename T, typename = std::enable_if_t<std::is_unsigned_v<T>, T>>
+   std::expected<size_t, Error> readRLE(T &dest) {
+      dest = 0;
+      size_t index = 0;
+      size_t bitIndex = 0;
+      uint8_t byte;
+      do {
+         auto ch = read();
+         if(!ch) {
+            return ch;
+         }
+         byte = static_cast<uint8_t>(*ch);
+         if(bitIndex >= std::numeric_limits<T>::digits) {
+            return std::unexpected(NumberTooBig);
+         }
+         dest |= static_cast<T>(byte & 0x7F) << bitIndex;
+         index++;
+         bitIndex += 7;
+      } while(byte & 0x80);
+      return index;
+   }
+
+   /**
+    * Decodes a ZigZag-encoded signed integer from this readable by using varint decoding.
+    *
+    * @tparam T Signed integer type to decode into.
+    * @param dest Reference to destination variable that will receive the decoded value on success.
+    * @return The number of bytes consumed on success; otherwise a DecodeError.
+    */
+   template <typename T, typename = std::enable_if_t<std::is_signed_v<T>, T>>
+   std::expected<size_t, DecodeError> readRLEZigZag(T &dest) {
+      using unsigned_type = typename std::make_unsigned<T>::type;
+      unsigned_type value = 0;
+      auto ressult = readRLE(value);
+      if(ressult) {
+         if(value & 1) {
+            dest = static_cast<T>(~(value >> 1));
+         } else {
+            dest = static_cast<T>(value >> 1);
+         }
+      }
+      return ressult;
    }
 
    /**
