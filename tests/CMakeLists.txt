@@ -58,6 +58,7 @@ file(GLOB TEST_SOURCES
         TestModbusMaster.cpp
         TestModbusSlave.cpp
         TestIBMCRC16.cpp
+        TestWritable.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
