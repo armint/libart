@@ -69,13 +69,28 @@ size_t tfp_vsnprintf(char *s, size_t len, const char *format, va_list va_l);
 
 size_t tfp_snprintf(char *s, size_t len, const char *fmt, ...);
 
-inline void tfp_sprintf(char *s, const char *fmt, ...) {
-   tfp_snprintf(s, SIZE_MAX, fmt);
-}
+// C linkage versions above are preserved for C compatibility.
 
 void tfp_format(void *putp, void (*putf)(void *, char), const char *fmt, va_list va);
 
 #ifdef __cplusplus
+}
+
+// C++-only convenience overloads using variadic templates (no C varargs in user code)
+#include <cstdio>
+#include <utility>
+#include <type_traits>
+
+template <typename... Args, typename = std::enable_if_t<(sizeof...(Args) > 0)>>
+inline size_t tfp_snprintf(char *s, size_t len, const char *fmt, Args&&... args) {
+   // Delegate to the C library's snprintf to avoid constructing va_list manually
+   // while keeping the API surface similar.
+   return static_cast<size_t>(std::snprintf(s, len, fmt, std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+inline size_t tfp_sprintf(char *s, const char *fmt, Args&&... args) {
+   return tfp_snprintf(s, SIZE_MAX, fmt, std::forward<Args>(args)...);
 }
 #endif
 

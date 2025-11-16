@@ -1,4 +1,3 @@
-
 #pragma once
 #include <cstdarg>
 #include <cstddef>
@@ -16,6 +15,7 @@
 class Writable {
    public:
    using Error = int32_t;
+
    enum { CouldNotWrite = 0, Overflow };
 
    protected:
@@ -23,6 +23,7 @@ class Writable {
       Writable *writable;
       std::expected<size_t, Error> result;
    };
+
    static void writeCharacter(void *ptr, char c);
 
    public:
@@ -58,20 +59,36 @@ class Writable {
    }
 
    /**
-    * Printf for this writable. Internally, tfp_printf is used
-    *
-    * @param format the tfp_printf format
-    * @param ...  the variable args for tfp_printf
-    * @return an std::expected containing the amount of bytes written, or a Writable::Error if something went wrong
+    * Bufferless printf: directly streams characters via tfp_format into write().
+    * This C++ template forwards to an internal C-ellipsis overload to build a va_list.
     */
-   std::expected<size_t, Error> printf(const char *format, ...);
+   template <typename... Args>
+   std::expected<size_t, Error> printf(const char *format, Args &&... args) {
+      return printf_va(format, std::forward<Args>(args)...);
+   }
 
    std::expected<size_t, Error> vprintf(const char *format, va_list va_l);
 
+   // C-ellipsis helper used by the template to avoid intermediate buffers
+   std::expected<size_t, Error> printf_va(const char *format, ...);
+
    inline std::expected<size_t, Error> println() {
-      return write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("\r\n"), 2));
+      return write(std::span(reinterpret_cast<const uint8_t *>("\r\n"), 2));
    }
-   std::expected<size_t, Error> println(const char *format, ...);
+
+   template <typename... Args>
+   std::expected<size_t, Error> println(const char *format, Args &&... args) {
+      auto ret = printf(format, std::forward<Args>(args)...);
+      if(!ret) {
+         return ret;
+      }
+      auto r2 = write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("\r\n"), 2));
+      if(!r2) {
+         return r2;
+      }
+      ret.value() += r2.value();
+      return ret;
+   }
 
    /**
     * Flush possible buffered data of this writable.
