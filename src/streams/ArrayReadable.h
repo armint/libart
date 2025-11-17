@@ -1,21 +1,20 @@
-
 #pragma once
-#include "BoundedReadable.h"
+#include "RandomAccessReadable.h"
 
 /**
  * A readable reading from a memory array
  */
-class ArrayReadable : public BoundedReadable {
+class ArrayReadable : public RandomAccessReadable {
    size_t index = 0;
    std::span<const uint8_t> data;
 
    public:
    ArrayReadable(std::span<const uint8_t> data);
-   virtual std::expected<char, Error> read() override;
+   std::expected<char, Error> read() override;
 
-   virtual bool available() override;
+   bool available() override;
 
-   virtual size_t bytesLeft() override;
-   virtual void reset(size_t position = 0) override;
-   virtual size_t position() override;
+   size_t bytesLeft() override;
+   void reset(size_t position = 0) override;
+   size_t position() override;
 };

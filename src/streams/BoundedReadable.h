@@ -15,12 +15,6 @@ class BoundedReadable : public Readable {
     */
    virtual size_t bytesLeft() = 0;
    /**
-    * Reset the stream to the provided position
-    *
-    * @param position the position to reset to (default to the beginning of the stream)
-    */
-   virtual void reset(size_t position = 0) = 0;
-   /**
     * Get the current position of this stream
     *
     * @return the current position of this stream
