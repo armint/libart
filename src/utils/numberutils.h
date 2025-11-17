@@ -21,7 +21,7 @@ int signum(T val) {
 /**
  * @brief Computes the number of decimals in the given number.
  *
- * This function calculates the number of decimals of a given number.
+ * This function calculates the number of decimals for a given number.
  * It works with any numeric type that supports the necessary operations, such as int,
  * float, double, etc. Note that the number of decimals is calculated for the integer part
  * of the number.
