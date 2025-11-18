@@ -4,7 +4,11 @@ std::expected<char, Readable::Error> BoundedReadableWrapper::read() {
    if(position_ >= limit_) {
       return std::unexpected(EndOfStream);
    }
-   return source_.read();
+   auto ch = source_.read();
+   if(ch) {
+      ++position_;
+   }
+   return ch;
 }
 
 bool BoundedReadableWrapper::available() {

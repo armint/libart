@@ -13,6 +13,7 @@ class BoundedReadableWrapper : public BoundedReadable {
       : limit_(limit), source_(source_) {
    }
 
+   using Readable::read;
    std::expected<char, Error> read() override;
    bool available() override;
    size_t bytesLeft() override;
