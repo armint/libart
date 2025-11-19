@@ -50,12 +50,42 @@ class Writable {
    }
 
    /**
+    * Encodes a value using Run-Length Encoding (RLE) and writes the encoded data to the writable.
+    * The encoding scheme compresses integer values into a series of 7-bit chunks,
+    * with the highest bit of each chunk signaling continuation.
+    *
+    * @tparam T The type of the value to encode. Typically an integer type.
+    * @param value The value to be encoded.
+    * @return An `std::expected` containing the number of bytes written on success,
+    *         or a `Writable::Error` code if writing fails.
+    */
+   template <typename T, typename = std::enable_if_t<std::is_integral_v<T>, T>>
+   std::expected<size_t, Error> writeRLE(T value) {
+      size_t i = 0;
+      do {
+         uint8_t c;
+         if(value > 0x7F) {
+            c = static_cast<uint8_t>((value & 0x7F) | 0x80);
+         } else {
+            c = static_cast<uint8_t>(value);
+         }
+         auto res = write(c);
+         if(!res) {
+            return res;
+         }
+         value >>= 7;
+         ++i;
+      } while(value != 0);
+      return i;
+   }
+
+   /**
     * Write a single byte to this writable.
     * @param c the byte to write
     * @return an std::expected containing the amount of bytes written, or a Writable::Error if something went wrong
     */
    inline std::expected<size_t, Error> write(const uint8_t c) {
-      return write(std::span<const uint8_t>(&c, 1));
+      return write(std::span(&c, 1));
    }
 
    /**
