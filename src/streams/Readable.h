@@ -55,13 +55,13 @@ class Readable {
    }
 
    /**
-    * Decodes a Run-Length Encoded (RLE/varint) unsigned integer from this readable by repeatedly calling read().
+    * Decodes a Run-Length Encoded (RLE/varint) integer from this readable
     *
-    * @tparam T Unsigned integer type to decode into.
+    * @tparam T integer type to decode into.
     * @param dest Reference to destination variable that will receive the decoded value on success.
     * @return The number of bytes consumed on success; otherwise a DecodeError.
     */
-   template <typename T, typename = std::enable_if_t<std::is_unsigned_v<T>, T>>
+   template <typename T, typename = std::enable_if_t<std::is_integral_v<T>, T>>
    std::expected<size_t, Error> readRLE(T &dest) {
       dest = 0;
       size_t index = 0;
@@ -83,27 +83,6 @@ class Readable {
       return index;
    }
 
-   /**
-    * Decodes a ZigZag-encoded signed integer from this readable by using varint decoding.
-    *
-    * @tparam T Signed integer type to decode into.
-    * @param dest Reference to destination variable that will receive the decoded value on success.
-    * @return The number of bytes consumed on success; otherwise a DecodeError.
-    */
-   template <typename T, typename = std::enable_if_t<std::is_signed_v<T>, T>>
-   std::expected<size_t, DecodeError> readRLEZigZag(T &dest) {
-      using unsigned_type = typename std::make_unsigned<T>::type;
-      unsigned_type value = 0;
-      auto ressult = readRLE(value);
-      if(ressult) {
-         if(value & 1) {
-            dest = static_cast<T>(~(value >> 1));
-         } else {
-            dest = static_cast<T>(value >> 1);
-         }
-      }
-      return ressult;
-   }
 
    /**
     * Check if a read for this readable would result in blocking or an error
