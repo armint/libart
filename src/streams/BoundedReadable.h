@@ -8,6 +8,7 @@
  */
 class BoundedReadable : public Readable {
    public:
+   using Readable::read;
    /**
     * Get the amount of bytes left in this readable
     *

@@ -31,6 +31,10 @@ class Readable {
     */
    virtual std::expected<char, Error> read() = 0;
 
+   std::expected<size_t, Error> read(std::span<char> target) {
+      auto bytes = std::span(reinterpret_cast<uint8_t *>(target.data()), target.size());
+      return read(bytes);
+   }
 
    std::expected<size_t, Error> read(std::span<uint8_t> target);
 
