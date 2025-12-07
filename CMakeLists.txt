@@ -2,7 +2,10 @@ cmake_minimum_required(VERSION 3.20)
 
 Include(FetchContent)
 
-project(art-core LANGUAGES C CXX ASM)
+# Extract git revision
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate_version.cmake")
+
+project(art-core VERSION 0.1.0 LANGUAGES C CXX ASM)
 
 include(GNUInstallDirs)
 
@@ -53,43 +56,59 @@ file(GLOB_RECURSE PROJECT_HEADERS
 )
 
 add_library(art-core STATIC ${PROJECT_SOURCES})
+add_library(art::core ALIAS art-core)
 
 target_include_directories(
         art-core
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
+
+target_include_directories(art-core
+        PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
 target_compile_features(art-core PUBLIC cxx_std_23)
 
-target_link_libraries(art-core PUBLIC micro-os-plus::utils-lists)
-target_link_libraries(art-core PUBLIC micro-os-plus::diag-trace)
-target_link_libraries(art-core PUBLIC etl::etl)
-target_link_libraries(art-core PUBLIC ArduinoJson)
+# Link dependencies privately to avoid exporting build-tree targets via
+# our install(EXPORT ...) set. Consumers will get dependencies re-attached
+# in the installed package config.
+target_link_libraries(art-core
+        PRIVATE
+            micro-os-plus::utils-lists
+            micro-os-plus::diag-trace
+            etl::etl
+            ArduinoJson
+)
 
-add_library(art::core ALIAS art-core)
+# Ensure the exported interface does not pull non-exported targets.
+set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
 
 install(TARGETS art-core
         EXPORT art-core-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
 install(EXPORT art-core-targets
         NAMESPACE art::
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/art-core)
-
-# Extract git revision
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate_version.cmake")
 
 # Generate a Config file so consumers can `find_package(art-core)`
 include(CMakePackageConfigHelpers)
 write_basic_package_version_file(
         ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfigVersion.cmake
-        VERSION GIT_VERSION
+        VERSION ${GIT_VERSION}
         COMPATIBILITY SameMajorVersion)
+
 configure_package_config_file(
         ${CMAKE_CURRENT_LIST_DIR}/cmake/art-coreConfig.cmake.in
         ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfig.cmake
         INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/art-core)
+
 install(FILES
         ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfig.cmake
         ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfigVersion.cmake
