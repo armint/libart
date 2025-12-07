@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 Include(FetchContent)
 
-project(libArT LANGUAGES C CXX ASM)
+project(art-core LANGUAGES C CXX ASM)
 
 include(GNUInstallDirs)
 
@@ -52,18 +52,46 @@ file(GLOB_RECURSE PROJECT_HEADERS
         "src/*.hpp"
 )
 
-add_library(libArT STATIC ${PROJECT_SOURCES})
+add_library(art-core STATIC ${PROJECT_SOURCES})
 
 target_include_directories(
-        libArT
+        art-core
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-target_compile_features(libArT PUBLIC cxx_std_23)
+target_compile_features(art-core PUBLIC cxx_std_23)
 
-target_link_libraries(libArT PUBLIC micro-os-plus::utils-lists)
-target_link_libraries(libArT PUBLIC micro-os-plus::diag-trace)
-target_link_libraries(libArT PUBLIC etl::etl)
-target_link_libraries(libArT PUBLIC ArduinoJson)
+target_link_libraries(art-core PUBLIC micro-os-plus::utils-lists)
+target_link_libraries(art-core PUBLIC micro-os-plus::diag-trace)
+target_link_libraries(art-core PUBLIC etl::etl)
+target_link_libraries(art-core PUBLIC ArduinoJson)
 
-add_library(libArT::libArT ALIAS libArT)
+add_library(art::core ALIAS art-core)
+
+install(TARGETS art-core
+        EXPORT art-core-targets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(EXPORT art-core-targets
+        NAMESPACE art::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/art-core)
+
+# Extract git revision
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate_version.cmake")
+
+# Generate a Config file so consumers can `find_package(art-core)`
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfigVersion.cmake
+        VERSION GIT_VERSION
+        COMPATIBILITY SameMajorVersion)
+configure_package_config_file(
+        ${CMAKE_CURRENT_LIST_DIR}/cmake/art-coreConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/art-core)
+install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/art-core)
+
