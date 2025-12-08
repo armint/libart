@@ -6,7 +6,7 @@
 #define GPIO(x) GLUE(GPIO, x)
 #define GPIO_PIN(x) (1ul << x)
 #define IO(port, pin) GLUE2(P, GLUE(port, pin))
-#define GPIO_AF(x) GLUE(GpioPin::AfConfig::Af, x)
+#define GPIO_AF(x) GLUE(GpioPin::AlternateFunction::AF, x)
 
 #define UART(x) GLUE(UART, x)
 #define USART(x) GLUE(USART, x)
