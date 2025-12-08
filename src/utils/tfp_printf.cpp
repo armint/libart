@@ -185,7 +185,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 's':
             putchw(putp, putf, minChars, 0, va_arg(va, char *));
             break;
-#if !defined(PRINTF_DISABLE_FLOATING_POINT)
+#if defined(PRINTF_ENSABLE_FLOATING_POINT)
          case 'f':
             // Fall through
          case 'F': {
