@@ -9,7 +9,6 @@
 #include <streams/DigestReadable.h>
 
 #include <cstdint>
-#include <functional>
 
 namespace modbus {
 
@@ -40,7 +39,7 @@ constexpr const char *responseStatusToString(ResponseStatus r) {
 
 class ModbusMaster {
    public:
-   using enabler_t = std::function<void(bool)>;
+   using enabler_t = void(*)(bool);
 
    protected:
    class CRCReadable : public DigestReadable {

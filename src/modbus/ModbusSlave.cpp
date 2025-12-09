@@ -67,6 +67,7 @@ bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable &r, const uint8_t funct
    }
 
    auto &cb = (function == FunctionCode::ReadHoldingRegisters) ? readHolding_ : readInput_;
+   auto cb_arg = (function == FunctionCode::ReadHoldingRegisters) ? read_holding_arg_ : read_input_arg_;
    if(!cb) {
       if(!isBroadcast) {
          (void)writeException(function, ResultCode::ILLEGAL_FUNCTION);
@@ -78,7 +79,7 @@ bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable &r, const uint8_t funct
       uint8_t header[3] = { address_, function, static_cast<uint8_t>(count * 2) };
       auto res = w.write(header)
                  .and_then([&](auto) {
-                    if(!cb(start, count, w)) {
+                    if(!cb(cb_arg, start, count, w)) {
                        return writeException(function, ResultCode::ILLEGAL_ADDRESS);
                     }
                     return std::expected<size_t, Writable::Error>(0);
@@ -133,7 +134,7 @@ bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable &r, const uint
    }
    // Send the data to the user application
    ArrayReadable readable(buffer_.subspan(0, byteCount));
-   const bool ok = writeHolding_(start, readable);
+   const bool ok = writeHolding_(write_holding_arg_, start, readable);
    if(!ok) {
       if(!isBroadcast) {
          (void)writeException(function, ResultCode::ILLEGAL_ADDRESS);
