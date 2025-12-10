@@ -28,19 +28,24 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
  * OF SUCH DAMAGE.
  */
-
 #include "tfp_printf.h"
 #include <cmath>
-
+#if defined(PRINTF_ENABLE_64BIT)
+typedef uint64_t printf_uint_t;
+typedef int64_t printf_int_t;
+#else
+typedef uint32_t printf_uint_t;
+typedef int32_t printf_int_t;
+#endif
 typedef void (*putcf)(void *, char);
 
-static void ui2a(uint64_t num, uint64_t base, int uc, char *bf) {
+static void ui2a(printf_uint_t num, printf_uint_t base, int uc, char *bf) {
    int n = 0;
-   uint64_t d = 1;
+   printf_uint_t d = 1;
    while(num / d >= base)
       d *= base;
    while(d != 0) {
-      int dgt = num / d;
+      uint32_t dgt = num / d;
       num %= d;
       d /= base;
       if(n || dgt > 0 || d == 0) {
@@ -51,7 +56,7 @@ static void ui2a(uint64_t num, uint64_t base, int uc, char *bf) {
    *bf = 0;
 }
 
-static void i2a(int64_t num, char *bf) {
+static void i2a(printf_int_t num, char *bf) {
    if(num < 0) {
       num = -num;
       *bf++ = '-';
@@ -136,18 +141,26 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 0:
             goto abort;
          case 'u': {
+#if defined(PRINTF_ENABLE_64BIT)
             if(ll) {
                ui2a(va_arg(va, uint64_t), 10, 0, bf);
             } else {
+#else
+            {
+#endif
                ui2a(va_arg(va, uint32_t), 10, 0, bf);
             }
             putchw(putp, putf, minChars, lz, bf);
             break;
          }
          case 'b': {
+#if defined(PRINTF_ENABLE_64BIT)
             if(ll) {
                ui2a(va_arg(va, uint64_t), 2, 0, bf);
             } else {
+#else
+            {
+#endif
                ui2a(va_arg(va, uint32_t), 2, 0, bf);
             }
             putchw(putp, putf, minChars, lz, bf);
@@ -156,9 +169,13 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 'i':
             // Fall through
          case 'd': {
+#if defined(PRINTF_ENABLE_64BIT)
             if(ll) {
                i2a(va_arg(va, int64_t), bf);
             } else {
+#else
+            {
+#endif
                i2a(va_arg(va, int32_t), bf);
             }
             putchw(putp, putf, minChars, lz, bf);
@@ -172,11 +189,15 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 'x':
             // Fall through
          case 'X':
+#if defined(PRINTF_ENABLE_64BIT)
             if(ll) {
-               ui2a(va_arg(va, uint64_t), 16, (ch == 'X'), bf);
+               ui2a(va_arg(va, printf_uint_t), 16, (ch == 'X'), bf);
             } else {
+#else
+         {
+#endif
                ui2a(va_arg(va, uint32_t), 16, (ch == 'X'), bf);
-            };
+            }
             putchw(putp, putf, minChars, lz, bf);
             break;
          case 'c':
@@ -185,7 +206,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 's':
             putchw(putp, putf, minChars, 0, va_arg(va, char *));
             break;
-#if defined(PRINTF_ENSABLE_FLOATING_POINT)
+#if defined(PRINTF_ENABLE_FLOATING_POINT)
          case 'f':
             // Fall through
          case 'F': {
@@ -214,10 +235,10 @@ typedef struct {
    char *target;
    size_t pos;
    size_t max;
-} _snprintf_helper;
+} snprintf_helper;
 
-static void _snputc(void *p, char c) {
-   _snprintf_helper *h = (_snprintf_helper *)p;
+static void snputc(void *p, char c) {
+   auto *h = static_cast<snprintf_helper *>(p);
    if(h->pos < h->max - 1) {
       h->target[h->pos++] = c;
    } else {
@@ -235,12 +256,12 @@ size_t tfp_snprintf(char *s, size_t len, const char *fmt, ...) {
 }
 
 size_t tfp_vsnprintf(char *s, size_t len, const char *format, va_list va_l) {
-   _snprintf_helper h;
+   snprintf_helper h;
 
    h.target = s;
    h.pos = 0;
    h.max = len;
-   tfp_format(&h, _snputc, format, va_l);
+   tfp_format(&h, snputc, format, va_l);
    if(h.pos < len) {
       h.target[h.pos] = 0;
    }
