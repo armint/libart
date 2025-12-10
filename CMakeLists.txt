@@ -55,7 +55,8 @@ file(GLOB_RECURSE PROJECT_HEADERS
         "src/*.hpp"
 )
 
-add_library(art-core STATIC ${PROJECT_SOURCES})
+add_library(art-core STATIC ${PROJECT_SOURCES}
+        src/art_types.h)
 add_library(art::core ALIAS art-core)
 
 target_include_directories(

@@ -298,7 +298,7 @@ std::expected<char, Readable::Error> Readable::scanfRead() {
    return r;
 }
 
-std::expected<int64_t, Readable::Error> Readable::readSigned(std::optional<char> firstChar, int base, size_t maxDigits) {
+std::expected<big_int_t, Readable::Error> Readable::readSigned(std::optional<char> firstChar, int base, size_t maxDigits) {
    bool negative = false;
    if(!firstChar.has_value()) {
       auto r = scanfRead();
@@ -323,8 +323,8 @@ std::expected<int64_t, Readable::Error> Readable::readSigned(std::optional<char>
    return negative ? -number.value() : number.value();
 }
 
-std::expected<uint64_t, Readable::Error> Readable::readUnsigned(std::optional<char> firstChar, int base, size_t maxDigits) {
-   uint64_t number = 0;
+std::expected<big_uint_t, Readable::Error> Readable::readUnsigned(std::optional<char> firstChar, int base, size_t maxDigits) {
+   big_uint_t number = 0;
    bool haveNumber = false;
    // Read the first character if needed
    std::expected<char, Error> r = firstChar ? firstChar.value() : scanfRead();

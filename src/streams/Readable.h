@@ -11,6 +11,7 @@
 
 #include <utils/endian.h>
 #include <utils/numberutils.h>
+#include <art_types.h>
 
 /**
  * Interface for a readable source of data, providing various methods to read and process characters or data
@@ -163,7 +164,7 @@ class Readable {
     *
     * @return A std::expected<int64_t, Readable::Error> containing the read signed integer value, or an error on failure.
     */
-   std::expected<int64_t, Error>
+   std::expected<big_int_t, Error>
    readSigned(std::optional<char> firstChar, int base, size_t maxDigits = std::numeric_limits<size_t>::max());
    /**
     * Reads an unsigned integer from the stream. The reading process starts with the provided first character
@@ -176,6 +177,6 @@ class Readable {
     *
     * @return A std::expected containing the parsed unsigned integer if successful, or an error code of type Readable::Error.
     */
-   std::expected<uint64_t, Error>
+   std::expected<big_uint_t, Error>
    readUnsigned(std::optional<char> firstChar, int base, size_t maxDigits = std::numeric_limits<size_t>::max());
 };

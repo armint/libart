@@ -29,19 +29,13 @@
  * OF SUCH DAMAGE.
  */
 #include "tfp_printf.h"
+#include <art_types.h>
 #include <cmath>
-#if defined(PRINTF_ENABLE_64BIT)
-typedef uint64_t printf_uint_t;
-typedef int64_t printf_int_t;
-#else
-typedef uint32_t printf_uint_t;
-typedef int32_t printf_int_t;
-#endif
 typedef void (*putcf)(void *, char);
 
-static void ui2a(printf_uint_t num, printf_uint_t base, int uc, char *bf) {
+static void ui2a(big_uint_t num, big_uint_t base, int uc, char *bf) {
    int n = 0;
-   printf_uint_t d = 1;
+   big_uint_t d = 1;
    while(num / d >= base)
       d *= base;
    while(d != 0) {
@@ -56,7 +50,7 @@ static void ui2a(printf_uint_t num, printf_uint_t base, int uc, char *bf) {
    *bf = 0;
 }
 
-static void i2a(printf_int_t num, char *bf) {
+static void i2a(big_int_t num, char *bf) {
    if(num < 0) {
       num = -num;
       *bf++ = '-';
@@ -104,8 +98,11 @@ static void putchw(void *putp, putcf putf, int n, char z, char *bf) {
 }
 
 void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
+#if defined(LIBART_ENABLE_64BIT)
    char bf[65];
-
+#else
+   char bf[33];
+#endif
    char ch;
 
    while((ch = *(fmt++))) {
@@ -115,7 +112,9 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          char lz = 0;
          int minChars = 0;
          int decimals = 3;
+#if defined(LIBART_ENABLE_64BIT)
          bool ll = false;
+#endif
          ch = *(fmt++);
          if(ch == '0') {
             ch = *(fmt++);
@@ -133,7 +132,9 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          if(ch == 'l') {
             ch = *(fmt++);
             if(ch == 'l') {
+#if defined(LIBART_ENABLE_64BIT)
                ll = true;
+#endif
                ch = *(fmt++);
             }
          }
@@ -141,7 +142,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 0:
             goto abort;
          case 'u': {
-#if defined(PRINTF_ENABLE_64BIT)
+#if defined(LIBART_ENABLE_64BIT)
             if(ll) {
                ui2a(va_arg(va, uint64_t), 10, 0, bf);
             } else {
@@ -154,7 +155,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             break;
          }
          case 'b': {
-#if defined(PRINTF_ENABLE_64BIT)
+#if defined(LIBART_ENABLE_64BIT)
             if(ll) {
                ui2a(va_arg(va, uint64_t), 2, 0, bf);
             } else {
@@ -169,7 +170,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 'i':
             // Fall through
          case 'd': {
-#if defined(PRINTF_ENABLE_64BIT)
+#if defined(LIBART_ENABLE_64BIT)
             if(ll) {
                i2a(va_arg(va, int64_t), bf);
             } else {
@@ -189,9 +190,9 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 'x':
             // Fall through
          case 'X':
-#if defined(PRINTF_ENABLE_64BIT)
+#if defined(LIBART_ENABLE_64BIT)
             if(ll) {
-               ui2a(va_arg(va, printf_uint_t), 16, (ch == 'X'), bf);
+               ui2a(va_arg(va, big_uint_t), 16, (ch == 'X'), bf);
             } else {
 #else
          {
