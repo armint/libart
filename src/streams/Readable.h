@@ -10,7 +10,6 @@
 #include <span>
 
 #include <utils/endian.h>
-#include <utils/numberutils.h>
 #include <art_types.h>
 
 /**
