@@ -7,6 +7,7 @@
  * A writable writing to a memory array
  */
 class ArrayWritable : public BoundedWritable {
+   protected:
    std::span<uint8_t> _buffer;
    size_t _position = 0;
 
