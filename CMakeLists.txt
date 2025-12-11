@@ -55,8 +55,8 @@ file(GLOB_RECURSE PROJECT_HEADERS
         "src/*.hpp"
 )
 
-add_library(art-core STATIC ${PROJECT_SOURCES}
-        src/art_types.h)
+add_library(art-core STATIC ${PROJECT_SOURCES})
+
 add_library(art::core ALIAS art-core)
 
 target_include_directories(
@@ -82,6 +82,13 @@ target_link_libraries(art-core
             etl::etl
             ArduinoJson
 )
+
+# If a central build configuration target exists in the superproject,
+# link it so this library is built with the same flags/defines.
+if (TARGET art-build-config)
+    # Only affect this target's compilation in the build tree; do not appear in installed export
+    target_link_libraries(art-core PRIVATE $<BUILD_INTERFACE:art-build-config>)
+endif ()
 
 # Ensure the exported interface does not pull non-exported targets.
 set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
