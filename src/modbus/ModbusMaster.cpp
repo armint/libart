@@ -31,50 +31,50 @@ std::expected<size_t, Writable::Error> ModbusMaster::CRCWritable::writeCRC() {
 std::expected<uint8_t, ResponseStatus> ModbusMaster::parseHeader(uint8_t deviceAddress, Readable &r, uint8_t expectedFunctionCode) {
    r.setTimeout(_responseTimeout);
 
-   return r.read()
-   .transform_error([](auto) { return ResponseStatus::ReadTimeout; })
-   .and_then([&](uint8_t address) -> std::expected<uint8_t, ResponseStatus> {
-      if(address != deviceAddress) {
-         return std::unexpected(ResponseStatus::AddressMismatch);
+   uint8_t buf[2];
+   auto res = r.read(buf);
+   if(!res) {
+      return std::unexpected(ResponseStatus::ReadTimeout);
+   }
+   if(buf[0] != deviceAddress) {
+      return std::unexpected(ResponseStatus::AddressMismatch);
+   }
+   auto functionCode = buf[1] & 0x7F;
+   if(functionCode != expectedFunctionCode) {
+      return std::unexpected(ResponseStatus::FunctionCodeMismatch);
+   }
+   if(buf[1] & 0x80) {
+      // We received an exception
+      if(auto exception = r.read()) {
+         _exceptionCode = exception.value();
       }
-      r.setTimeout(symbolTimeout_);
-      return r.read().transform_error([](auto) { return ResponseStatus::ReadTimeout; });
-   })
-   .and_then([&](uint8_t code) -> std::expected<uint8_t, ResponseStatus> {
-      auto functionCode = code & 0x7F;
-      if(functionCode != expectedFunctionCode) {
-         return std::unexpected(ResponseStatus::FunctionCodeMismatch);
+      return std::unexpected(ResponseStatus::FunctionCodeException);
+   }
+   // Determine the size of the response
+   switch(functionCode) {
+   case FunctionCode::ReadCoils:
+   case FunctionCode::ReadDiscreteInputs:
+   case FunctionCode::ReadInputRegisters:
+   case FunctionCode::ReadHoldingRegisters:
+   case FunctionCode::ReadWriteMultipleRegisters: {
+      res = r.read();
+      if(!res) {
+         return std::unexpected(ResponseStatus::ReadTimeout);
       }
-      if(code & 0x80) {
-         // We received an exception
-         if(auto exception = r.read()) {
-            _exceptionCode = exception.value();
-         }
-         return std::unexpected(ResponseStatus::FunctionCodeException);
-      }
+   }
 
-      // Determine the size of the response
-      switch(functionCode) {
-      case FunctionCode::ReadCoils:
-      case FunctionCode::ReadDiscreteInputs:
-      case FunctionCode::ReadInputRegisters:
-      case FunctionCode::ReadHoldingRegisters:
-      case FunctionCode::ReadWriteMultipleRegisters:
-         return r.read().transform_error([](auto) { return ResponseStatus::ReadTimeout; });
+   case FunctionCode::WriteSingleCoil:
+   case FunctionCode::WriteMultipleCoils:
+   case FunctionCode::WriteSingleHoldingRegister:
+   case FunctionCode::WriteMultipleHoldingRegisters:
+      return 4;
 
-      case FunctionCode::WriteSingleCoil:
-      case FunctionCode::WriteMultipleCoils:
-      case FunctionCode::WriteSingleHoldingRegister:
-      case FunctionCode::WriteMultipleHoldingRegisters:
-         return 4;
+   case FunctionCode::MaskWriteRegister:
+      return 6;
 
-      case FunctionCode::MaskWriteRegister:
-         return 6;
-
-      default:
-         return 0;
-      }
-   });
+   default:
+      return 0;
+   }
 }
 
 std::expected<uint8_t, ResponseStatus>
@@ -124,12 +124,15 @@ ModbusMaster::readRegisters(uint8_t deviceAddress, FunctionCode code, uint16_t a
    convertEndianToArray<Endian::Big>(address, header, 2);
    // Register count
    convertEndianToArray<Endian::Big, uint16_t>(buffer.size() / 2, header, 4);
-
-   auto result = crcWritable.write(header).and_then([&](auto) { return crcWritable.writeCRC(); });
-
-   if(!result) {
+   auto res = crcWritable.write(header);
+   if(!res) {
       return std::unexpected(ResponseStatus::WriteError);
    }
+   res = crcWritable.writeCRC();
+   if(!res) {
+      return std::unexpected(ResponseStatus::WriteError);
+   }
+
    writable_.flush();
    enableRx();
 
@@ -154,18 +157,16 @@ ModbusMaster::writeMultipleRegisters(uint8_t deviceAddress, uint16_t startAddres
    // Number of bytes remaining in message
    header[6] = static_cast<uint8_t>(values.size());
    // Write header
-   auto result = crcWritable.write(header)
-                 .and_then([&](auto) {
-                    // write data
-                    return crcWritable.write(values);
-                 })
-                 .and_then([&](auto) {
-                    // write CRC
-                    return crcWritable.writeCRC();
-                 });
-
-   if(!result) {
-      writable_.flush();
+   auto res = crcWritable.write(header);
+   if(!res) {
+      return std::unexpected(ResponseStatus::WriteError);
+   }
+   res = crcWritable.write(values);
+   if(!res) {
+      return std::unexpected(ResponseStatus::WriteError);
+   }
+   res = crcWritable.writeCRC();
+   if(!res) {
       return std::unexpected(ResponseStatus::WriteError);
    }
    enableRx();
@@ -189,14 +190,19 @@ ModbusMaster::writeSingleRegister(uint8_t deviceAddress, uint16_t registerAddres
    // Register address
    convertEndianToArray<Endian::Big>(registerAddress, header, 2);
    CRCWritable crcWritable(writable_);
-   auto result =
-   crcWritable.write(header).and_then([&](auto) { return crcWritable.writeNumber<uint16_t, Endian::Big>(value); }).and_then([&](auto) {
-      return crcWritable.writeCRC();
-   });
-   if(!result) {
-      writable_.flush();
+   auto res = crcWritable.write(header);
+   if(!res) {
       return std::unexpected(ResponseStatus::WriteError);
    }
+   res = crcWritable.writeNumber<uint16_t, Endian::Big>(value);
+   if(!res) {
+      return std::unexpected(ResponseStatus::WriteError);
+   }
+   res = crcWritable.writeCRC();
+   if(!res) {
+      return std::unexpected(ResponseStatus::WriteError);
+   }
+
    enableRx();
    uint8_t response[4];
    // don't expect a response on a broadcast

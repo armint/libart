@@ -32,15 +32,20 @@ std::expected<size_t, Writable::Error> ModbusSlave::CRCWritable::writeCRC() {
    return sink_.write(crc);
 }
 
-
 std::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t function, uint8_t exceptionCode) {
    CRCWritable w(writable_);
-   uint8_t header[3] = {address_, static_cast<uint8_t>(function | 0x80), exceptionCode};
-   auto res = w.write(header)
-              .and_then([&](auto) { return w.writeCRC(); })
-              .transform([](auto) { return 3; });
+   uint8_t header[3] = { address_, static_cast<uint8_t>(function | 0x80), exceptionCode };
+   auto res = w.write(header);
+   if(!res) {
+      return res;
+   }
+   auto count = res.value();
+   res = w.writeCRC();
+   if(!res) {
+      return res;
+   }
    writable_.flush();
-   return res;
+   return count + 2;
 }
 
 bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable &r, const uint8_t function, const bool isBroadcast) {
@@ -77,14 +82,16 @@ bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable &r, const uint8_t funct
    if(!isBroadcast) {
       CRCWritable w(writable_);
       uint8_t header[3] = { address_, function, static_cast<uint8_t>(count * 2) };
-      auto res = w.write(header)
-                 .and_then([&](auto) {
-                    if(!cb(cb_arg, start, count, w)) {
-                       return writeException(function, ResultCode::ILLEGAL_ADDRESS);
-                    }
-                    return std::expected<size_t, Writable::Error>(0);
-                 })
-                 .and_then([&](auto) { return w.writeCRC(); });
+      auto res = w.write(header);
+      if (!res) {
+         // TODO logging!
+         return true;
+      }
+      if(!cb(cb_arg, start, count, w)) {
+         writeException(function, ResultCode::ILLEGAL_ADDRESS);
+         return true;
+      }
+      w.writeCRC();
       writable_.flush();
 
       if(!res) {

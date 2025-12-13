@@ -9,9 +9,9 @@
 #include <optional>
 #include <span>
 
+#include <art_types.h>
 #include <utils/endian.h>
 #include <utils/numberutils.h>
-#include <art_types.h>
 
 /**
  * Interface for a readable source of data, providing various methods to read and process characters or data
@@ -48,15 +48,13 @@ class Readable {
    std::expected<T, Error> readNumber() {
       uint8_t buffer[sizeof(T)];
       auto r = read(buffer);
-      return r.and_then([&](size_t bytesRead) -> std::expected<T, Error> {
-         if(bytesRead != sizeof(T)) {
-            return std::unexpected(Timeout);
-         }
-         T tmp{};
-         std::memcpy(&tmp, buffer, sizeof(T));
-         T val = convertEndian<E, T>(tmp);
-         return val;
-      });
+      if(!r) {
+         return r;
+      }
+      T tmp{};
+      std::memcpy(&tmp, buffer, sizeof(T));
+      T val = convertEndian<E, T>(tmp);
+      return val;
    }
 
    /**
