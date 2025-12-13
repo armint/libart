@@ -9,9 +9,8 @@
 #include <optional>
 #include <span>
 
-#include <art_types.h>
 #include <utils/endian.h>
-#include <utils/numberutils.h>
+#include <art_types.h>
 
 /**
  * Interface for a readable source of data, providing various methods to read and process characters or data
