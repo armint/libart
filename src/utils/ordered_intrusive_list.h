@@ -1,6 +1,6 @@
 #ifndef ORDERED_INTRUSIVE_LIST_H_
 #define ORDERED_INTRUSIVE_LIST_H_
-#include <micro-os-plus/utils/lists.h>
+#include <utils/lists.h>
 
 /**
  * @brief An intrusive list that maintains its elements in a sorted order.
