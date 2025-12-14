@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ModbusCodes.h"
+#include "streams/BufferedReadable.h"
 #include "streams/DigestWritable.h"
 #include "streams/Writable.h"
 #include "utils/IBMCRC16FastDigest.h"
@@ -39,9 +40,11 @@ constexpr const char *responseStatusToString(ResponseStatus r) {
 
 class ModbusMaster {
    public:
-   using enabler_t = void(*)(bool);
+   using enabler_t = void (*)(bool);
 
    protected:
+   enum class ReadState : uint8_t { Listening, WaitForIdle, Idle };
+   volatile ReadState read_state_ = ReadState::Listening;
    class CRCReadable : public DigestReadable {
       public:
       using Readable::read;
@@ -64,10 +67,12 @@ class ModbusMaster {
       std::expected<size_t, Error> writeCRC();
    };
    Readable &readable_;
+   BufferedReadable* buffered_readable_ = nullptr;
    Writable &writable_;
-   duration_t _responseTimeout = 3000;
-   duration_t symbolTimeout_ = 20;
-   uint8_t _exceptionCode = 0;
+   duration_t response_timeout_ = 3000;
+   duration_t symbol_timeout_ = 20;
+   duration_t packet_timeout_ = 300;
+   uint8_t exception_code_ = 0;
 
    std::expected<uint8_t, ResponseStatus> parseHeader(uint8_t deviceAddress, Readable &r, uint8_t expectedFunctionCode);
    std::expected<uint8_t, ResponseStatus> parseResponse(uint8_t deviceAddress, std::span<uint8_t> buffer, uint8_t functionCode);
@@ -87,15 +92,18 @@ class ModbusMaster {
       }
    }
 
+   void waitForIdle();
+
    public:
+   ModbusMaster(BufferedReadable &readable, Writable &writable);
    ModbusMaster(Readable &readable, Writable &writable);
 
    duration_t getResponseTimeout() const {
-      return _responseTimeout;
+      return response_timeout_;
    }
 
    void setResponseTimeout(uint32_t timeout) {
-      _responseTimeout = timeout;
+      response_timeout_ = timeout;
    }
 
    std::expected<uint8_t, ResponseStatus> readInputRegisters(uint8_t deviceAddress, uint16_t startAddress, std::span<uint8_t> buffer) {
@@ -110,7 +118,7 @@ class ModbusMaster {
    std::expected<uint8_t, ResponseStatus> writeSingleRegister(uint8_t deviceAddress, uint16_t registerAddress, uint16_t value);
 
    [[nodiscard]] uint8_t getExceptionCode() const {
-      return _exceptionCode;
+      return exception_code_;
    }
 
    void set_tx_enabler(const enabler_t &tx_enabler) {
@@ -118,6 +126,10 @@ class ModbusMaster {
    }
    void set_rx_enabler(const enabler_t &rx_enabler) {
       rxEnabler = rx_enabler;
+   }
+
+   void idleDetected() {
+      read_state_ = ReadState::Idle;
    }
 };
 

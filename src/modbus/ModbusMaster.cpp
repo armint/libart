@@ -11,6 +11,12 @@ ModbusMaster::ModbusMaster(Readable &readable, Writable &writable)
    , writable_(writable) {
    enableRx();
 }
+ModbusMaster::ModbusMaster(BufferedReadable &readable, Writable &writable)
+   : readable_(readable)
+   , writable_(writable)
+   , buffered_readable_(&readable) {
+   enableRx();
+}
 
 bool ModbusMaster::CRCReadable::readCRCAndValidate() {
    uint8_t expected[2];
@@ -29,24 +35,27 @@ std::expected<size_t, Writable::Error> ModbusMaster::CRCWritable::writeCRC() {
 }
 
 std::expected<uint8_t, ResponseStatus> ModbusMaster::parseHeader(uint8_t deviceAddress, Readable &r, uint8_t expectedFunctionCode) {
-   r.setTimeout(_responseTimeout);
+   r.setTimeout(response_timeout_);
 
    uint8_t buf[2];
    auto res = r.read(buf);
    if(!res) {
       return std::unexpected(ResponseStatus::ReadTimeout);
    }
+   r.setTimeout(packet_timeout_);
    if(buf[0] != deviceAddress) {
+      read_state_ = ReadState::WaitForIdle;
       return std::unexpected(ResponseStatus::AddressMismatch);
    }
    auto functionCode = buf[1] & 0x7F;
    if(functionCode != expectedFunctionCode) {
+      read_state_ = ReadState::WaitForIdle;
       return std::unexpected(ResponseStatus::FunctionCodeMismatch);
    }
    if(buf[1] & 0x80) {
       // We received an exception
       if(auto exception = r.read()) {
-         _exceptionCode = exception.value();
+         exception_code_ = exception.value();
       }
       return std::unexpected(ResponseStatus::FunctionCodeException);
    }
@@ -90,6 +99,7 @@ ModbusMaster::parseResponse(uint8_t deviceAddress, std::span<uint8_t> buffer, ui
    // Then read the rest of the response
    const size_t byteCount = res.value();
    if(byteCount > buffer.size()) {
+      read_state_ = ReadState::WaitForIdle;
       return std::unexpected(ResponseStatus::BufferOverflow);
    }
    const size_t read = std::min(byteCount, buffer.size());
@@ -104,6 +114,7 @@ ModbusMaster::parseResponse(uint8_t deviceAddress, std::span<uint8_t> buffer, ui
 
    // Check the packet CRC
    if(!crcReadable.readCRCAndValidate()) {
+      read_state_ = ReadState::WaitForIdle;
       return std::unexpected(ResponseStatus::CRCMismatch);
    }
    // Everything went Ok
@@ -112,8 +123,9 @@ ModbusMaster::parseResponse(uint8_t deviceAddress, std::span<uint8_t> buffer, ui
 
 std::expected<uint8_t, ResponseStatus>
 ModbusMaster::readRegisters(uint8_t deviceAddress, FunctionCode code, uint16_t address, std::span<uint8_t> buffer) {
-   enableTx();
+   waitForIdle();
    writable_.flush();
+   enableTx();
    CRCWritable crcWritable(writable_);
    uint8_t header[6];
    // Device address
@@ -142,8 +154,9 @@ ModbusMaster::readRegisters(uint8_t deviceAddress, FunctionCode code, uint16_t a
 
 std::expected<uint8_t, ResponseStatus>
 ModbusMaster::writeMultipleRegisters(uint8_t deviceAddress, uint16_t startAddress, std::span<const uint8_t> values) {
-   enableTx();
+   waitForIdle();
    writable_.flush();
+   enableTx();
    CRCWritable crcWritable(writable_);
    uint8_t header[7];
    // Device address
@@ -180,8 +193,9 @@ ModbusMaster::writeMultipleRegisters(uint8_t deviceAddress, uint16_t startAddres
 
 std::expected<uint8_t, ResponseStatus>
 ModbusMaster::writeSingleRegister(uint8_t deviceAddress, uint16_t registerAddress, uint16_t value) {
-   enableTx();
+   waitForIdle();
    writable_.flush();
+   enableTx();
    uint8_t header[4];
    // Device address
    header[0] = deviceAddress;
@@ -211,5 +225,17 @@ ModbusMaster::writeSingleRegister(uint8_t deviceAddress, uint16_t registerAddres
    }
    return parseResponse(deviceAddress, response, FunctionCode::WriteSingleHoldingRegister);
 }
+
+void ModbusMaster::waitForIdle() {
+   utils::Timeout packet_timeout(packet_timeout_);
+   while(read_state_ == ReadState::WaitForIdle && !packet_timeout.hasExpired()) {
+      // Wait
+   }
+   if(buffered_readable_ != nullptr) {
+      buffered_readable_->clear();
+   }
+   read_state_ = ReadState::Listening;
+}
+
 
 } // namespace modbus
