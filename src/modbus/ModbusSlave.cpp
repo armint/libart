@@ -11,10 +11,23 @@ ModbusSlave::ModbusSlave(Readable &readable, Writable &writable, std::span<uint8
    : readable_(readable)
    , writable_(writable)
    , buffer_(buffer)
-   , rxEnabler_(std::move(rxEnabler))
-   , txEnabler_(std::move(txEnabler)) {
+   , packet_timeout_(300)
+   , rxEnabler_(rxEnabler)
+   , txEnabler_(txEnabler) {
    readable_.setTimeout(20);
 }
+
+ModbusSlave::ModbusSlave(BufferedReadable &readable, Writable &writable, std::span<uint8_t> buffer, enabler_t rxEnabler, enabler_t txEnabler)
+   : readable_(readable)
+   , buffered_readable_(&readable)
+   , writable_(writable)
+   , buffer_(buffer)
+   , packet_timeout_(300)
+   , rxEnabler_(rxEnabler)
+   , txEnabler_(txEnabler) {
+   readable_.setTimeout(20);
+}
+
 
 bool ModbusSlave::CRCReadable::readCRCAndValidate() {
    uint8_t expected[2];
@@ -48,7 +61,7 @@ std::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t funct
    return count + 2;
 }
 
-bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable &r, const uint8_t function, const bool isBroadcast) {
+bool ModbusSlave::handleReadRegisters(ModbusSlave::CRCReadable &r, const uint8_t function, const bool isBroadcast) {
    auto startRes = r.readNumber<uint16_t, Endian::Big>();
    if(!startRes) {
       return false;
@@ -83,7 +96,7 @@ bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable &r, const uint8_t funct
       CRCWritable w(writable_);
       uint8_t header[3] = { address_, function, static_cast<uint8_t>(count * 2) };
       auto res = w.write(header);
-      if (!res) {
+      if(!res) {
          // TODO logging!
          return true;
       }
@@ -100,7 +113,7 @@ bool ModbusSlave::readRegisters(ModbusSlave::CRCReadable &r, const uint8_t funct
    }
    return true;
 }
-bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable &r, const uint8_t function, const bool isBroadcast) {
+bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, const uint8_t function, const bool isBroadcast) {
    auto startRes = r.readNumber<uint16_t, Endian::Big>();
    if(!startRes) {
       return false;
@@ -136,7 +149,7 @@ bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable &r, const uint
 
    if(!writeHolding_) {
       if(!isBroadcast)
-         (void)writeException(function, ResultCode::ILLEGAL_FUNCTION);
+         writeException(function, ResultCode::ILLEGAL_FUNCTION);
       return true;
    }
    // Send the data to the user application
@@ -144,7 +157,7 @@ bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable &r, const uint
    const bool ok = writeHolding_(write_holding_arg_, start, readable);
    if(!ok) {
       if(!isBroadcast) {
-         (void)writeException(function, ResultCode::ILLEGAL_ADDRESS);
+         writeException(function, ResultCode::ILLEGAL_ADDRESS);
       }
       return true;
    }
@@ -156,16 +169,37 @@ bool ModbusSlave::writeMultipleRegisters(ModbusSlave::CRCReadable &r, const uint
       response[1] = FunctionCode::WriteMultipleHoldingRegisters;
       convertEndianToArray<Endian::Big, uint16_t>(start, response, 2);
       convertEndianToArray<Endian::Big, uint16_t>(count, response, 4);
-      auto res = w.write(response).and_then([&](auto) { return w.writeCRC(); });
-      writable_.flush();
+      auto res = w.write(response);
+      if(!res) {
+         // TODO LOGGING!
+      } else {
+         res = w.writeCRC();
+      }
       if(!res) {
          // TODO LOGGING!
       }
+      writable_.flush();
    }
    return true;
 }
 
+bool ModbusSlave::isWaitingForIdle() {
+   if(read_state_ == ReadState::WaitForIdle && !packet_timeout_.hasExpired()) {
+      return true;
+   }
+   if(read_state_ == ReadState::WaitForIdle) {
+      if(buffered_readable_ != nullptr) {
+         buffered_readable_->clear();
+      }
+      read_state_ = ReadState::Listening;
+   }
+   return false;
+}
+
 bool ModbusSlave::poll() {
+   if(isWaitingForIdle()) {
+      return false;
+   }
    if(!readable_.available()) {
       return false;
    }
@@ -178,7 +212,9 @@ bool ModbusSlave::poll() {
    // Read function code
    auto f = r.read();
    if(!f) {
-      return false; // framing error
+      // framing error
+      read_state_ = ReadState::WaitForIdle;
+      return false;
    }
    const uint8_t function = static_cast<uint8_t>(f.value());
 
@@ -186,27 +222,29 @@ bool ModbusSlave::poll() {
    const bool isBroadcast = (rxAddress == 0);
    if(rxAddress != address_ && !isBroadcast) {
       // Still consume frame payload+CRC to keep stream in sync, but ignore it
-      // For simplicity, we will drop it by not reading further (next poll will resync on address).
+      read_state_ = ReadState::WaitForIdle;
       if(rxEnabler_) {
          enableRx(false);
-         return false;
       }
+      return false;
    }
 
    // Parse and act
    switch(function) {
    case FunctionCode::ReadHoldingRegisters:
    case FunctionCode::ReadInputRegisters: {
-      return readRegisters(r, function, isBroadcast);
+      return handleReadRegisters(r, function, isBroadcast);
    }
    case FunctionCode::WriteMultipleHoldingRegisters: {
-      return writeMultipleRegisters(r, function, isBroadcast);
+      return handleWriteMultipleRegisters(r, function, isBroadcast);
    }
    default:
       // Unsupported function
+      read_state_ = ReadState::WaitForIdle;
+
       (void)r.readCRCAndValidate();
       if(!isBroadcast) {
-         (void)writeException(function, ResultCode::ILLEGAL_FUNCTION);
+         writeException(function, ResultCode::ILLEGAL_FUNCTION);
       }
       return true;
    }
