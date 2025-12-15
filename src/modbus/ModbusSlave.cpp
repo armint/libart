@@ -12,8 +12,8 @@ ModbusSlave::ModbusSlave(Readable &readable, Writable &writable, std::span<uint8
    , writable_(writable)
    , buffer_(buffer)
    , packet_timeout_(300)
-   , rxEnabler_(rxEnabler)
-   , txEnabler_(txEnabler) {
+   , txEnabler_(txEnabler)
+   , rxEnabler_(rxEnabler) {
    readable_.setTimeout(20);
 }
 
@@ -23,8 +23,8 @@ ModbusSlave::ModbusSlave(BufferedReadable &readable, Writable &writable, std::sp
    , writable_(writable)
    , buffer_(buffer)
    , packet_timeout_(300)
-   , rxEnabler_(rxEnabler)
-   , txEnabler_(txEnabler) {
+   , txEnabler_(txEnabler)
+   , rxEnabler_(rxEnabler) {
    readable_.setTimeout(20);
 }
 
@@ -100,7 +100,7 @@ bool ModbusSlave::handleReadRegisters(ModbusSlave::CRCReadable &r, const uint8_t
          // TODO logging!
          return true;
       }
-      if(!cb(cb_arg, start, count, w)) {
+      if(cb(cb_arg, start, count, w) == Result::AddressOutOfRange) {
          writeException(function, ResultCode::ILLEGAL_ADDRESS);
          return true;
       }
@@ -154,8 +154,8 @@ bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, cons
    }
    // Send the data to the user application
    ArrayReadable readable(buffer_.subspan(0, byteCount));
-   const bool ok = writeHolding_(write_holding_arg_, start, readable);
-   if(!ok) {
+   const Result ok = writeHolding_(write_holding_arg_, start, readable);
+   if(ok == Result::AddressOutOfRange) {
       if(!isBroadcast) {
          writeException(function, ResultCode::ILLEGAL_ADDRESS);
       }

@@ -45,10 +45,36 @@ class ModbusSlave {
 
 
    public:
-   using ReadRegistersCallback_t = bool (*)(void *arg, uint16_t address, uint16_t count, Writable &writable);
-   using WriteRegistersCallback_t = bool (*)(void *arg, uint16_t address, BoundedReadable &readable);
+   enum class Result : bool {
+      Ok,
+      AddressOutOfRange,
+   };
+
+   using ReadRegistersCallback_t = Result (*)(void *arg, uint16_t address, uint16_t count, Writable &writable);
+   using WriteRegistersCallback_t = Result (*)(void *arg, uint16_t address, BoundedReadable &readable);
    using enabler_t = void (*)(void *arg, bool);
 
+
+   // Helper thunks to adapt member functions to callback signatures
+   // Read registers (holding/input): bool (T::*)(uint16_t, uint16_t, Writable [&]) [const/non-const]
+   template <typename T, Result (T::*MemFn)(uint16_t, uint16_t, Writable &)>
+   static Result member_thunk(void *arg, uint16_t address, uint16_t count, Writable &writable) {
+      return (static_cast<T *>(arg)->*MemFn)(address, count, writable);
+   }
+   template <typename T, Result (T::*MemFn)(uint16_t, uint16_t, Writable &) const>
+   static Result member_thunk(void *arg, uint16_t address, uint16_t count, Writable &writable) {
+      return (static_cast<const T *>(arg)->*MemFn)(address, count, writable);
+   }
+
+   // Write holding registers: bool (T::*)(uint16_t, BoundedReadable [&]) [const/non-const]
+   template <typename T, Result (T::*MemFn)(uint16_t, BoundedReadable &)>
+   static Result write_member_thunk(void *arg, uint16_t address, BoundedReadable &readable) {
+      return (static_cast<T *>(arg)->*MemFn)(address, readable);
+   }
+   template <typename T, Result (T::*MemFn)(uint16_t, BoundedReadable &) const>
+   static Result write_member_thunk(void *arg, uint16_t address, BoundedReadable &readable) {
+      return (static_cast<const T *>(arg)->*MemFn)(address, readable);
+   }
 
    protected:
    ReadRegistersCallback_t readHolding_{};
@@ -99,15 +125,42 @@ class ModbusSlave {
       readHolding_ = cb;
       read_holding_arg_ = arg;
    }
+   // Convenience connectors using member thunks — Read Holding
+   template <typename T, bool (T::*MemFn)(uint16_t, uint16_t, Writable &)>
+   void connectReadHolding(T *object) {
+      setReadHoldingCallback(&member_thunk<T, MemFn>, object);
+   }
+   template <typename T, bool (T::*MemFn)(uint16_t, uint16_t, Writable &) const>
+   void connectReadHolding(const T *object) {
+      setReadHoldingCallback(&member_thunk<T, MemFn>, const_cast<T *>(object));
+   }
 
    void setReadInputCallback(ReadRegistersCallback_t cb, void *arg) {
       readInput_ = cb;
       read_input_arg_ = arg;
    }
+   // Convenience connectors using member thunks — Read Input
+   template <typename T, Result (T::*MemFn)(uint16_t, uint16_t, Writable &)>
+   void connectReadInput(T *object) {
+      setReadInputCallback(&member_thunk<T, MemFn>, object);
+   }
+   template <typename T, bool (T::*MemFn)(uint16_t, uint16_t, Writable &) const>
+   void connectReadInput(const T *object) {
+      setReadInputCallback(&member_thunk<T, MemFn>, const_cast<T *>(object));
+   }
 
    void setWriteHoldingCallback(WriteRegistersCallback_t cb, void *arg) {
       writeHolding_ = cb;
       write_holding_arg_ = arg;
+   }
+   // Convenience connectors using member thunks — Write Holding
+   template <typename T, bool (T::*MemFn)(uint16_t, BoundedReadable &)>
+   void connectWriteHolding(T *object) {
+      setWriteHoldingCallback(&write_member_thunk<T, MemFn>, object);
+   }
+   template <typename T, bool (T::*MemFn)(uint16_t, BoundedReadable &) const>
+   void connectWriteHolding(const T *object) {
+      setWriteHoldingCallback(&write_member_thunk<T, MemFn>, const_cast<T *>(object));
    }
 
    [[nodiscard]] duration_t packet_timeout() const {
