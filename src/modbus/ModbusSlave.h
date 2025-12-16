@@ -33,17 +33,6 @@ class ModbusSlave {
       std::expected<size_t, Error> writeCRC();
    };
 
-   enum class ReadState : uint8_t { Listening, WaitForIdle, Idle };
-   volatile ReadState read_state_ = ReadState::Listening;
-
-   Readable &readable_;
-   BufferedReadable *buffered_readable_ = nullptr;
-   Writable &writable_;
-   uint8_t address_ = 1; // default slave address
-   std::span<uint8_t> buffer_;
-   utils::Timeout packet_timeout_;
-
-
    public:
    enum class Result : uint8_t {
       Ok,
@@ -79,6 +68,16 @@ class ModbusSlave {
    }
 
    protected:
+   enum class ReadState : uint8_t { Listening, WaitForIdle, Idle };
+   volatile ReadState read_state_ = ReadState::Listening;
+
+   Readable &readable_;
+   BufferedReadable *buffered_readable_ = nullptr;
+   Writable &writable_;
+   uint8_t address_ = 1; // default slave address
+   std::span<uint8_t> buffer_;
+   utils::Timeout packet_timeout_;
+
    ReadRegistersCallback_t readHolding_{};
    void *read_holding_arg_ = nullptr;
    ReadRegistersCallback_t readInput_{};
@@ -176,6 +175,11 @@ class ModbusSlave {
 
    // Process a single request frame if available. Returns true if a request was processed (regardless of reply), false on timeout/no frame.
    bool poll();
+
+   void idleDetected() {
+      read_state_ = ReadState::Idle;
+   }
+
 };
 
 } // namespace modbus
