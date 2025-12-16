@@ -45,9 +45,11 @@ class ModbusSlave {
 
 
    public:
-   enum class Result : bool {
+   enum class Result : uint8_t {
       Ok,
       AddressOutOfRange,
+      IllegalValue,
+      CouldNotRead,
    };
 
    using ReadRegistersCallback_t = Result (*)(void *arg, uint16_t address, uint16_t count, Writable &writable);
@@ -126,11 +128,11 @@ class ModbusSlave {
       read_holding_arg_ = arg;
    }
    // Convenience connectors using member thunks — Read Holding
-   template <typename T, bool (T::*MemFn)(uint16_t, uint16_t, Writable &)>
+   template <typename T, Result (T::*MemFn)(uint16_t, uint16_t, Writable &)>
    void connectReadHolding(T *object) {
       setReadHoldingCallback(&member_thunk<T, MemFn>, object);
    }
-   template <typename T, bool (T::*MemFn)(uint16_t, uint16_t, Writable &) const>
+   template <typename T, Result (T::*MemFn)(uint16_t, uint16_t, Writable &) const>
    void connectReadHolding(const T *object) {
       setReadHoldingCallback(&member_thunk<T, MemFn>, const_cast<T *>(object));
    }
@@ -144,7 +146,7 @@ class ModbusSlave {
    void connectReadInput(T *object) {
       setReadInputCallback(&member_thunk<T, MemFn>, object);
    }
-   template <typename T, bool (T::*MemFn)(uint16_t, uint16_t, Writable &) const>
+   template <typename T, Result (T::*MemFn)(uint16_t, uint16_t, Writable &) const>
    void connectReadInput(const T *object) {
       setReadInputCallback(&member_thunk<T, MemFn>, const_cast<T *>(object));
    }
@@ -154,11 +156,11 @@ class ModbusSlave {
       write_holding_arg_ = arg;
    }
    // Convenience connectors using member thunks — Write Holding
-   template <typename T, bool (T::*MemFn)(uint16_t, BoundedReadable &)>
+   template <typename T, Result (T::*MemFn)(uint16_t, BoundedReadable &)>
    void connectWriteHolding(T *object) {
       setWriteHoldingCallback(&write_member_thunk<T, MemFn>, object);
    }
-   template <typename T, bool (T::*MemFn)(uint16_t, BoundedReadable &) const>
+   template <typename T, Result (T::*MemFn)(uint16_t, BoundedReadable &) const>
    void connectWriteHolding(const T *object) {
       setWriteHoldingCallback(&write_member_thunk<T, MemFn>, const_cast<T *>(object));
    }
