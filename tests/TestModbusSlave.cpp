@@ -32,14 +32,14 @@ TEST_CASE("[Modbus] Slave replies to Read Holding Registers (2 regs)", "[Modbus]
    slave.setAddress(0x01);
 
    // Provide a read-holding callback that writes two registers: 0x1122 and 0x3344
-   slave.setReadHoldingCallback(+[](void *arg, uint16_t address, uint16_t count, Writable &w) -> bool {
+   slave.setReadHoldingCallback(+[](void *arg, uint16_t address, uint16_t count, Writable &w) -> modbus::ModbusSlave::Result {
       (void)arg;
       REQUIRE(address == 0x0000);
       REQUIRE(count == 2);
       // Two registers, big-endian per register
       (void)w.writeNumber<uint16_t, Endian::Big>(0x1122);
       (void)w.writeNumber<uint16_t, Endian::Big>(0x3344);
-      return true; // address accepted
+      return ModbusSlave::Result::Ok; // address accepted
    }, nullptr);
 
    // Act: process the single frame
@@ -81,12 +81,12 @@ TEST_CASE("[Modbus] Slave replies to Read Holding Registers (float)", "[Modbus]"
    ModbusSlave slave(readable, writable, tmpBuf);
    slave.setAddress(0x01);
 
-   slave.setReadInputCallback(+[](void * arg, uint16_t address, uint16_t count, Writable &w) -> bool {
+   slave.setReadInputCallback(+[](void * arg, uint16_t address, uint16_t count, Writable &w) -> modbus::ModbusSlave::Result {
       REQUIRE(address == 0x0000);
       REQUIRE(count == 2);
       // Two registers, big-endian per register
       w.writeNumber<float>(*reinterpret_cast<float*>(arg));
-      return true; // address accepted
+      return ModbusSlave::Result::Ok; // address accepted
    }, const_cast<float*>(&number));
 
    // Act: process the single frame
@@ -144,7 +144,7 @@ TEST_CASE("[Modbus] Slave processes Write Multiple Holding Registers and replies
    slave.setAddress(0x01);
 
    bool callbackCalled = false;
-   slave.setWriteHoldingCallback(+[](void* arg, uint16_t address, BoundedReadable &r) -> bool {
+   slave.setWriteHoldingCallback(+[](void* arg, uint16_t address, BoundedReadable &r) -> modbus::ModbusSlave::Result {
       *static_cast<bool*>(arg) = true;
       REQUIRE(address == 0x0002);
       // Expect exactly 4 bytes for 2 registers
@@ -154,7 +154,7 @@ TEST_CASE("[Modbus] Slave processes Write Multiple Holding Registers and replies
       REQUIRE(res.value() == 4);
       const uint8_t expectedData[] = {0x11, 0x22, 0x33, 0x44};
       REQUIRE(std::equal(std::begin(expectedData), std::end(expectedData), buf));
-      return true; // accept write
+      return ModbusSlave::Result::Ok; // accept write
    }, &callbackCalled);
 
    // Act
@@ -206,7 +206,7 @@ TEST_CASE("[Modbus] Slave processes broadcast Write Multiple without replying", 
    slave.setAddress(0x01); // our slave address (ignored due to broadcast)
 
    bool callbackCalled = false;
-   slave.setWriteHoldingCallback(+[](void* arg, uint16_t address, BoundedReadable &r) -> bool {
+   slave.setWriteHoldingCallback(+[](void* arg, uint16_t address, BoundedReadable &r) -> modbus::ModbusSlave::Result {
       *static_cast<bool*>(arg) = true;
       REQUIRE(address == 0x0002);
       uint8_t data[4]{};
@@ -215,7 +215,7 @@ TEST_CASE("[Modbus] Slave processes broadcast Write Multiple without replying", 
       REQUIRE(res.value() == 4);
       const uint8_t expected[] = {0xAA, 0xBB, 0xCC, 0xDD};
       REQUIRE(std::equal(std::begin(expected), std::end(expected), data));
-      return true;
+      return ModbusSlave::Result::Ok;
    }, &callbackCalled);
 
    const bool processed = slave.poll();
@@ -250,7 +250,7 @@ TEST_CASE("[Modbus] Slave returns exception on write callback rejection", "[Modb
    ModbusSlave slave(readable, writable, tmpBuf);
    slave.setAddress(0x01);
 
-   slave.setWriteHoldingCallback(+[](void* arg, uint16_t, BoundedReadable &) -> bool { return false; }, nullptr);
+   slave.setWriteHoldingCallback(+[](void* arg, uint16_t, BoundedReadable &) -> modbus::ModbusSlave::Result { return ModbusSlave::Result::IllegalValue; }, nullptr);
 
    REQUIRE(slave.poll());
 
