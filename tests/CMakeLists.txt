@@ -59,6 +59,7 @@ file(GLOB TEST_SOURCES
         TestModbusSlave.cpp
         TestIBMCRC16.cpp
         TestWritable.cpp
+        TestBufferedWritable.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
@@ -79,6 +80,7 @@ file(GLOB TO_TEST_SOURCES
 
 file(GLOB ADDITIONAL_SOURCES
         stubs/systick.cpp
+        stubs/delay.cpp
         ../src/utils/tfp_printf.cpp
         ../src/utils/JSONReader.cpp
         ../src/utils/JSONWriter.cpp
