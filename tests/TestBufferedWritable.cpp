@@ -72,7 +72,7 @@ TEST_CASE("[BufferedWritable] large write across buffer boundaries", "[BufferedW
 TEST_CASE("[BufferedWritable] partial write remains in buffer", "[BufferedWritable]") {
    MockSink sink;
    uint8_t buffer[10];
-   BufferedWritable<MockSink> bw(sink, buffer);
+   BufferedWritable bw(sink, buffer);
 
    bw.write(std::span(reinterpret_cast<const uint8_t *>("12345"), 5));
    REQUIRE(sink.recordedData.empty());

@@ -70,6 +70,7 @@ file(GLOB TO_TEST_SOURCES
         ../src/streams/CharacterSkippingReadable.cpp
         ../src/streams/StringReadable.cpp
         ../src/streams/Writable.cpp
+        ../src/streams/BufferedWritable.cpp
         ../src/streams/DigestReadable.cpp
         ../src/streams/DigestWritable.cpp
         ../src/modbus/ModbusMaster.cpp
