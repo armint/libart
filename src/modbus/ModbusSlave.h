@@ -47,7 +47,6 @@ class ModbusSlave {
 
 
    // Helper thunks to adapt member functions to callback signatures
-   // Read registers (holding/input): bool (T::*)(uint16_t, uint16_t, Writable [&]) [const/non-const]
    template <typename T, Result (T::*MemFn)(uint16_t, uint16_t, Writable &)>
    static Result member_thunk(void *arg, uint16_t address, uint16_t count, Writable &writable) {
       return (static_cast<T *>(arg)->*MemFn)(address, count, writable);
@@ -57,7 +56,6 @@ class ModbusSlave {
       return (static_cast<const T *>(arg)->*MemFn)(address, count, writable);
    }
 
-   // Write holding registers: bool (T::*)(uint16_t, BoundedReadable [&]) [const/non-const]
    template <typename T, Result (T::*MemFn)(uint16_t, BoundedReadable &)>
    static Result write_member_thunk(void *arg, uint16_t address, BoundedReadable &readable) {
       return (static_cast<T *>(arg)->*MemFn)(address, readable);

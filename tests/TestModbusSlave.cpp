@@ -258,7 +258,7 @@ TEST_CASE("[Modbus] Slave returns exception on write callback rejection", "[Modb
    REQUIRE(writable.position() == 5);
    REQUIRE(txBuffer[0] == 0x01);
    REQUIRE(txBuffer[1] == (FunctionCode::WriteMultipleHoldingRegisters | 0x80));
-   REQUIRE(txBuffer[2] == ResultCode::ILLEGAL_ADDRESS);
+   REQUIRE(txBuffer[2] == ResultCode::ILLEGAL_VALUE);
    uint8_t crc[2]{};
    compute_crc({txBuffer, 3}, crc);
    REQUIRE(txBuffer[3] == crc[0]);

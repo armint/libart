@@ -155,9 +155,21 @@ bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, cons
    // Send the data to the user application
    ArrayReadable readable(buffer_.subspan(0, byteCount));
    const Result ok = writeHolding_(write_holding_arg_, start, readable);
-   if(ok == Result::AddressOutOfRange) {
+   if(ok != Result::Ok) {
       if(!isBroadcast) {
-         writeException(function, ResultCode::ILLEGAL_ADDRESS);
+         ResultCode code;
+         switch(ok) {
+         case Result::AddressOutOfRange:
+            code = ILLEGAL_ADDRESS;
+            break;
+         case Result::IllegalValue:
+            code = ILLEGAL_VALUE;
+            break;
+         case Result::CouldNotRead:
+         default:
+            code = FAILURE;
+         }
+         writeException(function, code);
       }
       return true;
    }
@@ -197,12 +209,14 @@ bool ModbusSlave::isWaitingForIdle() {
 }
 
 bool ModbusSlave::poll() {
+   enableRx(true);
    if(isWaitingForIdle()) {
       return false;
    }
    if(!readable_.available()) {
       return false;
    }
+   // delaymS(2000);
    CRCReadable r(readable_);
    auto address = r.read();
    if(!address) {
