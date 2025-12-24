@@ -100,7 +100,7 @@ target_include_directories(libArT-tests PRIVATE
 )
 
 # strlcpy support
-target_compile_options(libArT-tests PUBLIC -include "bsd/string.h")
+#target_compile_options(libArT-tests PUBLIC -include "bsd/string.h")
 target_link_libraries(libArT-tests PUBLIC bsd)
 target_link_libraries(libArT-tests PUBLIC micro-os-plus::utils-lists)
 target_link_libraries(libArT-tests PUBLIC micro-os-plus::diag-trace)
