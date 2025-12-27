@@ -10,6 +10,7 @@
 
 #define UART(x) GLUE(UART, x)
 #define USART(x) GLUE(USART, x)
+#define USART_BASE(x) GLUE2(USART, GLUE(x, _BASE))
 #define LPUART(x) GLUE(LPUART, x)
 
 #define USART_IRQn(x) GLUE2(USART, GLUE(x, _IRQn))
