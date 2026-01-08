@@ -35,6 +35,7 @@ std::expected<size_t, Writable::Error> ModbusMaster::CRCWritable::writeCRC() {
 }
 
 std::expected<uint8_t, ResponseStatus> ModbusMaster::parseHeader(uint8_t deviceAddress, Readable &r, uint8_t expectedFunctionCode) {
+   exception_code_ = 0;
    r.setTimeout(response_timeout_);
 
    uint8_t buf[2];
