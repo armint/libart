@@ -156,3 +156,108 @@ TEST_CASE("[Modbus] Master parses given Read Input Registers response", "[Modbus
    std::memcpy(&floatValue, floatBytes, sizeof(float));
    REQUIRE(floatValue == Catch::Approx(230.2f));
 }
+
+TEST_CASE("[Modbus] Master parses Read Input Registers response with 1 register", "[Modbus]") {
+   // Address 1, Function 4, Byte count 2, Data 0x1234, CRC
+   const uint8_t rxData[] = {0x01, 0x04, 0x02, 0x12, 0x34, 0xB4, 0x47};
+   ArrayReadable readable(rxData);
+   uint8_t txBuffer[32]{};
+   ArrayWritable writable(txBuffer);
+   ModbusMaster master(readable, writable);
+
+   uint8_t out[2]{};
+   auto res = master.readInputRegisters(0x01, 0x0000, out);
+
+   REQUIRE(res.has_value());
+   REQUIRE(res.value() == 2);
+   REQUIRE(out[0] == 0x12);
+   REQUIRE(out[1] == 0x34);
+}
+
+TEST_CASE("[Modbus] Master readCoils works", "[Modbus]") {
+   // Address 1, Function 1, Byte count 2, Data 0xCD, 0x01, CRC
+   const uint8_t rxData[] = {0x01, 0x01, 0x02, 0xCD, 0x01, 0x2C, 0xAC};
+   ArrayReadable readable(rxData);
+   uint8_t txBuffer[32]{};
+   ArrayWritable writable(txBuffer);
+   ModbusMaster master(readable, writable);
+
+   uint8_t out[2]{};
+   auto res = master.readCoils(0x01, 0x0000, 10, out);
+
+   REQUIRE(res.has_value());
+   REQUIRE(res.value() == 2);
+   REQUIRE(out[0] == 0xCD);
+   REQUIRE(out[1] == 0x01);
+
+   // Verify TX
+   const size_t written = writable.position();
+   REQUIRE(written == 8);
+   const uint8_t expectedTx[] = {0x01, 0x01, 0x00, 0x00, 0x00, 0x0A, 0xBC, 0x0D};
+   REQUIRE(std::equal(std::begin(expectedTx), std::end(expectedTx), txBuffer));
+}
+
+TEST_CASE("[Modbus] Master writeSingleCoil works", "[Modbus]") {
+   // Address 1, Function 5, Coil Addr 0x00AC, Value 0xFF00, CRC
+   const uint8_t rxData[] = {0x01, 0x05, 0x00, 0xAC, 0xFF, 0x00, 0x4C, 0x1B};
+   ArrayReadable readable(rxData);
+   uint8_t txBuffer[32]{};
+   ArrayWritable writable(txBuffer);
+   ModbusMaster master(readable, writable);
+
+   auto res = master.writeSingleCoil(0x01, 0x00AC, true);
+
+   REQUIRE(res.has_value());
+   REQUIRE(res.value() == 4);
+
+   // Verify TX
+   const size_t written = writable.position();
+   REQUIRE(written == 8);
+   const uint8_t expectedTx[] = {0x01, 0x05, 0x00, 0xAC, 0xFF, 0x00, 0x4C, 0x1B};
+   REQUIRE(std::equal(std::begin(expectedTx), std::end(expectedTx), txBuffer));
+}
+
+TEST_CASE("[Modbus] Master writeMultipleCoils works", "[Modbus]") {
+   // Address 1, Function 15 (0x0F), Start 0x0013, Count 10, CRC
+   const uint8_t rxData[] = {0x01, 0x0F, 0x00, 0x13, 0x00, 0x0A, 0x24, 0x09};
+   ArrayReadable readable(rxData);
+   uint8_t txBuffer[32]{};
+   ArrayWritable writable(txBuffer);
+   ModbusMaster master(readable, writable);
+
+   const uint8_t values[] = {0xCD, 0x01};
+   auto res = master.writeMultipleCoils(0x01, 0x0013, 10, values);
+
+   REQUIRE(res.has_value());
+   REQUIRE(res.value() == 4);
+
+   // Verify TX
+   const size_t written = writable.position();
+   REQUIRE(written == 11); // 1+1+2+2+1+2+2 = 11
+   const uint8_t expectedTx[] = {0x01, 0x0F, 0x00, 0x13, 0x00, 0x0A, 0x02, 0xCD, 0x01, 0x72, 0xCB};
+   REQUIRE(std::equal(std::begin(expectedTx), std::end(expectedTx), txBuffer));
+}
+
+TEST_CASE("[Modbus] Master readDiscreteInputs works", "[Modbus]") {
+   // Address 1, Function 2, Byte count 3, Data 0xAC, 0xDB, 0x35, CRC
+   const uint8_t rxData[] = {0x01, 0x02, 0x03, 0xAC, 0xDB, 0x35, 0x22, 0x88};
+   ArrayReadable readable(rxData);
+   uint8_t txBuffer[32]{};
+   ArrayWritable writable(txBuffer);
+   ModbusMaster master(readable, writable);
+
+   uint8_t out[3]{};
+   auto res = master.readDiscreteInputs(0x01, 0x00C4, 22, out);
+
+   REQUIRE(res.has_value());
+   REQUIRE(res.value() == 3);
+   REQUIRE(out[0] == 0xAC);
+   REQUIRE(out[1] == 0xDB);
+   REQUIRE(out[2] == 0x35);
+
+   // Verify TX
+   const size_t written = writable.position();
+   REQUIRE(written == 8);
+   const uint8_t expectedTx[] = {0x01, 0x02, 0x00, 0xC4, 0x00, 0x16, 0xB8, 0x39};
+   REQUIRE(std::equal(std::begin(expectedTx), std::end(expectedTx), txBuffer));
+}
