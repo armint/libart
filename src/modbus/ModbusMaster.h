@@ -78,6 +78,8 @@ class ModbusMaster {
    std::expected<uint8_t, ResponseStatus> parseResponse(uint8_t deviceAddress, std::span<uint8_t> buffer, uint8_t functionCode);
    std::expected<uint8_t, ResponseStatus>
    readRegisters(uint8_t deviceAddress, FunctionCode code, uint16_t address, std::span<uint8_t> buffer);
+   std::expected<uint8_t, ResponseStatus>
+   readBits(uint8_t deviceAddress, FunctionCode code, uint16_t address, uint16_t count, std::span<uint8_t> buffer);
 
    enabler_t txEnabler = {};
    enabler_t rxEnabler = {};
@@ -114,8 +116,19 @@ class ModbusMaster {
       return readRegisters(deviceAddress, FunctionCode::ReadHoldingRegisters, startAddress, buffer);
    }
    std::expected<uint8_t, ResponseStatus>
+   readCoils(uint8_t deviceAddress, uint16_t startAddress, uint16_t count, std::span<uint8_t> buffer) {
+      return readBits(deviceAddress, FunctionCode::ReadCoils, startAddress, count, buffer);
+   }
+   std::expected<uint8_t, ResponseStatus>
+   readDiscreteInputs(uint8_t deviceAddress, uint16_t startAddress, uint16_t count, std::span<uint8_t> buffer) {
+      return readBits(deviceAddress, FunctionCode::ReadDiscreteInputs, startAddress, count, buffer);
+   }
+   std::expected<uint8_t, ResponseStatus>
    writeMultipleRegisters(uint8_t deviceAddress, uint16_t startAddress, std::span<const uint8_t> values);
    std::expected<uint8_t, ResponseStatus> writeSingleRegister(uint8_t deviceAddress, uint16_t registerAddress, uint16_t value);
+   std::expected<uint8_t, ResponseStatus> writeSingleCoil(uint8_t deviceAddress, uint16_t coilAddress, bool value);
+   std::expected<uint8_t, ResponseStatus>
+   writeMultipleCoils(uint8_t deviceAddress, uint16_t startAddress, uint16_t count, std::span<const uint8_t> values);
 
    [[nodiscard]] uint8_t getExceptionCode() const {
       return exception_code_;
