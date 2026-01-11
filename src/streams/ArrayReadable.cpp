@@ -1,8 +1,7 @@
 
 #include "ArrayReadable.h"
 ArrayReadable::ArrayReadable(std::span<const uint8_t> data)
-   : data(data) {
-}
+   : data(data) {}
 
 std::expected<char, Readable::Error> ArrayReadable::read() {
    if(index >= data.size()) {

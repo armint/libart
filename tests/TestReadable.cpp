@@ -1,10 +1,10 @@
+#include <array>
 #include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <streams/ArrayReadable.h>
-#include <streams/StringReadable.h>
 #include <streams/Readable.h>
+#include <streams/StringReadable.h>
 #include <utils/endian.h>
-#include <array>
 
 const char *testString = "A string to test Readable::readUntil";
 const char *testScanf = "Parse the number 334 or hex 0x15e2 binary 0b1110101 and -657";
@@ -18,7 +18,7 @@ TEST_CASE("[Readable] ArrayReadable bytesLeft", "[Readable]") {
 TEST_CASE("[Readable] Read beyond the end", "[Readable]") {
    StringReadable readable(testString);
    auto res = readable.read();
-   while (res) {
+   while(res) {
       res = readable.read();
    }
    REQUIRE(res.error() == Readable::EndOfStream);

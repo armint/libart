@@ -44,7 +44,7 @@ class Setting : public SettingBase {
     */
    Setting(const char *name, T defaultValue)
       : SettingBase(name)
-      , _value(defaultValue){};
+      , _value(defaultValue) {};
 
    /**
     * Create a setting with a name and a default value, in a section
@@ -57,7 +57,7 @@ class Setting : public SettingBase {
     */
    Setting(const char *section, const char *name, T defaultValue)
       : SettingBase(name, section)
-      , _value(defaultValue){};
+      , _value(defaultValue) {};
 
    /**
     * Load the value of this setting from json, the setting is a child of the provided JsonObject

@@ -5,7 +5,7 @@
 class StringWritable : public ArrayWritable {
    public:
    explicit StringWritable(std::span<char> buffer)
-      : ArrayWritable(std::span(reinterpret_cast<uint8_t*>(buffer.data()), buffer.size())) {}
+      : ArrayWritable(std::span(reinterpret_cast<uint8_t *>(buffer.data()), buffer.size())) {}
 
    std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
       auto res = ArrayWritable::write(data);

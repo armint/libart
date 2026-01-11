@@ -2,8 +2,7 @@
 
 BufferedWritable::BufferedWritable(Writable &sink, std::span<uint8_t> buffer)
    : _sink(sink)
-   , _buffer(buffer) {
-}
+   , _buffer(buffer) {}
 
 std::expected<size_t, Writable::Error> BufferedWritable::write(std::span<const uint8_t> data) {
    size_t writeCount = data.size();
@@ -38,4 +37,3 @@ std::expected<void, Writable::Error> BufferedWritable::flush() {
    }
    return _sink.flush();
 }
-

@@ -10,13 +10,12 @@ class BoundedReadableWrapper : public BoundedReadable {
 
    public:
    BoundedReadableWrapper(Readable &source_, size_t limit)
-      : limit_(limit), source_(source_) {
-   }
+      : limit_(limit)
+      , source_(source_) {}
 
    using Readable::read;
    std::expected<char, Error> read() override;
    bool available() override;
    size_t bytesLeft() override;
    size_t position() override;
-
 };

@@ -1,10 +1,10 @@
 #include <catch2/catch_all.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <iostream>
-#include <streams/ArrayWritable.h>
-#include <streams/StringReadable.h>
 #include <settings/Setting.h>
 #include <settings/SettingsManager.h>
+#include <streams/ArrayWritable.h>
+#include <streams/StringReadable.h>
 
 TEST_CASE("[Settings] storeSettings", "[Settings]") {
    Setting<int32_t> s1("Temperature", "Maximum", 150);

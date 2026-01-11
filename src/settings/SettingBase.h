@@ -1,9 +1,9 @@
 
 #pragma once
 #include <ArduinoJson.h>
-#include <utils/lists.h>
 #include <streams/Readable.h>
 #include <streams/Writable.h>
+#include <utils/lists.h>
 
 /**
  * Base class for a setting. Provides the basic functionality of linking the setting to the @SettingsManager and

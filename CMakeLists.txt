@@ -62,8 +62,8 @@ target_compile_features(art-core PUBLIC cxx_std_23)
 # in the installed package config.
 target_link_libraries(art-core
         PRIVATE
-            etl::etl
-            ArduinoJson
+        etl::etl
+        ArduinoJson
 )
 
 # If a central build configuration target exists in the superproject,

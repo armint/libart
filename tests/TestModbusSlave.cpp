@@ -32,7 +32,8 @@ TEST_CASE("[Modbus] Slave replies to Read Holding Registers (2 regs)", "[Modbus]
    slave.setAddress(0x01);
 
    // Provide a read-holding callback that writes two registers: 0x1122 and 0x3344
-   slave.setReadHoldingCallback(+[](void *arg, uint16_t address, uint16_t count, Writable &w) -> modbus::ModbusSlave::Result {
+   slave.setReadHoldingCallback(
+   +[](void *arg, uint16_t address, uint16_t count, Writable &w) -> modbus::ModbusSlave::Result {
       (void)arg;
       REQUIRE(address == 0x0000);
       REQUIRE(count == 2);
@@ -40,7 +41,8 @@ TEST_CASE("[Modbus] Slave replies to Read Holding Registers (2 regs)", "[Modbus]
       (void)w.writeNumber<uint16_t, Endian::Big>(0x1122);
       (void)w.writeNumber<uint16_t, Endian::Big>(0x3344);
       return ModbusSlave::Result::Ok; // address accepted
-   }, nullptr);
+   },
+   nullptr);
 
    // Act: process the single frame
    const bool processed = slave.poll();
@@ -81,13 +83,15 @@ TEST_CASE("[Modbus] Slave replies to Read Holding Registers (float)", "[Modbus]"
    ModbusSlave slave(readable, writable, tmpBuf);
    slave.setAddress(0x01);
 
-   slave.setReadInputCallback(+[](void * arg, uint16_t address, uint16_t count, Writable &w) -> modbus::ModbusSlave::Result {
+   slave.setReadInputCallback(
+   +[](void *arg, uint16_t address, uint16_t count, Writable &w) -> modbus::ModbusSlave::Result {
       REQUIRE(address == 0x0000);
       REQUIRE(count == 2);
       // Two registers, big-endian per register
-      w.writeNumber<float>(*reinterpret_cast<float*>(arg));
+      w.writeNumber<float>(*reinterpret_cast<float *>(arg));
       return ModbusSlave::Result::Ok; // address accepted
-   }, const_cast<float*>(&number));
+   },
+   const_cast<float *>(&number));
 
    // Act: process the single frame
    const bool processed = slave.poll();
@@ -121,13 +125,18 @@ TEST_CASE("[Modbus] Slave processes Write Multiple Holding Registers and replies
    uint8_t frame[13]{};
    frame[0] = 0x01;
    frame[1] = FunctionCode::WriteMultipleHoldingRegisters;
-   frame[2] = 0x00; frame[3] = 0x02; // start
-   frame[4] = 0x00; frame[5] = 0x02; // qty
-   frame[6] = 0x04;                  // byte count
-   frame[7] = 0x11; frame[8] = 0x22; frame[9] = 0x33; frame[10] = 0x44; // data
+   frame[2] = 0x00;
+   frame[3] = 0x02; // start
+   frame[4] = 0x00;
+   frame[5] = 0x02; // qty
+   frame[6] = 0x04; // byte count
+   frame[7] = 0x11;
+   frame[8] = 0x22;
+   frame[9] = 0x33;
+   frame[10] = 0x44; // data
    {
       uint8_t crc[2]{};
-      compute_crc({frame, 11}, crc); // compute CRC over addr..data
+      compute_crc({ frame, 11 }, crc); // compute CRC over addr..data
       frame[11] = crc[0];
       frame[12] = crc[1];
    }
@@ -144,18 +153,20 @@ TEST_CASE("[Modbus] Slave processes Write Multiple Holding Registers and replies
    slave.setAddress(0x01);
 
    bool callbackCalled = false;
-   slave.setWriteHoldingCallback(+[](void* arg, uint16_t address, BoundedReadable &r) -> modbus::ModbusSlave::Result {
-      *static_cast<bool*>(arg) = true;
+   slave.setWriteHoldingCallback(
+   +[](void *arg, uint16_t address, BoundedReadable &r) -> modbus::ModbusSlave::Result {
+      *static_cast<bool *>(arg) = true;
       REQUIRE(address == 0x0002);
       // Expect exactly 4 bytes for 2 registers
       uint8_t buf[4]{};
       auto res = r.read(buf);
       REQUIRE(res);
       REQUIRE(res.value() == 4);
-      const uint8_t expectedData[] = {0x11, 0x22, 0x33, 0x44};
+      const uint8_t expectedData[] = { 0x11, 0x22, 0x33, 0x44 };
       REQUIRE(std::equal(std::begin(expectedData), std::end(expectedData), buf));
       return ModbusSlave::Result::Ok; // accept write
-   }, &callbackCalled);
+   },
+   &callbackCalled);
 
    // Act
    const bool processed = slave.poll();
@@ -176,7 +187,7 @@ TEST_CASE("[Modbus] Slave processes Write Multiple Holding Registers and replies
 
    // Verify CRC
    uint8_t crc[2]{};
-   compute_crc({txBuffer, 6}, crc);
+   compute_crc({ txBuffer, 6 }, crc);
    REQUIRE(txBuffer[6] == crc[0]);
    REQUIRE(txBuffer[7] == crc[1]);
 }
@@ -186,18 +197,23 @@ TEST_CASE("[Modbus] Slave processes broadcast Write Multiple without replying", 
    uint8_t frame[13]{};
    frame[0] = 0x00; // broadcast
    frame[1] = FunctionCode::WriteMultipleHoldingRegisters;
-   frame[2] = 0x00; frame[3] = 0x02;
-   frame[4] = 0x00; frame[5] = 0x02;
+   frame[2] = 0x00;
+   frame[3] = 0x02;
+   frame[4] = 0x00;
+   frame[5] = 0x02;
    frame[6] = 0x04;
-   frame[7] = 0xAA; frame[8] = 0xBB; frame[9] = 0xCC; frame[10] = 0xDD;
+   frame[7] = 0xAA;
+   frame[8] = 0xBB;
+   frame[9] = 0xCC;
+   frame[10] = 0xDD;
    {
       uint8_t crc[2]{};
-      compute_crc({frame, 11}, crc);
+      compute_crc({ frame, 11 }, crc);
       frame[11] = crc[0];
       frame[12] = crc[1];
    }
 
-   ArrayReadable readable({frame, sizeof(frame)});
+   ArrayReadable readable({ frame, sizeof(frame) });
    uint8_t txBuffer[16]{};
    ArrayWritable writable(txBuffer);
 
@@ -206,17 +222,19 @@ TEST_CASE("[Modbus] Slave processes broadcast Write Multiple without replying", 
    slave.setAddress(0x01); // our slave address (ignored due to broadcast)
 
    bool callbackCalled = false;
-   slave.setWriteHoldingCallback(+[](void* arg, uint16_t address, BoundedReadable &r) -> modbus::ModbusSlave::Result {
-      *static_cast<bool*>(arg) = true;
+   slave.setWriteHoldingCallback(
+   +[](void *arg, uint16_t address, BoundedReadable &r) -> modbus::ModbusSlave::Result {
+      *static_cast<bool *>(arg) = true;
       REQUIRE(address == 0x0002);
       uint8_t data[4]{};
       auto res = r.read(data);
       REQUIRE(res);
       REQUIRE(res.value() == 4);
-      const uint8_t expected[] = {0xAA, 0xBB, 0xCC, 0xDD};
+      const uint8_t expected[] = { 0xAA, 0xBB, 0xCC, 0xDD };
       REQUIRE(std::equal(std::begin(expected), std::end(expected), data));
       return ModbusSlave::Result::Ok;
-   }, &callbackCalled);
+   },
+   &callbackCalled);
 
    const bool processed = slave.poll();
    REQUIRE(processed);
@@ -230,19 +248,22 @@ TEST_CASE("[Modbus] Slave returns exception on write callback rejection", "[Modb
    uint8_t frame[13]{};
    frame[0] = 0x01;
    frame[1] = FunctionCode::WriteMultipleHoldingRegisters;
-   frame[2] = 0x00; frame[3] = 0x10; // start
-   frame[4] = 0x00; frame[5] = 0x01; // qty=1
-   frame[6] = 0x02;                  // byte count
-   frame[7] = 0x12; frame[8] = 0x34; // data
+   frame[2] = 0x00;
+   frame[3] = 0x10; // start
+   frame[4] = 0x00;
+   frame[5] = 0x01; // qty=1
+   frame[6] = 0x02; // byte count
+   frame[7] = 0x12;
+   frame[8] = 0x34; // data
    // pad remaining byte to keep array size, though not used
    {
       uint8_t crc[2]{};
-      compute_crc({frame, 9}, crc);
+      compute_crc({ frame, 9 }, crc);
       frame[9] = crc[0];
       frame[10] = crc[1];
    }
 
-   ArrayReadable readable({frame, 11}); // only up to CRC
+   ArrayReadable readable({ frame, 11 }); // only up to CRC
    uint8_t txBuffer[16]{};
    ArrayWritable writable(txBuffer);
 
@@ -250,7 +271,11 @@ TEST_CASE("[Modbus] Slave returns exception on write callback rejection", "[Modb
    ModbusSlave slave(readable, writable, tmpBuf);
    slave.setAddress(0x01);
 
-   slave.setWriteHoldingCallback(+[](void* arg, uint16_t, BoundedReadable &) -> modbus::ModbusSlave::Result { return ModbusSlave::Result::IllegalValue; }, nullptr);
+   slave.setWriteHoldingCallback(
+   +[](void *arg, uint16_t, BoundedReadable &) -> modbus::ModbusSlave::Result {
+      return ModbusSlave::Result::IllegalValue;
+   },
+   nullptr);
 
    REQUIRE(slave.poll());
 
@@ -260,7 +285,7 @@ TEST_CASE("[Modbus] Slave returns exception on write callback rejection", "[Modb
    REQUIRE(txBuffer[1] == (FunctionCode::WriteMultipleHoldingRegisters | 0x80));
    REQUIRE(txBuffer[2] == ResultCode::ILLEGAL_VALUE);
    uint8_t crc[2]{};
-   compute_crc({txBuffer, 3}, crc);
+   compute_crc({ txBuffer, 3 }, crc);
    REQUIRE(txBuffer[3] == crc[0]);
    REQUIRE(txBuffer[4] == crc[1]);
 }
@@ -270,18 +295,22 @@ TEST_CASE("[Modbus] Slave returns exception on invalid byte count", "[Modbus]") 
    uint8_t frame[12]{};
    frame[0] = 0x01;
    frame[1] = FunctionCode::WriteMultipleHoldingRegisters;
-   frame[2] = 0x00; frame[3] = 0x02; // start
-   frame[4] = 0x00; frame[5] = 0x02; // qty=2
-   frame[6] = 0x03;                  // wrong byte count
-   frame[7] = 0xBE; frame[8] = 0xEF; frame[9] = 0x01; // only 3 data bytes
+   frame[2] = 0x00;
+   frame[3] = 0x02; // start
+   frame[4] = 0x00;
+   frame[5] = 0x02; // qty=2
+   frame[6] = 0x03; // wrong byte count
+   frame[7] = 0xBE;
+   frame[8] = 0xEF;
+   frame[9] = 0x01; // only 3 data bytes
    {
       uint8_t crc[2]{};
-      compute_crc({frame, 10}, crc);
+      compute_crc({ frame, 10 }, crc);
       frame[10] = crc[0];
       frame[11] = crc[1];
    }
 
-   ArrayReadable readable({frame, sizeof(frame)});
+   ArrayReadable readable({ frame, sizeof(frame) });
    uint8_t txBuffer[16]{};
    ArrayWritable writable(txBuffer);
 
@@ -299,7 +328,7 @@ TEST_CASE("[Modbus] Slave returns exception on invalid byte count", "[Modbus]") 
    REQUIRE(txBuffer[1] == (FunctionCode::WriteMultipleHoldingRegisters | 0x80));
    REQUIRE(txBuffer[2] == ResultCode::ILLEGAL_VALUE);
    uint8_t crc[2]{};
-   compute_crc({txBuffer, 3}, crc);
+   compute_crc({ txBuffer, 3 }, crc);
    REQUIRE(txBuffer[3] == crc[0]);
    REQUIRE(txBuffer[4] == crc[1]);
 }

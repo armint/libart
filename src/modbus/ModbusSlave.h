@@ -177,7 +177,6 @@ class ModbusSlave {
    void idleDetected() {
       read_state_ = ReadState::Idle;
    }
-
 };
 
 } // namespace modbus

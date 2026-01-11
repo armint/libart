@@ -14,8 +14,7 @@ class BoundedWritable : public CountingWritable {
 
    public:
    BoundedWritable(size_t capacity)
-      : capacity(capacity) {
-   }
+      : capacity(capacity) {}
    /**
     * Get the total amount of bytes that can be written to this writable
     *

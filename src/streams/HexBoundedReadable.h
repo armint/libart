@@ -17,8 +17,8 @@ class HexBoundedReadable : public RandomAccessReadable {
    enum { InvalidCharacter = HexReadable::InvalidCharacter };
 
    explicit HexBoundedReadable(RandomAccessReadable &source)
-      : source_(source), hex_(source) {
-   }
+      : source_(source)
+      , hex_(source) {}
 
    // Readable
    std::expected<char, Error> read() override;

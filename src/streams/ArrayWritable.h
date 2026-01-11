@@ -14,8 +14,7 @@ class ArrayWritable : public BoundedWritable {
    public:
    ArrayWritable(std::span<uint8_t> buffer)
       : BoundedWritable(buffer.size())
-      , _buffer(buffer) {
-   }
+      , _buffer(buffer) {}
    virtual std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
    virtual std::expected<void, Error> flush() override;
    virtual void reset(size_t position = 0) override;

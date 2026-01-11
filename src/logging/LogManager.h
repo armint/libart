@@ -20,5 +20,4 @@ class LogManager {
    void set_sink(Writable *sink) {
       sink_ = sink;
    }
-
 };

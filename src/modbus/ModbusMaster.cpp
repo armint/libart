@@ -258,8 +258,7 @@ ModbusMaster::writeSingleRegister(uint8_t deviceAddress, uint16_t registerAddres
    return parseResponse(deviceAddress, response, FunctionCode::WriteSingleHoldingRegister);
 }
 
-std::expected<uint8_t, ResponseStatus>
-ModbusMaster::writeSingleCoil(uint8_t deviceAddress, uint16_t coilAddress, bool value) {
+std::expected<uint8_t, ResponseStatus> ModbusMaster::writeSingleCoil(uint8_t deviceAddress, uint16_t coilAddress, bool value) {
    waitForIdle();
    writable_.flush();
    enableTx();

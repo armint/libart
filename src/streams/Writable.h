@@ -93,7 +93,7 @@ class Writable {
     * This C++ template forwards to an internal C-ellipsis overload to build a va_list.
     */
    template <typename... Args>
-   std::expected<size_t, Error> printf(const char *format, Args &&... args) {
+   std::expected<size_t, Error> printf(const char *format, Args &&...args) {
       return printf_va(format, std::forward<Args>(args)...);
    }
 
@@ -107,7 +107,7 @@ class Writable {
    }
 
    template <typename... Args>
-   std::expected<size_t, Error> println(const char *format, Args &&... args) {
+   std::expected<size_t, Error> println(const char *format, Args &&...args) {
       auto ret = printf(format, std::forward<Args>(args)...);
       if(!ret) {
          return ret;

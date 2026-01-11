@@ -11,8 +11,7 @@ class CountingWritableWrapper : public CountingWritable {
 
    public:
    CountingWritableWrapper(Writable &writable)
-      : _sink(writable) {
-   }
+      : _sink(writable) {}
    virtual std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
 
    virtual size_t written() override {

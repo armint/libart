@@ -15,8 +15,7 @@ class JSONReader {
     * @param readable the readable to wrap
     */
    JSONReader(Readable &readable)
-      : _source(readable) {
-   }
+      : _source(readable) {}
    // Reads one byte, or returns -1
    int read();
    // Reads several bytes, returns the number of bytes read.

@@ -9,11 +9,10 @@ class DigestReadable : public Readable {
    Digest &digest_;
 
    public:
-   DigestReadable(Readable& source, Digest & digest);
+   DigestReadable(Readable &source, Digest &digest);
    std::expected<char, Error> read() override;
    bool available() override;
-   [[nodiscard]] Digest& digest() const {
+   [[nodiscard]] Digest &digest() const {
       return digest_;
    }
-
 };

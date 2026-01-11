@@ -1,9 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
-#include <cstddef>
 
 enum class Endian { Little, Big };
 
@@ -99,8 +99,6 @@ inline constexpr std::enable_if_t<std::is_floating_point_v<T>, T> convertEndian(
       std::memcpy(&result, &temp, sizeof(T));
       return result;
    }
-
-   
 }
 
 /**
@@ -117,7 +115,7 @@ inline constexpr std::enable_if_t<std::is_floating_point_v<T>, T> convertEndian(
  * \param out Pointer to the destination buffer with space for sizeof(T) bytes
  */
 template <Endian E, typename T>
-inline void convertEndianToArray(T in, uint8_t* out) {
+inline void convertEndianToArray(T in, uint8_t *out) {
    static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8,
                  "The endian conversion only works for some specific sizes");
    const T tmp = convertEndian<E, T>(in);
@@ -141,7 +139,7 @@ inline void convertEndianToArray(T in, uint8_t* out) {
  */
 template <Endian E, typename T, size_t N>
 inline bool convertEndianToArray(T in, uint8_t (&out)[N], size_t offset = 0) {
-   if (N < offset || (N - offset) < sizeof(T)) {
+   if(N < offset || (N - offset) < sizeof(T)) {
       return false;
    }
    convertEndianToArray<E, T>(in, out + offset);

@@ -4,8 +4,7 @@
 
 CharacterSkippingReadable::CharacterSkippingReadable(Readable &source, const char *charactersToSkip)
    : source(source)
-   , charactersToSkip(charactersToSkip) {
-}
+   , charactersToSkip(charactersToSkip) {}
 
 std::expected<char, Readable::Error> CharacterSkippingReadable::read() {
    std::expected<char, Readable::Error> r;

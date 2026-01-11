@@ -16,4 +16,4 @@ namespace utils {
  */
 std::expected<size_t, Readable::Error>
 copyStream(Readable &from, Writable &to, size_t maxCount = std::numeric_limits<size_t>::max());
-}
+} // namespace utils
