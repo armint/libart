@@ -45,6 +45,7 @@ class Readable {
     */
    template <typename T, Endian E = SystemEndian>
    std::expected<T, Error> readNumber() {
+      static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
       uint8_t buffer[sizeof(T)];
       auto r = read(buffer);
       if(!r) {
@@ -57,7 +58,8 @@ class Readable {
    }
 
    /**
-    * Decodes a Run-Length Encoded (RLE/varint) integer from this readable
+    * Decodes a Variable Length Quantity (VLQ/LEB128) integer from this readable.
+    * This project refers to this as Run-Length Encoding (RLE) for historical reasons.
     *
     * @tparam T integer type to decode into.
     * @param dest Reference to destination variable that will receive the decoded value on success.
@@ -65,7 +67,8 @@ class Readable {
     */
    template <typename T, typename = std::enable_if_t<std::is_integral_v<T>, T>>
    std::expected<size_t, Error> readRLE(T &dest) {
-      dest = 0;
+      using UnsignedT = std::make_unsigned_t<T>;
+      UnsignedT uDest = 0;
       size_t index = 0;
       size_t bitIndex = 0;
       uint8_t byte;
@@ -75,13 +78,14 @@ class Readable {
             return ch;
          }
          byte = static_cast<uint8_t>(*ch);
-         if(bitIndex >= std::numeric_limits<T>::digits) {
+         if(bitIndex >= sizeof(T) * 8) {
             return std::unexpected(NumberTooBig);
          }
-         dest |= static_cast<T>(byte & 0x7F) << bitIndex;
+         uDest |= static_cast<UnsignedT>(byte & 0x7F) << bitIndex;
          index++;
          bitIndex += 7;
       } while(byte & 0x80);
+      dest = static_cast<T>(uDest);
       return index;
    }
 

@@ -44,13 +44,15 @@ class Writable {
     */
    template <typename T, Endian E = SystemEndian>
    inline std::expected<size_t, Error> writeNumber(T number) {
+      static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
       const T tmpVal = convertEndian<E, T>(number);
       const auto data = reinterpret_cast<const uint8_t *>(&tmpVal);
       return write(std::span<const uint8_t>(data, sizeof(T)));
    }
 
    /**
-    * Encodes a value using Run-Length Encoding (RLE) and writes the encoded data to the writable.
+    * Encodes a value using Variable Length Quantity (VLQ/LEB128) encoding and writes it to the writable.
+    * This project refers to this as Run-Length Encoding (RLE) for historical reasons.
     * The encoding scheme compresses integer values into a series of 7-bit chunks,
     * with the highest bit of each chunk signaling continuation.
     *
@@ -61,21 +63,23 @@ class Writable {
     */
    template <typename T, typename = std::enable_if_t<std::is_integral_v<T>, T>>
    std::expected<size_t, Error> writeRLE(T value) {
+      using UnsignedT = std::make_unsigned_t<T>;
+      UnsignedT uValue = static_cast<UnsignedT>(value);
       size_t i = 0;
       do {
          uint8_t c;
-         if(value > 0x7F) {
-            c = static_cast<uint8_t>((value & 0x7F) | 0x80);
+         if(uValue > 0x7F) {
+            c = static_cast<uint8_t>((uValue & 0x7F) | 0x80);
          } else {
-            c = static_cast<uint8_t>(value);
+            c = static_cast<uint8_t>(uValue);
          }
          auto res = write(c);
          if(!res) {
             return res;
          }
-         value >>= 7;
+         uValue >>= 7;
          ++i;
-      } while(value != 0);
+      } while(uValue != 0);
       return i;
    }
 
