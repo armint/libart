@@ -64,11 +64,9 @@ file(GLOB TEST_SOURCES
 
 file(GLOB TO_TEST_SOURCES
         ../src/streams/Readable.cpp
-        ../src/streams/ArrayReadable.cpp
         ../src/streams/ArrayWritable.cpp
         ../src/streams/CountingWritableWrapper.cpp
         ../src/streams/CharacterSkippingReadable.cpp
-        ../src/streams/StringReadable.cpp
         ../src/streams/Writable.cpp
         ../src/streams/BufferedWritable.cpp
         ../src/streams/DigestReadable.cpp

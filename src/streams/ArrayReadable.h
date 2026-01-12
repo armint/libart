@@ -9,12 +9,26 @@ class ArrayReadable : public RandomAccessReadable {
    std::span<const uint8_t> data;
 
    public:
-   ArrayReadable(std::span<const uint8_t> data);
-   std::expected<char, Error> read() override;
+   explicit ArrayReadable(std::span<const uint8_t> data)
+      : data(data) {}
 
-   bool available() override;
+   std::expected<char, Error> read() override {
+      if(index >= data.size()) {
+         return std::unexpected(EndOfStream);
+      }
+      return data[index++];
+   }
 
-   size_t bytesLeft() override;
-   void reset(size_t position = 0) override;
-   size_t position() override;
+   bool available() override { return index < data.size(); }
+
+   size_t bytesLeft() override { return data.size() - index; }
+
+   void reset(size_t position = 0) override {
+      if(position > data.size()) {
+         position = data.size();
+      }
+      index = position;
+   }
+
+   size_t position() override { return index; }
 };
