@@ -2,9 +2,12 @@
 #include "utils/tfp_printf.h"
 
 void Writable::writeCharacter(void *ptr, char c) {
+   auto &result = static_cast<TfpHelper *>(ptr)->result;
+   if (!result) {
+      return;
+   }
    Writable &writable = *(static_cast<TfpHelper *>(ptr)->writable);
    auto res = writable.write(c);
-   auto &result = static_cast<TfpHelper *>(ptr)->result;
    if(res && result) {
       result.value() += res.value();
    } else if(!res) {
