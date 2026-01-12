@@ -67,8 +67,8 @@ class ModbusMaster {
       std::expected<size_t, Error> writeCRC();
    };
    Readable &readable_;
-   BufferedReadable *buffered_readable_ = nullptr;
    Writable &writable_;
+   BufferedReadable *buffered_readable_ = nullptr;
    duration_t response_timeout_ = 3000;
    duration_t symbol_timeout_ = 20;
    duration_t packet_timeout_ = 300;
