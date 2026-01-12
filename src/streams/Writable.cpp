@@ -3,12 +3,12 @@
 
 void Writable::writeCharacter(void *ptr, char c) {
    Writable &writable = *(static_cast<TfpHelper *>(ptr)->writable);
-   auto &result = static_cast<TfpHelper *>(ptr)->result;
    auto res = writable.write(c);
+   auto &result = static_cast<TfpHelper *>(ptr)->result;
    if(res && result) {
       result.value() += res.value();
    } else if(!res) {
-      result = std::unexpected(res.error());
+      result = res;
    }
 }
 
