@@ -1,0 +1,108 @@
+#pragma once
+
+#pragma once
+#include <cstdint>
+
+namespace pcg {
+using std::uint32_t;
+using std::uint64_t;
+//
+// PCG32 basic reworked in a class
+//
+//	API:
+//		Constructor
+//			Based on nanosecond clock and thread id
+//			Should guarantee different rng values in most usecases
+//			--You can also manually seed by providing two uint64_t
+//			--The first being the seed, second the sequence id
+//
+//		Generating rng values
+//			next() generates a uniformly distributed uint32_t
+//			next_bounded(uint32_t) generates a bounded uint32_t
+//			next_float() generates a float in [0,1)
+class pcg32 {
+   // RNG state.  All values are possible.
+   uint64_t state;
+   // Controls which RNG sequence (stream) is
+   // selected. Must *always* be odd.
+   uint64_t inc;
+
+   public:
+   void seed(uint64_t initstate, uint64_t initseq) {
+      this->state = 0U;
+      this->inc = (initseq << 1U) | 1U;
+      next();
+      this->state += initstate;
+      next();
+   }
+
+   pcg32() {
+      seed(0, 1);
+   }
+
+   pcg32(uint64_t sd, uint64_t sequence) {
+      // Operate on sequence to guarantee it's odd
+      seed(sd, 2 * sequence + 1);
+   }
+
+
+   // Generate a uniformly distributed 32-bit random number
+   uint32_t next() {
+      uint64_t oldstate = this->state;
+      this->state = oldstate * 6364136223846793005ULL + this->inc;
+      uint32_t xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+      uint32_t rot = oldstate >> 59u;
+      return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+   }
+
+
+   //     Generate a uniformly distributed number, r, where 0 <= r < bound
+   //     From https://arxiv.org/abs/1805.10941
+   uint32_t next_bounded(uint32_t bound) {
+      // To avoid bias, we need to make the range of the RNG a multiple of
+      // bound, which we do by dropping output less than a threshold.
+      // A naive scheme to calculate the threshold would be to do
+      //
+      //     uint32_t threshold = 0x100000000ull % bound;
+      //
+      // but 64-bit div/mod is slower than 32-bit div/mod (especially on
+      // 32-bit platforms).  In essence, we do
+      //
+      //     uint32_t threshold = (0x100000000ull-bound) % bound;
+      //
+      // because this version will calculate the same modulus, but the LHS
+      // value is less than 2^32.
+
+      uint32_t threshold = -bound % bound;
+
+      // Uniformity guarantees that this loop will terminate.  In practice, it
+      // should usually terminate quickly; on average (assuming all bounds are
+      // equally likely), 82.25% of the time, we can expect it to require just
+      // one iteration.  In the worst case, someone passes a bound of 2^31 + 1
+      // (i.e., 2147483649), which invalidates almost 50% of the range.  In
+      // practice, bounds are typically small and only a tiny amount of the range
+      // is eliminated.
+      for(;;) {
+         uint32_t r = next();
+         if(r >= threshold)
+            return r % bound;
+      }
+   }
+
+#if defined(LIBART_ENABLE_FLOAT)
+
+   // Generate next number as a float in [0,1)
+   //
+   // Sebastiano Vigna's method of converting uint -> float
+   // Exploits the 24 bits of mantissa in 32 bit IEEE float
+   //
+   // This conversion guarantees that all dyadic rationals
+   // of the form k / 2^-24 will be equally likely.
+   //     Note that this conversion prefers the high bits of x,
+   //     but you can alternatively use the lowest bits.
+   float next_float() {
+      return (next() >> 8) * (1.f / ((uint32_t)1 << 24));
+   }
+#endif
+};
+} // namespace pcg

@@ -61,10 +61,12 @@ file(GLOB TEST_SOURCES
         TestWritable.cpp
         TestBufferedWritable.cpp
         TestStringWritable.cpp
+        TestPseudoRandomReadable.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
         ../src/streams/Readable.cpp
+        ../src/streams/PseudoRandomReadable.cpp
         ../src/streams/ArrayWritable.cpp
         ../src/streams/CountingWritableWrapper.cpp
         ../src/streams/CharacterSkippingReadable.cpp
