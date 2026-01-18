@@ -168,7 +168,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             break;
          }
          case 'i':
-            // Fall through
+         // Fall through
          case 'd': {
 #if defined(LIBART_ENABLE_64BIT)
             if(ll) {
@@ -186,9 +186,9 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             // Pointer
             lz = 1;
             minChars = 8;
-            // Fall through
+         // Fall through
          case 'x':
-            // Fall through
+         // Fall through
          case 'X':
 #if defined(LIBART_ENABLE_64BIT)
             if(ll) {
@@ -223,7 +223,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
 #endif
          case '%':
             putf(putp, ch);
-            // Fall through
+         // Fall through
          default:
             break;
          }

@@ -12,7 +12,7 @@
 
 ## Guidelines
 - Follow the established stream patterns when adding new data handling utilities.
-- Use `tfp_printf` for formatted output in a memory-efficient way.
+- Use `Writable` streams for formatted output in a memory-efficient way.
 - Prefer `std::span` (or equivalent) for passing buffers to avoid size/pointer mismatches.
 - Ensure that changes are compatible with the embedded nature of the project (low memory footprint).
 - Heap memory usage is not allowed.
