@@ -9,8 +9,10 @@ class StringWritable : public ArrayWritable {
 
    std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
       auto res = ArrayWritable::write(data);
-      // We need to make sure the string is always terminated
-      _buffer[data.size() - 1] = 0;
+      // We need to make sure the string is always zero-terminated
+      if (_position == _buffer.size()) {
+         _buffer[_buffer.size() - 1] = 0;
+      }
       return res;
    }
 };
