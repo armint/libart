@@ -33,7 +33,7 @@
 #include <cmath>
 typedef void (*putcf)(void *, char);
 
-static void ui2a(big_uint_t num, big_uint_t base, int uc, char *bf) {
+static void ui2a(big_uint_t num, unsigned int base, int uc, char *bf) {
    int n = 0;
    big_uint_t d = 1;
    while(num / d >= base)
@@ -141,28 +141,29 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          switch(ch) {
          case 0:
             goto abort;
-         case 'u': {
-#if defined(LIBART_ENABLE_64BIT)
-            if(ll) {
-               ui2a(va_arg(va, uint64_t), 10, 0, bf);
-            } else {
-#else
-            {
-#endif
-               ui2a(va_arg(va, uint32_t), 10, 0, bf);
+         case 'p':
+            lz = 1;
+            minChars = 8;
+            // Fall through
+         case 'u':
+         case 'b':
+         case 'x':
+         case 'X': {
+            unsigned int base = 10;
+            if(ch == 'b') {
+               base = 2;
+            } else if(ch != 'u') {
+               base = 16;
             }
-            putchw(putp, putf, minChars, lz, bf);
-            break;
-         }
-         case 'b': {
+
 #if defined(LIBART_ENABLE_64BIT)
             if(ll) {
-               ui2a(va_arg(va, uint64_t), 2, 0, bf);
+               ui2a(va_arg(va, big_uint_t), base, (ch == 'X'), bf);
             } else {
 #else
             {
 #endif
-               ui2a(va_arg(va, uint32_t), 2, 0, bf);
+               ui2a(va_arg(va, uint32_t), base, (ch == 'X'), bf);
             }
             putchw(putp, putf, minChars, lz, bf);
             break;
@@ -182,25 +183,6 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             putchw(putp, putf, minChars, lz, bf);
             break;
          }
-         case 'p':
-            // Pointer
-            lz = 1;
-            minChars = 8;
-         // Fall through
-         case 'x':
-         // Fall through
-         case 'X':
-#if defined(LIBART_ENABLE_64BIT)
-            if(ll) {
-               ui2a(va_arg(va, big_uint_t), 16, (ch == 'X'), bf);
-            } else {
-#else
-         {
-#endif
-               ui2a(va_arg(va, uint32_t), 16, (ch == 'X'), bf);
-            }
-            putchw(putp, putf, minChars, lz, bf);
-            break;
          case 'c':
             putf(putp, (char)(va_arg(va, int)));
             break;

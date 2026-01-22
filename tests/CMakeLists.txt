@@ -60,6 +60,7 @@ file(GLOB TEST_SOURCES
         TestIBMCRC16.cpp
         TestWritable.cpp
         TestBufferedWritable.cpp
+        TestTfpPrintf.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
