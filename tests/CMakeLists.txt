@@ -62,6 +62,8 @@ file(GLOB TEST_SOURCES
         TestBufferedWritable.cpp
         TestStringWritable.cpp
         TestTfpPrintf.cpp
+        TestAsymmetricKey.cpp
+        TestSHA256.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
@@ -73,6 +75,8 @@ file(GLOB TO_TEST_SOURCES
         ../src/streams/BufferedWritable.cpp
         ../src/streams/DigestReadable.cpp
         ../src/streams/DigestWritable.cpp
+        ../src/streams/AsymmetricKeyWritable.cpp
+        ../src/streams/AsymmetricKeyReadable.cpp
         ../src/modbus/ModbusMaster.cpp
         ../src/modbus/ModbusSlave.cpp
         ../src/settings/SettingBase.cpp
@@ -88,6 +92,7 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/streamutils.cpp
         ../src/utils/IBMCRC16Digest.cpp
         ../src/utils/IBMCRC16FastDigest.cpp
+        ../src/utils/SHA256Digest.cpp
 )
 
 
