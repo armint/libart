@@ -1,8 +1,9 @@
+#include "../src/streams/AsymmetricKeyReadable.h"
+#include "../src/streams/AsymmetricKeyWritable.h"
+#include "../src/utils/AsymmetricKey.h"
+#include "streams/StringReadable.h"
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
-#include "../src/utils/AsymmetricKey.h"
-#include "../src/streams/AsymmetricKeyWritable.h"
-#include "../src/streams/AsymmetricKeyReadable.h"
 
 // A mock AsymmetricKey for testing
 class MockKey : public AsymmetricKey {
@@ -32,19 +33,6 @@ public:
 
     std::expected<size_t, Error> encrypt(std::span<uint8_t> ciphertext) override { return 0; }
     std::expected<size_t, Error> decrypt(std::span<uint8_t> plaintext) override { return 0; }
-};
-
-// A simple Readable for testing
-class StringReadable : public Readable {
-    std::string s;
-    size_t pos = 0;
-public:
-    StringReadable(std::string s) : s(s) {}
-    std::expected<char, Error> read() override {
-        if (pos >= s.size()) return std::unexpected(EndOfStream);
-        return s[pos++];
-    }
-    bool available() override { return pos < s.size(); }
 };
 
 // A simple Writable for testing

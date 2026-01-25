@@ -181,9 +181,7 @@ std::expected<size_t, Digest::Error> SHA256Digest::getDigest(std::span<uint8_t> 
    if(target.size() < 32) {
       return std::unexpected(ArrayTooSmall);
    }
-   if(!isFinalized_) {
-      finalize();
-   }
+   finalize();
    // Copy intermediate hash to target buffer (big-endian).
    for(int i = 0; i < 8; ++i) {
       target[i * 4] = static_cast<uint8_t>(intermediateHash_[i] >> 24);
