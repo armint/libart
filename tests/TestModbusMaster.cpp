@@ -1,5 +1,7 @@
+#include <string>
+#include <optional>
 
-#include <catch2/catch_all.hpp>
+#include <doctest/doctest.h>
 
 #include <modbus/ModbusCodes.h>
 #include <modbus/ModbusMaster.h>
@@ -8,7 +10,7 @@
 
 using namespace modbus;
 
-TEST_CASE("[Modbus] Master builds correct Read Input Registers frame", "[Modbus]") {
+TEST_CASE("[Modbus] Master builds correct Read Input Registers frame [Modbus]") {
    // Arrange: readable with no data to force immediate timeout on response parsing
    uint8_t rxBuffer[1]{}; // empty/unused
    ArrayReadable readable({ rxBuffer, 0 });
@@ -41,7 +43,7 @@ TEST_CASE("[Modbus] Master builds correct Read Input Registers frame", "[Modbus]
    REQUIRE(std::equal(std::begin(expected), std::end(expected), txBuffer));
 }
 
-TEST_CASE("[Modbus] Master builds correct Read Holding Registers frame", "[Modbus]") {
+TEST_CASE("[Modbus] Master builds correct Read Holding Registers frame [Modbus]") {
    // Arrange
    uint8_t rxBuffer[1]{}; // empty input to force timeout after write
    ArrayReadable readable({ rxBuffer, 0 });
@@ -73,7 +75,7 @@ TEST_CASE("[Modbus] Master builds correct Read Holding Registers frame", "[Modbu
    REQUIRE(std::equal(std::begin(expected), std::end(expected), txBuffer));
 }
 
-TEST_CASE("[Modbus] Master builds correct Write Single Register frame", "[Modbus]") {
+TEST_CASE("[Modbus] Master builds correct Write Single Register frame [Modbus]") {
    // Arrange
    uint8_t rxBuffer[1]{}; // empty input to force timeout after write
    ArrayReadable readable({ rxBuffer, 0 });
@@ -102,7 +104,7 @@ TEST_CASE("[Modbus] Master builds correct Write Single Register frame", "[Modbus
    REQUIRE(std::equal(std::begin(expected), std::end(expected), txBuffer));
 }
 
-TEST_CASE("[Modbus] Master builds correct Write Multiple Registers frame and parses response", "[Modbus]") {
+TEST_CASE("[Modbus] Master builds correct Write Multiple Registers frame and parses response [Modbus]") {
    // Arrange
    // Provided response for function 0x10 (addr=0x01, start=0x0002, qty=0x0002, CRC=0x08E0 [lo,hi=E0,08])
    const uint8_t rxData[] = { 0x01, 0x10, 0x00, 0x02, 0x00, 0x02, 0xE0, 0x08 };
@@ -145,7 +147,7 @@ TEST_CASE("[Modbus] Master builds correct Write Multiple Registers frame and par
    REQUIRE(res.value() == 4); // response payload length for 0x10 is 4 (start addr + qty)
 }
 
-TEST_CASE("[Modbus] Master parses given Read Input Registers response", "[Modbus]") {
+TEST_CASE("[Modbus] Master parses given Read Input Registers response [Modbus]") {
    // Provided response bytes (address, function, byte count, data[4], CRC lo, CRC hi)
    const uint8_t rxData[] = { 0x01, 0x04, 0x04, 0x43, 0x66, 0x33, 0x34, 0x1B, 0x38 };
    ArrayReadable readable(rxData);
@@ -169,10 +171,10 @@ TEST_CASE("[Modbus] Master parses given Read Input Registers response", "[Modbus
    uint8_t floatBytes[4] = { out[3], out[2], out[1], out[0] };
    float floatValue;
    std::memcpy(&floatValue, floatBytes, sizeof(float));
-   REQUIRE(floatValue == Catch::Approx(230.2f));
+   REQUIRE(floatValue == doctest::Approx(230.2f));
 }
 
-TEST_CASE("[Modbus] Master parses Read Input Registers response with 1 register", "[Modbus]") {
+TEST_CASE("[Modbus] Master parses Read Input Registers response with 1 register [Modbus]") {
    // Address 1, Function 4, Byte count 2, Data 0x1234, CRC
    const uint8_t rxData[] = { 0x01, 0x04, 0x02, 0x12, 0x34, 0xB4, 0x47 };
    ArrayReadable readable(rxData);
@@ -189,7 +191,7 @@ TEST_CASE("[Modbus] Master parses Read Input Registers response with 1 register"
    REQUIRE(out[1] == 0x34);
 }
 
-TEST_CASE("[Modbus] Master readCoils works", "[Modbus]") {
+TEST_CASE("[Modbus] Master readCoils works [Modbus]") {
    // Address 1, Function 1, Byte count 2, Data 0xCD, 0x01, CRC
    const uint8_t rxData[] = { 0x01, 0x01, 0x02, 0xCD, 0x01, 0x2C, 0xAC };
    ArrayReadable readable(rxData);
@@ -212,7 +214,7 @@ TEST_CASE("[Modbus] Master readCoils works", "[Modbus]") {
    REQUIRE(std::equal(std::begin(expectedTx), std::end(expectedTx), txBuffer));
 }
 
-TEST_CASE("[Modbus] Master writeSingleCoil works", "[Modbus]") {
+TEST_CASE("[Modbus] Master writeSingleCoil works [Modbus]") {
    // Address 1, Function 5, Coil Addr 0x00AC, Value 0xFF00, CRC
    const uint8_t rxData[] = { 0x01, 0x05, 0x00, 0xAC, 0xFF, 0x00, 0x4C, 0x1B };
    ArrayReadable readable(rxData);
@@ -232,7 +234,7 @@ TEST_CASE("[Modbus] Master writeSingleCoil works", "[Modbus]") {
    REQUIRE(std::equal(std::begin(expectedTx), std::end(expectedTx), txBuffer));
 }
 
-TEST_CASE("[Modbus] Master writeMultipleCoils works", "[Modbus]") {
+TEST_CASE("[Modbus] Master writeMultipleCoils works [Modbus]") {
    // Address 1, Function 15 (0x0F), Start 0x0013, Count 10, CRC
    const uint8_t rxData[] = { 0x01, 0x0F, 0x00, 0x13, 0x00, 0x0A, 0x24, 0x09 };
    ArrayReadable readable(rxData);
@@ -253,7 +255,7 @@ TEST_CASE("[Modbus] Master writeMultipleCoils works", "[Modbus]") {
    REQUIRE(std::equal(std::begin(expectedTx), std::end(expectedTx), txBuffer));
 }
 
-TEST_CASE("[Modbus] Master readDiscreteInputs works", "[Modbus]") {
+TEST_CASE("[Modbus] Master readDiscreteInputs works [Modbus]") {
    // Address 1, Function 2, Byte count 3, Data 0xAC, 0xDB, 0x35, CRC
    const uint8_t rxData[] = { 0x01, 0x02, 0x03, 0xAC, 0xDB, 0x35, 0x22, 0x88 };
    ArrayReadable readable(rxData);
@@ -277,7 +279,7 @@ TEST_CASE("[Modbus] Master readDiscreteInputs works", "[Modbus]") {
    REQUIRE(std::equal(std::begin(expectedTx), std::end(expectedTx), txBuffer));
 }
 
-TEST_CASE("[Modbus] Master detects address mismatch", "[Modbus]") {
+TEST_CASE("[Modbus] Master detects address mismatch [Modbus]") {
    // Expected address 1, but received address 2
    const uint8_t rxData[] = { 0x02, 0x04, 0x02, 0x12, 0x34, 0xBD, 0x07 };
    ArrayReadable readable(rxData);
@@ -292,7 +294,7 @@ TEST_CASE("[Modbus] Master detects address mismatch", "[Modbus]") {
    REQUIRE(res.error() == ResponseStatus::AddressMismatch);
 }
 
-TEST_CASE("[Modbus] Master detects function code mismatch", "[Modbus]") {
+TEST_CASE("[Modbus] Master detects function code mismatch [Modbus]") {
    // Requested function 4, but received function 3
    const uint8_t rxData[] = { 0x01, 0x03, 0x02, 0x12, 0x34, 0x44, 0x3E };
    ArrayReadable readable(rxData);
@@ -307,7 +309,7 @@ TEST_CASE("[Modbus] Master detects function code mismatch", "[Modbus]") {
    REQUIRE(res.error() == ResponseStatus::FunctionCodeMismatch);
 }
 
-TEST_CASE("[Modbus] Master detects CRC mismatch", "[Modbus]") {
+TEST_CASE("[Modbus] Master detects CRC mismatch [Modbus]") {
    // Correct response would have CRC B4 47, but we provide 00 00
    const uint8_t rxData[] = { 0x01, 0x04, 0x02, 0x12, 0x34, 0x00, 0x00 };
    ArrayReadable readable(rxData);
@@ -322,7 +324,7 @@ TEST_CASE("[Modbus] Master detects CRC mismatch", "[Modbus]") {
    REQUIRE(res.error() == ResponseStatus::CRCMismatch);
 }
 
-TEST_CASE("[Modbus] Master detects exception response", "[Modbus]") {
+TEST_CASE("[Modbus] Master detects exception response [Modbus]") {
    // Address 1, Function 0x84 (0x04 | 0x80), Exception Code 0x02 (Illegal Data Address), CRC
    const uint8_t rxData[] = { 0x01, 0x84, 0x02, 0xC2, 0xC1 };
    ArrayReadable readable(rxData);
@@ -338,7 +340,7 @@ TEST_CASE("[Modbus] Master detects exception response", "[Modbus]") {
    REQUIRE(master.getExceptionCode() == 0x02);
 }
 
-TEST_CASE("[Modbus] Master detects read timeout", "[Modbus]") {
+TEST_CASE("[Modbus] Master detects read timeout [Modbus]") {
    // Provide only part of the response
    const uint8_t rxData[] = { 0x01, 0x04 };
    ArrayReadable readable(rxData);
@@ -353,7 +355,7 @@ TEST_CASE("[Modbus] Master detects read timeout", "[Modbus]") {
    REQUIRE(res.error() == ResponseStatus::ReadTimeout);
 }
 
-TEST_CASE("[Modbus] Master detects buffer overflow", "[Modbus]") {
+TEST_CASE("[Modbus] Master detects buffer overflow [Modbus]") {
    // Response says 4 bytes, but we only provided 2-byte buffer
    const uint8_t rxData[] = { 0x01, 0x04, 0x04, 0x11, 0x22, 0x33, 0x44, 0x2B, 0x5A };
    ArrayReadable readable(rxData);
@@ -368,7 +370,7 @@ TEST_CASE("[Modbus] Master detects buffer overflow", "[Modbus]") {
    REQUIRE(res.error() == ResponseStatus::BufferOverflow);
 }
 
-TEST_CASE("[Modbus] Master detects read timeout after byte count", "[Modbus]") {
+TEST_CASE("[Modbus] Master detects read timeout after byte count [Modbus]") {
    // Address 1, Function 4, Byte count 2, but no data
    const uint8_t rxData[] = { 0x01, 0x04, 0x02 };
    ArrayReadable readable(rxData);
@@ -393,7 +395,7 @@ class FailingWritable : public Writable {
    }
 };
 
-TEST_CASE("[Modbus] Master detects write error", "[Modbus]") {
+TEST_CASE("[Modbus] Master detects write error [Modbus]") {
    uint8_t rxData[] = { 0x01, 0x04, 0x02, 0x12, 0x34, 0xB4, 0x47 };
    ArrayReadable readable(rxData);
    FailingWritable writable;
@@ -406,7 +408,7 @@ TEST_CASE("[Modbus] Master detects write error", "[Modbus]") {
    REQUIRE(res.error() == ResponseStatus::WriteError);
 }
 
-TEST_CASE("[Modbus] Master broadcast does not expect response", "[Modbus]") {
+TEST_CASE("[Modbus] Master broadcast does not expect response [Modbus]") {
    // No data in readable
    uint8_t rxBuffer[1]{};
    ArrayReadable readable({ rxBuffer, 0 });
@@ -442,7 +444,7 @@ class DynamicReadable : public Readable {
    }
 };
 
-TEST_CASE("[Modbus] Master exception code behavior", "[Modbus]") {
+TEST_CASE("[Modbus] Master exception code behavior [Modbus]") {
    DynamicReadable readable;
    uint8_t txBuffer[64]{};
    ArrayWritable writable(txBuffer);

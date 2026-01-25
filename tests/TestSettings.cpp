@@ -1,12 +1,13 @@
-#include <catch2/catch_all.hpp>
-#include <catch2/catch_test_macros.hpp>
+#include <string>
+#include <optional>
+#include <doctest/doctest.h>
 #include <iostream>
 #include <settings/Setting.h>
 #include <settings/SettingsManager.h>
 #include <streams/ArrayWritable.h>
 #include <streams/StringReadable.h>
 
-TEST_CASE("[Settings] storeSettings", "[Settings]") {
+TEST_CASE("[Settings] storeSettings [Settings]") {
    Setting<int32_t> s1("Temperature", "Maximum", 150);
    Setting<const char *> s2("Device name", "uoc1");
    Setting<bool> s3("Working", true);
@@ -18,7 +19,7 @@ TEST_CASE("[Settings] storeSettings", "[Settings]") {
    REQUIRE(writable.written() == 95);
 }
 
-TEST_CASE("[Settings] loadSettings", "[Settings]") {
+TEST_CASE("[Settings] loadSettings [Settings]") {
    Setting<int32_t> s1("Temperature", "Maximum", 150);
    Setting<const char *> s2("Device name", "uoc1");
    Setting<bool> s3("Working", true);

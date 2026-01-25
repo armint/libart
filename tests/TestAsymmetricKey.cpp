@@ -1,8 +1,10 @@
+#include <string>
+#include <optional>
 #include "../src/streams/AsymmetricKeyReadable.h"
 #include "../src/streams/AsymmetricKeyWritable.h"
 #include "../src/utils/AsymmetricKey.h"
 #include "streams/StringReadable.h"
-#include <catch2/catch_test_macros.hpp>
+#include <doctest/doctest.h>
 #include <vector>
 
 // A mock AsymmetricKey for testing
@@ -46,10 +48,10 @@ public:
     std::expected<void, Error> flush() override { return {}; }
 };
 
-TEST_CASE("AsymmetricKey interface and adapters", "[crypto]") {
+TEST_CASE("AsymmetricKey interface and adapters [crypto]") {
     MockKey key;
     
-    SECTION("Writable adapter") {
+    SUBCASE("Writable adapter") {
         VectorWritable sink;
         AsymmetricKeyWritable akw(sink, key);
         
@@ -65,7 +67,7 @@ TEST_CASE("AsymmetricKey interface and adapters", "[crypto]") {
         REQUIRE(sig[3] == 5);
     }
     
-    SECTION("Readable adapter") {
+    SUBCASE("Readable adapter") {
         StringReadable source("world");
         AsymmetricKeyReadable akr(source, key);
         

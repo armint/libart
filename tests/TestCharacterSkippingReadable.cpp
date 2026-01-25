@@ -1,5 +1,6 @@
-#include <catch2/catch_all.hpp>
-#include <catch2/catch_test_macros.hpp>
+#include <string>
+#include <optional>
+#include <doctest/doctest.h>
 #include <streams/ArrayWritable.h>
 #include <streams/CharacterSkippingReadable.h>
 #include <streams/StringReadable.h>
@@ -8,7 +9,7 @@
 namespace TestCharacterSkippingReadable {
 const char *testString = "A string to test Readable::readUntil";
 
-TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipSingleChar", "[Readable]") {
+TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipSingleChar [Readable]") {
    StringReadable readable(testString);
    CharacterSkippingReadable csReadable(readable, "g");
    uint8_t buffer[100];
@@ -17,7 +18,7 @@ TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipSingleChar"
    REQUIRE(std::string(reinterpret_cast<char *>(buffer)) == "A strin to test Readable::readUntil");
 }
 
-TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipSingleChar2", "[Readable]") {
+TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipSingleChar2 [Readable]") {
    StringReadable readable(testString);
    CharacterSkippingReadable csReadable(readable, ":");
    uint8_t buffer[100];
@@ -26,7 +27,7 @@ TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipSingleChar2
    REQUIRE(std::string(reinterpret_cast<char *>(buffer)) == "A string to test ReadablereadUntil");
 }
 
-TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipMultipleChars", "[Readable]") {
+TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipMultipleChars [Readable]") {
    StringReadable readable(testString);
    CharacterSkippingReadable csReadable(readable, ":e");
    uint8_t buffer[100];
@@ -35,7 +36,7 @@ TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipMultipleCha
    REQUIRE(std::string(reinterpret_cast<char *>(buffer)) == "A string to tst RadablradUntil");
 }
 
-TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipFinalChars", "[Readable]") {
+TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipFinalChars [Readable]") {
    StringReadable readable(testString);
    CharacterSkippingReadable csReadable(readable, "il");
    uint8_t buffer[100];

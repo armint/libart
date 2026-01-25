@@ -1,4 +1,6 @@
-#include <catch2/catch_test_macros.hpp>
+#include <string>
+#include <optional>
+#include <doctest/doctest.h>
 #include "utils/SHA256Digest.h"
 #include "streams/DigestWritable.h"
 #include "streams/DigestReadable.h"
@@ -18,10 +20,10 @@ static std::string to_hex(std::span<const uint8_t> data) {
    return ss.str();
 }
 
-TEST_CASE("SHA256Digest basic cases", "[sha256]") {
+TEST_CASE("SHA256Digest basic cases [sha256]") {
    SHA256Digest sha;
 
-   SECTION("Empty input") {
+   SUBCASE("Empty input") {
       std::array<uint8_t, 32> out{};
       auto res = sha.getDigest(out);
       REQUIRE(res.has_value());
@@ -30,7 +32,7 @@ TEST_CASE("SHA256Digest basic cases", "[sha256]") {
       REQUIRE(to_hex(out) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
    }
 
-   SECTION("Known message: 'abc'") {
+   SUBCASE("Known message: 'abc'") {
       const char *msg = "abc";
       sha.update(std::span{ reinterpret_cast<const uint8_t *>(msg), 3 });
       std::array<uint8_t, 32> out{};
@@ -40,7 +42,7 @@ TEST_CASE("SHA256Digest basic cases", "[sha256]") {
       REQUIRE(to_hex(out) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
    }
 
-   SECTION("Known message: 'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq'") {
+   SUBCASE("Known message: 'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq'") {
       const char *msg = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
       sha.update(std::span{ reinterpret_cast<const uint8_t *>(msg), strlen(msg) });
       std::array<uint8_t, 32> out{};
@@ -51,7 +53,7 @@ TEST_CASE("SHA256Digest basic cases", "[sha256]") {
    }
 }
 
-TEST_CASE("SHA256Digest chunked updates", "[sha256]") {
+TEST_CASE("SHA256Digest chunked updates [sha256]") {
    SHA256Digest sha;
    const char *msg = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
    size_t len = strlen(msg);
@@ -66,7 +68,7 @@ TEST_CASE("SHA256Digest chunked updates", "[sha256]") {
    REQUIRE(to_hex(out) == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
 }
 
-TEST_CASE("SHA256Digest reset", "[sha256]") {
+TEST_CASE("SHA256Digest reset [sha256]") {
    SHA256Digest sha;
    sha.update(std::span{ reinterpret_cast<const uint8_t *>("abc"), 3 });
    sha.reset();
@@ -77,7 +79,7 @@ TEST_CASE("SHA256Digest reset", "[sha256]") {
    REQUIRE(to_hex(out) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 }
 
-TEST_CASE("SHA256Digest with DigestWritable", "[sha256][streams]") {
+TEST_CASE("SHA256Digest with DigestWritable [sha256][streams]") {
    SHA256Digest sha;
    uint8_t sinkBuffer[128];
    ArrayWritable sink(sinkBuffer);
@@ -97,7 +99,7 @@ TEST_CASE("SHA256Digest with DigestWritable", "[sha256][streams]") {
    REQUIRE(digestRes.has_value());
    REQUIRE(to_hex(out) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 
-   SECTION("Multiple writes") {
+   SUBCASE("Multiple writes") {
       sha.reset();
       sink.reset(0);
       const char *part1 = "abcdbcdecdefdefgefghfghighijhijk";
@@ -116,7 +118,7 @@ TEST_CASE("SHA256Digest with DigestWritable", "[sha256][streams]") {
    }
 }
 
-TEST_CASE("SHA256Digest with DigestReadable", "[sha256][streams]") {
+TEST_CASE("SHA256Digest with DigestReadable [sha256][streams]") {
    SHA256Digest sha;
    const char *msg = "abc";
    ArrayReadable source(std::span{ reinterpret_cast<const uint8_t *>(msg), 3 });

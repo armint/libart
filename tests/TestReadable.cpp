@@ -1,6 +1,8 @@
+#include <string>
+#include <optional>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <array>
-#include <catch2/catch_all.hpp>
-#include <catch2/catch_test_macros.hpp>
+#include <doctest/doctest.h>
 #include <streams/ArrayReadable.h>
 #include <streams/Readable.h>
 #include <streams/StringReadable.h>
@@ -10,12 +12,12 @@ const char *testString = "A string to test Readable::readUntil";
 const char *testScanf = "Parse the number 334 or hex 0x15e2 binary 0b1110101 and -657";
 
 
-TEST_CASE("[Readable] ArrayReadable bytesLeft", "[Readable]") {
+TEST_CASE("[Readable] ArrayReadable bytesLeft [Readable]") {
    StringReadable readable(testString);
    REQUIRE(readable.bytesLeft() == strlen(testString));
 }
 
-TEST_CASE("[Readable] Read beyond the end", "[Readable]") {
+TEST_CASE("[Readable] Read beyond the end [Readable]") {
    StringReadable readable(testString);
    auto res = readable.read();
    while(res) {
@@ -25,7 +27,7 @@ TEST_CASE("[Readable] Read beyond the end", "[Readable]") {
 }
 
 
-TEST_CASE("[Readable] String match", "[Readable]") {
+TEST_CASE("[Readable] String match [Readable]") {
    StringReadable readable(testString);
    // Test string match find
    REQUIRE(readable.readUntil({ "test" }) == 0);
@@ -36,14 +38,14 @@ TEST_CASE("[Readable] String match", "[Readable]") {
    REQUIRE(nread == 16);
 }
 
-TEST_CASE("[Readable] String match repeated character", "[Readable]") {
+TEST_CASE("[Readable] String match repeated character [Readable]") {
    StringReadable readable(testString);
    size_t nread;
    REQUIRE(readable.readUntil({ ":read" }, std::span<char>(), &nread) == 0);
    REQUIRE(nread == 31);
 }
 
-TEST_CASE("[Readable] readUntil match with buffer", "[Readable]") {
+TEST_CASE("[Readable] readUntil match with buffer [Readable]") {
    StringReadable readable(testString);
    size_t nread;
    char buffer[32]{};
@@ -52,21 +54,21 @@ TEST_CASE("[Readable] readUntil match with buffer", "[Readable]") {
    REQUIRE(std::string(buffer) == "A string to test Readable::read");
 }
 
-TEST_CASE("[Readable] readUntil multiple match", "[Readable]") {
+TEST_CASE("[Readable] readUntil multiple match [Readable]") {
    StringReadable readable(testString);
    size_t nread;
    REQUIRE(readable.readUntil({ "test", ":read" }, std::span<char>(), &nread) == 0);
    REQUIRE(nread == 16);
 }
 
-TEST_CASE("[Readable] readUntil multiple match 2", "[Readable]") {
+TEST_CASE("[Readable] readUntil multiple match 2 [Readable]") {
    StringReadable readable(testString);
    size_t nread;
    REQUIRE(readable.readUntil({ ":read", "test" }, std::span<char>(), &nread) == 1);
    REQUIRE(nread == 16);
 }
 
-TEST_CASE("[Readable] scanf", "[Readable]") {
+TEST_CASE("[Readable] scanf [Readable]") {
    StringReadable readable(testScanf);
    uint32_t unum;
    uint32_t hexnum;
@@ -82,7 +84,7 @@ TEST_CASE("[Readable] scanf", "[Readable]") {
    REQUIRE(snum == -657);
 }
 
-TEST_CASE("[Readable] scanf skipped", "[Readable]") {
+TEST_CASE("[Readable] scanf skipped [Readable]") {
    StringReadable readable(testScanf);
    uint32_t unum;
    uint32_t bnum;
@@ -96,7 +98,7 @@ TEST_CASE("[Readable] scanf skipped", "[Readable]") {
    REQUIRE(snum == -657);
 }
 
-TEST_CASE("[Readable] scanf not found", "[Readable]") {
+TEST_CASE("[Readable] scanf not found [Readable]") {
    StringReadable readable(testScanf);
    uint32_t unum = 0;
    auto count = readable.scanf("Parse the %u ", &unum);
@@ -104,7 +106,7 @@ TEST_CASE("[Readable] scanf not found", "[Readable]") {
    REQUIRE(unum == 0);
 }
 
-TEST_CASE("[Readable] scanf not found 2", "[Readable]") {
+TEST_CASE("[Readable] scanf not found 2 [Readable]") {
    StringReadable readable(testScanf);
    uint32_t unum = 0;
    uint32_t unum2 = 0;
@@ -114,7 +116,7 @@ TEST_CASE("[Readable] scanf not found 2", "[Readable]") {
    REQUIRE(unum2 == 0);
 }
 
-TEST_CASE("[Readable] scanf chars limit", "[Readable]") {
+TEST_CASE("[Readable] scanf chars limit [Readable]") {
    StringReadable readable("testScanf -4123456 4123456");
    int32_t num = 0;
    uint32_t unum = 0;
@@ -124,7 +126,7 @@ TEST_CASE("[Readable] scanf chars limit", "[Readable]") {
    REQUIRE(unum == 41234);
 }
 
-TEST_CASE("[Readable] scanf chars limit 2", "[Readable]") {
+TEST_CASE("[Readable] scanf chars limit 2 [Readable]") {
    StringReadable readable("testScanf -4123456 4123456");
    uint32_t unum = 0;
    char buffer[10];
@@ -134,7 +136,7 @@ TEST_CASE("[Readable] scanf chars limit 2", "[Readable]") {
    REQUIRE(unum == 41234);
 }
 
-TEST_CASE("[Readable] read(span<uint8_t>) basics", "[Readable]") {
+TEST_CASE("[Readable] read(span<uint8_t>) basics [Readable]") {
    const std::array<uint8_t, 4> data{ 1, 2, 3, 4 };
    ArrayReadable readable(std::span<const uint8_t>(data.data(), data.size()));
    std::array<uint8_t, 4> out{};
@@ -150,7 +152,7 @@ TEST_CASE("[Readable] read(span<uint8_t>) basics", "[Readable]") {
    REQUIRE(r2.error() == Readable::EndOfStream);
 }
 
-TEST_CASE("[Readable] readNumber endianness", "[Readable]") {
+TEST_CASE("[Readable] readNumber endianness [Readable]") {
    // Test 16-bit value little endian
    const uint16_t val16 = 0x1234;
    const std::array<uint8_t, 2> le16{ 0x34, 0x12 };
@@ -189,7 +191,7 @@ TEST_CASE("[Readable] readNumber endianness", "[Readable]") {
    REQUIRE(vErr.error() == Readable::EndOfStream);
 }
 
-TEST_CASE("[Readable] readRLE decoding and overflow", "[Readable]") {
+TEST_CASE("[Readable] readRLE decoding and overflow [Readable]") {
    // 300 encoded as LEB128: 0xAC 0x02
    const std::array<uint8_t, 2> enc300{ 0xAC, 0x02 };
    ArrayReadable r300(std::span<const uint8_t>(enc300.data(), enc300.size()));
@@ -208,7 +210,7 @@ TEST_CASE("[Readable] readRLE decoding and overflow", "[Readable]") {
    REQUIRE(consumedOv.error() == Readable::NumberTooBig);
 }
 
-TEST_CASE("[Readable] timeout accessors", "[Readable]") {
+TEST_CASE("[Readable] timeout accessors [Readable]") {
    StringReadable readable("abc");
    REQUIRE(readable.getTimeout() == 0);
    readable.setTimeout(1234);

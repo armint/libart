@@ -1,11 +1,12 @@
-#include <catch2/catch_all.hpp>
-#include <catch2/catch_test_macros.hpp>
+#include <string>
+#include <optional>
+#include <doctest/doctest.h>
 
 #include <streams/StringWritable.h>
 #include <string>
 #include <cstring>
 
-TEST_CASE("[StringWritable] normal write", "[StringWritable]") {
+TEST_CASE("[StringWritable] normal write [StringWritable]") {
     char buf[10];
     StringWritable sw(buf);
 
@@ -16,7 +17,7 @@ TEST_CASE("[StringWritable] normal write", "[StringWritable]") {
     REQUIRE(std::string(buf, 5) == "Hello");
 }
 
-TEST_CASE("[StringWritable] exactly fill buffer", "[StringWritable]") {
+TEST_CASE("[StringWritable] exactly fill buffer [StringWritable]") {
     char buf[6];
     StringWritable sw(buf);
 
@@ -30,7 +31,7 @@ TEST_CASE("[StringWritable] exactly fill buffer", "[StringWritable]") {
     REQUIRE(std::string(buf) == "Hello");
 }
 
-TEST_CASE("[StringWritable] overflow buffer", "[StringWritable]") {
+TEST_CASE("[StringWritable] overflow buffer [StringWritable]") {
     char buf[5];
     StringWritable sw(buf);
 
@@ -43,7 +44,7 @@ TEST_CASE("[StringWritable] overflow buffer", "[StringWritable]") {
     REQUIRE(std::string(buf) == "Hell");
 }
 
-TEST_CASE("[StringWritable] multiple writes", "[StringWritable]") {
+TEST_CASE("[StringWritable] multiple writes [StringWritable]") {
     char buf[10];
     StringWritable sw(buf);
 
@@ -62,7 +63,7 @@ TEST_CASE("[StringWritable] multiple writes", "[StringWritable]") {
     REQUIRE(std::string(buf) == "AbcDefGHI");
 }
 
-TEST_CASE("[StringWritable] printf", "[StringWritable]") {
+TEST_CASE("[StringWritable] printf [StringWritable]") {
     char buf[20];
     memset(buf, 'X', sizeof(buf));
     StringWritable sw(buf);
@@ -77,7 +78,7 @@ TEST_CASE("[StringWritable] printf", "[StringWritable]") {
     REQUIRE(buf[8] == 'X'); // Should still be 'X' because it wasn't full
 }
 
-TEST_CASE("[StringWritable] ensure zero-termination when full", "[StringWritable]") {
+TEST_CASE("[StringWritable] ensure zero-termination when full [StringWritable]") {
     char buf[5];
     memset(buf, 'X', sizeof(buf));
     StringWritable sw(buf);

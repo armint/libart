@@ -1,7 +1,9 @@
+#include <string>
+#include <optional>
 #include "modbus/ModbusMaster.h"
 
 
-#include <catch2/catch_all.hpp>
+#include <doctest/doctest.h>
 
 #include <modbus/ModbusCodes.h>
 #include <modbus/ModbusSlave.h>
@@ -17,7 +19,7 @@ static void compute_crc(std::span<const uint8_t> frame_wo_crc, uint8_t (&crc)[2]
    (void)d.getDigest(crc);
 }
 
-TEST_CASE("[Modbus] Slave replies to Read Holding Registers (2 regs)", "[Modbus]") {
+TEST_CASE("[Modbus] Slave replies to Read Holding Registers (2 regs) [Modbus]") {
    // Build a RTU request: addr=0x01, fn=0x03, start=0x0000, qty=0x0002, CRC=0x0B after 0xC4 (lo,hi)
    const uint8_t request[] = { 0x01, FunctionCode::ReadHoldingRegisters, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x0B };
    ArrayReadable readable({ const_cast<uint8_t *>(request), sizeof(request) });
@@ -68,7 +70,7 @@ TEST_CASE("[Modbus] Slave replies to Read Holding Registers (2 regs)", "[Modbus]
    REQUIRE(txBuffer[8] == crc[1]);    // CRC hi
 }
 
-TEST_CASE("[Modbus] Slave replies to Read Holding Registers (float)", "[Modbus]") {
+TEST_CASE("[Modbus] Slave replies to Read Holding Registers (float) [Modbus]") {
    // Build a RTU request: addr=0x01, fn=0x03, start=0x0000, qty=0x0002, CRC=0x0B after 0xC4 (lo,hi)
    const uint8_t request[] = { 0x01, FunctionCode::ReadInputRegisters, 0x00, 0x00, 0x00, 0x02, 0x71, 0xCB };
    ArrayReadable readable({ const_cast<uint8_t *>(request), sizeof(request) });
@@ -116,10 +118,10 @@ TEST_CASE("[Modbus] Slave replies to Read Holding Registers (float)", "[Modbus]"
    REQUIRE(masterResult.value() == 4);
    float floatValue;
    std::memcpy(&floatValue, masterOut, sizeof(float));
-   REQUIRE(floatValue == Catch::Approx(230.2f));
+   REQUIRE(floatValue == doctest::Approx(230.2f));
 }
 
-TEST_CASE("[Modbus] Slave processes Write Multiple Holding Registers and replies", "[Modbus]") {
+TEST_CASE("[Modbus] Slave processes Write Multiple Holding Registers and replies [Modbus]") {
    // Build a RTU request for function 0x10:
    // addr=0x01, fn=0x10, start=0x0002, qty=0x0002, bytecnt=0x04, data=0x11 0x22 0x33 0x44
    uint8_t frame[13]{};
@@ -192,7 +194,7 @@ TEST_CASE("[Modbus] Slave processes Write Multiple Holding Registers and replies
    REQUIRE(txBuffer[7] == crc[1]);
 }
 
-TEST_CASE("[Modbus] Slave processes broadcast Write Multiple without replying", "[Modbus]") {
+TEST_CASE("[Modbus] Slave processes broadcast Write Multiple without replying [Modbus]") {
    // Broadcast address 0x00, same payload as previous test
    uint8_t frame[13]{};
    frame[0] = 0x00; // broadcast
@@ -243,7 +245,7 @@ TEST_CASE("[Modbus] Slave processes broadcast Write Multiple without replying", 
    REQUIRE(writable.position() == 0);
 }
 
-TEST_CASE("[Modbus] Slave returns exception on write callback rejection", "[Modbus]") {
+TEST_CASE("[Modbus] Slave returns exception on write callback rejection [Modbus]") {
    // Valid request, but application refuses (returns false) -> expect ILLEGAL_ADDRESS exception
    uint8_t frame[13]{};
    frame[0] = 0x01;
@@ -290,7 +292,7 @@ TEST_CASE("[Modbus] Slave returns exception on write callback rejection", "[Modb
    REQUIRE(txBuffer[4] == crc[1]);
 }
 
-TEST_CASE("[Modbus] Slave returns exception on invalid byte count", "[Modbus]") {
+TEST_CASE("[Modbus] Slave returns exception on invalid byte count [Modbus]") {
    // Malformed: qty=2 but bytecount=3 (should be 4) -> expect ILLEGAL_VALUE
    uint8_t frame[12]{};
    frame[0] = 0x01;
