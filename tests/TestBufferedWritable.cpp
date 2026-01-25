@@ -1,15 +1,14 @@
-#include <string>
 #include <optional>
 #include <doctest/doctest.h>
 
 #include <streams/ArrayWritable.h>
 #include <streams/BufferedWritable.h>
-#include <vector>
+#include <etl/vector.h>
 
 // Mock sink to track writes and flushes
 class MockSink : public Writable {
    public:
-   std::vector<uint8_t> recordedData;
+   etl::vector<uint8_t, 128> recordedData;
    size_t flushCount = 0;
    std::optional<Error> writeError;
    std::optional<Error> flushError;
@@ -17,6 +16,9 @@ class MockSink : public Writable {
    std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
       if(writeError) {
          return std::unexpected(*writeError);
+      }
+      if(recordedData.size() + data.size() > recordedData.max_size()) {
+         return std::unexpected(Overflow);
       }
       recordedData.insert(recordedData.end(), data.begin(), data.end());
       return data.size();

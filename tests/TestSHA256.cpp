@@ -1,4 +1,3 @@
-#include <string>
 #include <optional>
 #include <doctest/doctest.h>
 #include "utils/SHA256Digest.h"
@@ -7,17 +6,26 @@
 #include "streams/ArrayWritable.h"
 #include "streams/ArrayReadable.h"
 #include <array>
-#include <iomanip>
-#include <sstream>
 #include <cstring>
+#include <etl/string.h>
+#include <etl/string_view.h>
+#include <utils/tfp_printf.h>
 
-static std::string to_hex(std::span<const uint8_t> data) {
-   std::stringstream ss;
-   ss << std::hex << std::setfill('0');
+static void putf_etl(void *p, char c) {
+   auto *s = static_cast<etl::istring *>(p);
+   s->append(1, c);
+}
+
+static etl::string<65> to_hex(std::span<const uint8_t> data) {
+   etl::string<65> s;
+   auto hex_digit = [](uint8_t n) -> char {
+      return n < 10 ? '0' + n : 'a' + (n - 10);
+   };
    for(auto b : data) {
-      ss << std::setw(2) << static_cast<int>(b);
+      s.append(1, hex_digit(b >> 4));
+      s.append(1, hex_digit(b & 0x0F));
    }
-   return ss.str();
+   return s;
 }
 
 TEST_CASE("SHA256Digest basic cases [sha256]") {

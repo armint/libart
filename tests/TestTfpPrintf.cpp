@@ -1,18 +1,17 @@
-#include <string>
 #include <optional>
 #include <doctest/doctest.h>
 #include <utils/tfp_printf.h>
-#include <string>
-#include <vector>
 #include <cstring>
+#include <etl/string.h>
+#include <etl/string_view.h>
 
 static void putf(void *p, char c) {
-    std::string *s = static_cast<std::string *>(p);
+    auto *s = static_cast<etl::istring *>(p);
     s->append(1, c);
 }
 
-static std::string format(const char *fmt, ...) {
-    std::string s;
+static etl::string<64> format(const char *fmt, ...) {
+    etl::string<64> s;
     va_list va;
     va_start(va, fmt);
     tfp_format(&s, putf, fmt, va);

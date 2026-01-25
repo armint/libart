@@ -1,6 +1,6 @@
-#include <string>
 #include <optional>
 #include <doctest/doctest.h>
+#include <string_view>
 #include <streams/ArrayWritable.h>
 #include <streams/CharacterSkippingReadable.h>
 #include <streams/StringReadable.h>
@@ -15,7 +15,7 @@ TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipSingleChar 
    uint8_t buffer[100];
    ArrayWritable arrayWritable(buffer);
    REQUIRE(utils::copyStream(csReadable, arrayWritable) == strlen(testString) - 1);
-   REQUIRE(std::string(reinterpret_cast<char *>(buffer)) == "A strin to test Readable::readUntil");
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buffer)) == "A strin to test Readable::readUntil");
 }
 
 TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipSingleChar2 [Readable]") {
@@ -24,7 +24,7 @@ TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipSingleChar2
    uint8_t buffer[100];
    ArrayWritable arrayWritable(buffer);
    REQUIRE(utils::copyStream(csReadable, arrayWritable) == strlen(testString) - 2);
-   REQUIRE(std::string(reinterpret_cast<char *>(buffer)) == "A string to test ReadablereadUntil");
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buffer)) == "A string to test ReadablereadUntil");
 }
 
 TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipMultipleChars [Readable]") {
@@ -33,7 +33,7 @@ TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipMultipleCha
    uint8_t buffer[100];
    ArrayWritable arrayWritable(buffer);
    REQUIRE(utils::copyStream(csReadable, arrayWritable) == strlen(testString) - 6);
-   REQUIRE(std::string(reinterpret_cast<char *>(buffer)) == "A string to tst RadablradUntil");
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buffer)) == "A string to tst RadablradUntil");
 }
 
 TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipFinalChars [Readable]") {
@@ -42,7 +42,7 @@ TEST_CASE("[CharacterSkippingReadable] CharacterSkippingReadable skipFinalChars 
    uint8_t buffer[100];
    ArrayWritable arrayWritable(buffer);
    REQUIRE(utils::copyStream(csReadable, arrayWritable) == strlen(testString) - 4);
-   REQUIRE(std::string(reinterpret_cast<char *>(buffer)) == "A strng to test Readabe::readUnt");
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buffer)) == "A strng to test Readabe::readUnt");
 }
 
 

@@ -1,8 +1,8 @@
-#include <string>
 #include <optional>
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <array>
 #include <doctest/doctest.h>
+#include <string_view>
 #include <streams/ArrayReadable.h>
 #include <streams/Readable.h>
 #include <streams/StringReadable.h>
@@ -51,7 +51,7 @@ TEST_CASE("[Readable] readUntil match with buffer [Readable]") {
    char buffer[32]{};
    REQUIRE(readable.readUntil({ ":read" }, buffer, &nread) == 0);
    REQUIRE(nread == 31);
-   REQUIRE(std::string(buffer) == "A string to test Readable::read");
+   REQUIRE(std::string_view(buffer) == "A string to test Readable::read");
 }
 
 TEST_CASE("[Readable] readUntil multiple match [Readable]") {
@@ -79,7 +79,7 @@ TEST_CASE("[Readable] scanf [Readable]") {
    REQUIRE(count == 5);
    REQUIRE(unum == 334);
    REQUIRE(hexnum == 0x15e2);
-   REQUIRE(std::string(buffer) == "hex");
+   REQUIRE(std::string_view(buffer) == "hex");
    REQUIRE(bnum == 0b1110101);
    REQUIRE(snum == -657);
 }
@@ -93,7 +93,7 @@ TEST_CASE("[Readable] scanf skipped [Readable]") {
    auto count = readable.scanf("Parse the number %u or %s 0x%*x binary 0b%b and %d", &unum, buffer, &bnum, &snum);
    REQUIRE(count == 4);
    REQUIRE(unum == 334);
-   REQUIRE(std::string(buffer) == "hex");
+   REQUIRE(std::string_view(buffer) == "hex");
    REQUIRE(bnum == 0b1110101);
    REQUIRE(snum == -657);
 }
@@ -132,7 +132,7 @@ TEST_CASE("[Readable] scanf chars limit 2 [Readable]") {
    char buffer[10];
    auto count = readable.scanf("testScanf %5s%*s %5u", buffer, &unum);
    REQUIRE(count == 2);
-   REQUIRE(std::string(buffer) == "-4123");
+   REQUIRE(std::string_view(buffer) == "-4123");
    REQUIRE(unum == 41234);
 }
 

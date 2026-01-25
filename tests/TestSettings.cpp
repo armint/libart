@@ -1,11 +1,10 @@
-#include <string>
 #include <optional>
 #include <doctest/doctest.h>
-#include <iostream>
 #include <settings/Setting.h>
 #include <settings/SettingsManager.h>
 #include <streams/ArrayWritable.h>
 #include <streams/StringReadable.h>
+#include <string_view>
 
 TEST_CASE("[Settings] storeSettings [Settings]") {
    Setting<int32_t> s1("Temperature", "Maximum", 150);
@@ -15,7 +14,6 @@ TEST_CASE("[Settings] storeSettings [Settings]") {
    ArrayWritable writable(buffer);
    auto res = SettingsManager::getInstance().save(writable);
    REQUIRE(res);
-   std::cout << writable.written() << " bytes written: \n" << buffer;
    REQUIRE(writable.written() == 95);
 }
 
@@ -34,7 +32,7 @@ TEST_CASE("[Settings] loadSettings [Settings]") {
    auto res = SettingsManager::getInstance().load(readable);
    REQUIRE(res);
    REQUIRE(s1.getValue() == 250);
-   REQUIRE(s2.getValue() == std::string("uoc2"));
+   REQUIRE(std::string_view(s2.getValue()) == "uoc2");
    REQUIRE(s3.getValue() == false);
    REQUIRE(s4.getValue() == 100);
 }

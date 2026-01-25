@@ -1,22 +1,22 @@
-#include <string>
 #include <optional>
 #include "../src/streams/AsymmetricKeyReadable.h"
 #include "../src/streams/AsymmetricKeyWritable.h"
 #include "../src/utils/AsymmetricKey.h"
 #include "streams/StringReadable.h"
 #include <doctest/doctest.h>
-#include <vector>
+#include <etl/vector.h>
 
 // A mock AsymmetricKey for testing
 class MockKey : public AsymmetricKey {
 public:
-    std::vector<uint8_t> data;
+    etl::vector<uint8_t, 128> data;
     bool resetCalled = false;
 
     void reset() override { resetCalled = true; data.clear(); }
     size_t getOutputSize() const override { return 32; }
     
     std::expected<size_t, Error> write(std::span<const uint8_t> d) override {
+        if (data.size() + d.size() > data.max_size()) return std::unexpected(Overflow);
         data.insert(data.end(), d.begin(), d.end());
         return d.size();
     }
@@ -40,8 +40,9 @@ public:
 // A simple Writable for testing
 class VectorWritable : public Writable {
 public:
-    std::vector<uint8_t> output;
+    etl::vector<uint8_t, 128> output;
     std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
+        if (output.size() + data.size() > output.max_size()) return std::unexpected(Overflow);
         output.insert(output.end(), data.begin(), data.end());
         return data.size();
     }

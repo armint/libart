@@ -1,13 +1,12 @@
-#include <string>
 #include <optional>
 #include <doctest/doctest.h>
+#include <string_view>
 
 #include <streams/ArrayWritable.h>
 #include <streams/Writable.h>
 #include <utils/endian.h>
 
 #include <cstdarg>
-#include <vector>
 
 // A small mock Writable to control flush behavior and optionally inject write errors
 class MockWritable : public Writable {
@@ -140,7 +139,7 @@ TEST_CASE("[Writable] printf and println formatting and counts [Writable]") {
    REQUIRE(r);
    const char *expected = "Hello World -7 0xabcd"; // tfp_printf emits lowercase hex
    REQUIRE(r.value() == strlen(expected));
-   REQUIRE(std::string(reinterpret_cast<char *>(buf), r.value()) == expected);
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buf), r.value()) == expected);
 
    // println without format (CRLF)
    auto r2 = w.println();
@@ -155,7 +154,7 @@ TEST_CASE("[Writable] printf and println formatting and counts [Writable]") {
    REQUIRE(r3);
    const char *expectedLine = "val:42\r\n";
    REQUIRE(r3.value() == strlen(expectedLine));
-   REQUIRE(std::string(reinterpret_cast<char *>(buf) + start, r3.value()) == expectedLine);
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buf) + start, r3.value()) == expectedLine);
 }
 
 TEST_CASE("[Writable] printf_va path (va_list helper) [Writable]") {
@@ -165,7 +164,7 @@ TEST_CASE("[Writable] printf_va path (va_list helper) [Writable]") {
    // Use printf_va to drive the va_list-based implementation internally
    auto r = w.printf_va("%s %u", "abc", 99u);
    REQUIRE(r);
-   REQUIRE(std::string(reinterpret_cast<char *>(buf), r.value()) == std::string("abc 99"));
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buf), r.value()) == "abc 99");
 }
 
 TEST_CASE("[Writable] error propagation on overflow during printf [Writable]") {

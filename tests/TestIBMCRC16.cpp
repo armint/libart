@@ -1,4 +1,3 @@
-#include <string>
 #include <optional>
 #include <algorithm>
 #include <array>
@@ -6,7 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <span>
-#include <vector>
+#include <etl/vector.h>
 
 #include "../src/utils/IBMCRC16Digest.h"
 #include "../src/utils/IBMCRC16FastDigest.h"
@@ -50,8 +49,7 @@ TEST_CASE("IBMCRC16Digest and IBMCRC16FastDigest produce identical digests (chun
    IBMCRC16FastDigest fast{};
 
    // Prepare a moderately sized buffer with varying values
-   std::vector<uint8_t> data;
-   data.reserve(256);
+   etl::vector<uint8_t, 256> data;
    for(int i = 0; i < 256; ++i) {
       data.push_back(static_cast<uint8_t>((i * 37) ^ (i >> 1))); // pseudo-random-ish pattern
    }

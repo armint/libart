@@ -1,4 +1,3 @@
-#include <string>
 #include <optional>
 
 #include <doctest/doctest.h>
