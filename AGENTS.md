@@ -16,3 +16,4 @@
 - Prefer `std::span` (or equivalent) for passing buffers to avoid size/pointer mismatches.
 - Ensure that changes are compatible with the embedded nature of the project (low memory footprint).
 - Heap memory usage is not allowed.
+- Always use descriptive variable and function names.
