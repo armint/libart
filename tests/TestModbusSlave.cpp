@@ -1,5 +1,9 @@
-#include <optional>
 #include "modbus/ModbusMaster.h"
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
 
 
 #include <doctest/doctest.h>
@@ -21,7 +25,7 @@ static void compute_crc(std::span<const uint8_t> frame_wo_crc, uint8_t (&crc)[2]
 TEST_CASE("[Modbus] Slave replies to Read Holding Registers (2 regs) [Modbus]") {
    // Build a RTU request: addr=0x01, fn=0x03, start=0x0000, qty=0x0002, CRC=0x0B after 0xC4 (lo,hi)
    const uint8_t request[] = { 0x01, FunctionCode::ReadHoldingRegisters, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x0B };
-   ArrayReadable readable({ const_cast<uint8_t *>(request), sizeof(request) });
+   ArrayReadable readable(request);
 
    // Capture the slave response
    uint8_t txBuffer[32]{};
@@ -72,7 +76,7 @@ TEST_CASE("[Modbus] Slave replies to Read Holding Registers (2 regs) [Modbus]") 
 TEST_CASE("[Modbus] Slave replies to Read Holding Registers (float) [Modbus]") {
    // Build a RTU request: addr=0x01, fn=0x03, start=0x0000, qty=0x0002, CRC=0x0B after 0xC4 (lo,hi)
    const uint8_t request[] = { 0x01, FunctionCode::ReadInputRegisters, 0x00, 0x00, 0x00, 0x02, 0x71, 0xCB };
-   ArrayReadable readable({ const_cast<uint8_t *>(request), sizeof(request) });
+   ArrayReadable readable(request);
    const float number = 230.2f;
 
    // Capture the slave response
@@ -214,7 +218,7 @@ TEST_CASE("[Modbus] Slave processes broadcast Write Multiple without replying [M
       frame[12] = crc[1];
    }
 
-   ArrayReadable readable({ frame, sizeof(frame) });
+   ArrayReadable readable(frame);
    uint8_t txBuffer[16]{};
    ArrayWritable writable(txBuffer);
 
@@ -264,7 +268,7 @@ TEST_CASE("[Modbus] Slave returns exception on write callback rejection [Modbus]
       frame[10] = crc[1];
    }
 
-   ArrayReadable readable({ frame, 11 }); // only up to CRC
+   ArrayReadable readable({ frame, 11 });
    uint8_t txBuffer[16]{};
    ArrayWritable writable(txBuffer);
 
@@ -311,7 +315,7 @@ TEST_CASE("[Modbus] Slave returns exception on invalid byte count [Modbus]") {
       frame[11] = crc[1];
    }
 
-   ArrayReadable readable({ frame, sizeof(frame) });
+   ArrayReadable readable(frame);
    uint8_t txBuffer[16]{};
    ArrayWritable writable(txBuffer);
 
@@ -332,4 +336,88 @@ TEST_CASE("[Modbus] Slave returns exception on invalid byte count [Modbus]") {
    compute_crc({ txBuffer, 3 }, crc);
    REQUIRE(txBuffer[3] == crc[0]);
    REQUIRE(txBuffer[4] == crc[1]);
+}
+
+TEST_CASE("[Modbus] Slave calls enablers correctly for successful request") {
+   struct EnablerLog {
+      std::vector<std::pair<const char *, bool>> calls;
+   };
+
+   EnablerLog log;
+
+   auto rxEnabler = [](void *arg, bool enable) {
+      auto *log = static_cast<EnablerLog *>(arg);
+      log->calls.emplace_back("rx", enable);
+   };
+
+   auto txEnabler = [](void *arg, bool enable) {
+      auto *log = static_cast<EnablerLog *>(arg);
+      log->calls.emplace_back("tx", enable);
+   };
+
+   const uint8_t request[] = { 0x01, FunctionCode::ReadHoldingRegisters, 0x00, 0x00, 0x00, 0x01, 0x84, 0x0A };
+   ArrayReadable readable(request);
+
+   uint8_t txBuffer[32]{};
+   ArrayWritable writable(txBuffer);
+
+   uint8_t tmpBuf[4]{};
+   ModbusSlave slave(readable, writable, tmpBuf);
+   slave.setAddress(0x01);
+   slave.setRxEnabler(rxEnabler, &log);
+   slave.setTxEnabler(txEnabler, &log);
+
+   slave.setReadHoldingCallback(
+   +[](void *arg, uint16_t address, uint16_t count, Writable &w) -> modbus::ModbusSlave::Result {
+      (void)w.writeNumber<uint16_t, Endian::Big>(0xABCD);
+      return ModbusSlave::Result::Ok;
+   },
+   nullptr);
+
+   const bool processed = slave.poll();
+   REQUIRE(processed);
+
+   // Expected sequence:
+   // 1. poll() -> enableRx(true)
+   // 2. handleReadRegisters() -> enableRx(false)
+   // 3. handleReadRegisters() -> enableTx(true)
+   // 4. flush()
+   // 5. enableTx(false)
+   // 6. enableRx(true)
+   REQUIRE(log.calls.size() == 5);
+   CHECK(log.calls[0] == std::make_pair("rx", true));
+   CHECK(log.calls[1] == std::make_pair("rx", false));
+   CHECK(log.calls[2] == std::make_pair("tx", true));
+   CHECK(log.calls[3] == std::make_pair("tx", false));
+   CHECK(log.calls[4] == std::make_pair("rx", true));
+}
+
+TEST_CASE("[Modbus] Slave does not disable RX on address mismatch") {
+   struct EnablerLog {
+      std::vector<std::pair<const char *, bool>> calls;
+   };
+
+   EnablerLog log;
+
+   auto rxEnabler = [](void *arg, bool enable) {
+      auto *log = static_cast<EnablerLog *>(arg);
+      log->calls.emplace_back("rx", enable);
+   };
+
+   const uint8_t request[] = { 0x02, FunctionCode::ReadHoldingRegisters, 0x00, 0x00, 0x00, 0x01, 0x84, 0x39 };
+   ArrayReadable readable(request);
+
+   uint8_t txBuffer[32]{};
+   ArrayWritable writable(txBuffer);
+   uint8_t tmpBuf[4]{};
+   ModbusSlave slave(readable, writable, tmpBuf);
+   slave.setAddress(0x01);
+   slave.setRxEnabler(rxEnabler, &log);
+
+   const bool processed = slave.poll();
+   REQUIRE_FALSE(processed);
+
+   // After the fix in poll(), only the initial enableRx(true) should be called.
+   REQUIRE(log.calls.size() == 1);
+   CHECK(log.calls[0] == std::make_pair("rx", true));
 }

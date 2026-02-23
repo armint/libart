@@ -105,7 +105,23 @@ class ModbusSlave {
    bool isWaitingForIdle();
 
    public:
+   /**
+    * @brief Construct a new Modbus Slave object
+    * @param readable The readable stream to receive data from
+    * @param writable The writable stream to send data to
+    * @param buffer A buffer to store incoming data for write requests. The buffer must remain valid for the lifetime of this object.
+    * @param rxEnabler An optional function to enable/disable the receiver (e.g. for RS-485 transceivers)
+    * @param txEnabler An optional function to enable/disable the transmitter (e.g. for RS-485 transceivers)
+    */
    ModbusSlave(BufferedReadable &readable, Writable &writable, std::span<uint8_t> buffer, enabler_t rxEnabler = {}, enabler_t txEnabler = {});
+   /**
+    * @brief Construct a new Modbus Slave object
+    * @param readable The readable stream to receive data from
+    * @param writable The writable stream to send data to
+    * @param buffer A buffer to store incoming data for write requests. The buffer must remain valid for the lifetime of this object.
+    * @param rxEnabler An optional function to enable/disable the receiver (e.g. for RS-485 transceivers)
+    * @param txEnabler An optional function to enable/disable the transmitter (e.g. for RS-485 transceivers)
+    */
    ModbusSlave(Readable &readable, Writable &writable, std::span<uint8_t> buffer, enabler_t rxEnabler = {}, enabler_t txEnabler = {});
 
    void setAddress(uint8_t addr) {
@@ -168,6 +184,15 @@ class ModbusSlave {
 
    void set_packet_timeout(duration_t packet_timeout) {
       packet_timeout_ = utils::Timeout(packet_timeout);
+   }
+
+   void setRxEnabler(enabler_t enabler, void *arg) {
+      rxEnabler_ = enabler;
+      rx_enabler_arg_ = arg;
+   }
+   void setTxEnabler(enabler_t enabler, void *arg) {
+      txEnabler_ = enabler;
+      tx_enabler_arg_ = arg;
    }
 
 
