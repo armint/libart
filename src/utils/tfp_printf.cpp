@@ -112,6 +112,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          char lz = 0;
          int minChars = 0;
          int decimals = 3;
+         bool l = false;
 #if defined(LIBART_ENABLE_64BIT)
          bool ll = false;
 #endif
@@ -130,6 +131,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             }
          }
          if(ch == 'l') {
+            l = true;
             ch = *(fmt++);
             if(ch == 'l') {
 #if defined(LIBART_ENABLE_64BIT)
@@ -159,11 +161,15 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
 #if defined(LIBART_ENABLE_64BIT)
             if(ll) {
                ui2a(va_arg(va, big_uint_t), base, (ch == 'X'), bf);
+            } else if(l) {
+               ui2a(va_arg(va, unsigned long), base, (ch == 'X'), bf);
             } else {
 #else
-            {
+            if(l) {
+               ui2a(va_arg(va, unsigned long), base, (ch == 'X'), bf);
+            } else {
 #endif
-               ui2a(va_arg(va, uint32_t), base, (ch == 'X'), bf);
+               ui2a(va_arg(va, unsigned int), base, (ch == 'X'), bf);
             }
             putchw(putp, putf, minChars, lz, bf);
             break;
@@ -174,11 +180,15 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
 #if defined(LIBART_ENABLE_64BIT)
             if(ll) {
                i2a(va_arg(va, int64_t), bf);
+            } else if(l) {
+               i2a(va_arg(va, long), bf);
             } else {
 #else
-            {
+            if(l) {
+               i2a(va_arg(va, long), bf);
+            } else {
 #endif
-               i2a(va_arg(va, int32_t), bf);
+               i2a(va_arg(va, int), bf);
             }
             putchw(putp, putf, minChars, lz, bf);
             break;
