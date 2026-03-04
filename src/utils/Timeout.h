@@ -27,6 +27,11 @@ class Timeout {
    explicit Timeout(duration_t time)
       : _deadline(getSysTick() + time) {}
 
+   Timeout(const Timeout &) = default;
+   Timeout(Timeout &&) = default;
+   Timeout &operator=(const Timeout &) = default;
+   Timeout &operator=(Timeout &&) = default;
+
    /**
     * @brief Checks if the timeout has expired.
     *
