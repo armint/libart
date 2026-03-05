@@ -15,6 +15,12 @@ class BoundedWritable : public CountingWritable {
    public:
    BoundedWritable(size_t capacity)
       : capacity(capacity) {}
+
+   BoundedWritable(BoundedWritable&&) = default;
+   BoundedWritable& operator=(BoundedWritable&&) = default;
+   BoundedWritable(const BoundedWritable&) = default;
+   BoundedWritable& operator=(const BoundedWritable&) = default;
+
    /**
     * Get the total amount of bytes that can be written to this writable
     *

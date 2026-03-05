@@ -20,6 +20,11 @@ class HexBoundedReadable : public RandomAccessReadable {
       : source_(source)
       , hex_(source) {}
 
+   HexBoundedReadable(HexBoundedReadable&&) = default;
+   HexBoundedReadable& operator=(HexBoundedReadable&&) = delete;
+   HexBoundedReadable(const HexBoundedReadable&) = delete;
+   HexBoundedReadable& operator=(const HexBoundedReadable&) = delete;
+
    // Readable
    std::expected<char, Error> read() override;
    bool available() override;

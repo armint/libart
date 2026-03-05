@@ -13,6 +13,11 @@ class BoundedReadableWrapper : public BoundedReadable {
       : limit_(limit)
       , source_(source_) {}
 
+   BoundedReadableWrapper(BoundedReadableWrapper&&) = default;
+   BoundedReadableWrapper& operator=(BoundedReadableWrapper&&) = delete;
+   BoundedReadableWrapper(const BoundedReadableWrapper&) = delete;
+   BoundedReadableWrapper& operator=(const BoundedReadableWrapper&) = delete;
+
    using Readable::read;
    std::expected<char, Error> read() override;
    bool available() override;

@@ -17,6 +17,11 @@ class AsymmetricKeyReadable : public Readable {
       : source_(source)
       , key_(key) {}
 
+   AsymmetricKeyReadable(AsymmetricKeyReadable&&) = default;
+   AsymmetricKeyReadable& operator=(AsymmetricKeyReadable&&) = delete;
+   AsymmetricKeyReadable(const AsymmetricKeyReadable&) = delete;
+   AsymmetricKeyReadable& operator=(const AsymmetricKeyReadable&) = delete;
+
    using Readable::read;
    std::expected<char, Error> read() override;
    bool available() override;

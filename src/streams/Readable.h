@@ -151,7 +151,12 @@ class Readable {
       timeout_ = timeout;
    }
 
+   Readable() = default;
    virtual ~Readable() = default;
+   Readable(Readable&&) = default;
+   Readable& operator=(Readable&&) = default;
+   Readable(const Readable&) = default;
+   Readable& operator=(const Readable&) = default;
 
    protected:
    std::expected<char, Error> scanfRead();

@@ -4,6 +4,12 @@
 
 class RandomAccessReadable : public BoundedReadable {
    public:
+   RandomAccessReadable() = default;
+   RandomAccessReadable(RandomAccessReadable&&) = default;
+   RandomAccessReadable& operator=(RandomAccessReadable&&) = default;
+   RandomAccessReadable(const RandomAccessReadable&) = default;
+   RandomAccessReadable& operator=(const RandomAccessReadable&) = default;
+
    /**
     * Reset the stream to the provided position
     *

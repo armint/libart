@@ -14,6 +14,12 @@ class BufferedWritable : public Writable {
 
    public:
    BufferedWritable(Writable &sink, std::span<uint8_t> buffer);
+
+   BufferedWritable(BufferedWritable&&) = default;
+   BufferedWritable& operator=(BufferedWritable&&) = delete;
+   BufferedWritable(const BufferedWritable&) = delete;
+   BufferedWritable& operator=(const BufferedWritable&) = delete;
+
    std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
    std::expected<void, Error> flush() override;
    size_t getBufferIndex() const {
