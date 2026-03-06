@@ -52,6 +52,7 @@ set(CXX_DIALECT gnu)
 
 # Find all test files
 file(GLOB TEST_SOURCES
+        TestNumberUtils.cpp
         TestReadable.cpp
         TestSettings.cpp
         TestCharacterSkippingReadable.cpp
@@ -62,6 +63,7 @@ file(GLOB TEST_SOURCES
         TestBufferedWritable.cpp
         TestStringWritable.cpp
         TestPseudoRandomReadable.cpp
+        TestTfpPrintfUtils.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
