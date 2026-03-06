@@ -1,32 +1,32 @@
-#include <catch2/catch_test_macros.hpp>
+#include <doctest/doctest.h>
 #include <utils/tfp_printf.h>
 #include <cstring>
 #include <limits>
 #include <art_types.h>
 
-TEST_CASE("int_to_string - Basic functionality", "[tfp_printf_utils]") {
+TEST_CASE("int_to_string - Basic functionality [tfp_printf_utils]") {
     char bf[65];
     
-    SECTION("Positive integer") {
+    SUBCASE("Positive integer") {
         int_to_string(123, bf, sizeof(bf));
         CHECK(std::strcmp(bf, "123") == 0);
     }
     
-    SECTION("Negative integer") {
+    SUBCASE("Negative integer") {
         int_to_string(-456, bf, sizeof(bf));
         CHECK(std::strcmp(bf, "-456") == 0);
     }
     
-    SECTION("Zero") {
+    SUBCASE("Zero") {
         int_to_string(0, bf, sizeof(bf));
         CHECK(std::strcmp(bf, "0") == 0);
     }
 }
 
-TEST_CASE("int_to_string - Edge cases", "[tfp_printf_utils]") {
+TEST_CASE("int_to_string - Edge cases [tfp_printf_utils]") {
     char bf[65];
 
-    SECTION("Minimum value") {
+    SUBCASE("Minimum value") {
         big_int_t min_val = std::numeric_limits<big_int_t>::min();
         int_to_string(min_val, bf, sizeof(bf));
         if (sizeof(big_int_t) == 4) {
@@ -36,13 +36,13 @@ TEST_CASE("int_to_string - Edge cases", "[tfp_printf_utils]") {
         }
     }
 
-    SECTION("Buffer too small") {
+    SUBCASE("Buffer too small") {
         int res = int_to_string(12345, bf, 4);
         CHECK(res == -1);
     }
 }
 
-TEST_CASE("string_to_int - Basic functionality", "[tfp_printf_utils]") {
+TEST_CASE("string_to_int - Basic functionality [tfp_printf_utils]") {
     int num;
     const char* src = "23abc";
     char next = string_to_int('1', &src, 10, &num);
@@ -52,7 +52,7 @@ TEST_CASE("string_to_int - Basic functionality", "[tfp_printf_utils]") {
     CHECK(std::strcmp(src, "bc") == 0);
 }
 
-TEST_CASE("string_to_int - Overflow", "[tfp_printf_utils]") {
+TEST_CASE("string_to_int - Overflow [tfp_printf_utils]") {
     int num;
     // 2147483647 is MAX_INT (32-bit)
     const char* src = "147483648"; 
@@ -61,31 +61,31 @@ TEST_CASE("string_to_int - Overflow", "[tfp_printf_utils]") {
     CHECK(num == std::numeric_limits<int>::max());
 }
 
-TEST_CASE("unsigned_int_to_string - Basic functionality", "[tfp_printf_utils]") {
+TEST_CASE("unsigned_int_to_string - Basic functionality [tfp_printf_utils]") {
     char bf[65];
     
-    SECTION("Base 10") {
+    SUBCASE("Base 10") {
         unsigned_int_to_string(123, 10, 0, bf, sizeof(bf));
         CHECK(std::strcmp(bf, "123") == 0);
     }
     
-    SECTION("Base 16") {
+    SUBCASE("Base 16") {
         unsigned_int_to_string(0xABC, 16, 0, bf, sizeof(bf));
         CHECK(std::strcmp(bf, "abc") == 0);
         unsigned_int_to_string(0xABC, 16, 1, bf, sizeof(bf));
         CHECK(std::strcmp(bf, "ABC") == 0);
     }
     
-    SECTION("Base 2") {
+    SUBCASE("Base 2") {
         unsigned_int_to_string(10, 2, 0, bf, sizeof(bf));
         CHECK(std::strcmp(bf, "1010") == 0);
     }
 }
 
-TEST_CASE("unsigned_int_to_string - Edge cases", "[tfp_printf_utils]") {
+TEST_CASE("unsigned_int_to_string - Edge cases [tfp_printf_utils]") {
     char bf[65];
 
-    SECTION("Maximum value") {
+    SUBCASE("Maximum value") {
         big_uint_t max_val = std::numeric_limits<big_uint_t>::max();
         unsigned_int_to_string(max_val, 10, 0, bf, sizeof(bf));
         if (sizeof(big_uint_t) == 4) {
@@ -95,7 +95,7 @@ TEST_CASE("unsigned_int_to_string - Edge cases", "[tfp_printf_utils]") {
         }
     }
 
-    SECTION("Buffer too small") {
+    SUBCASE("Buffer too small") {
         int res = unsigned_int_to_string(12345, 10, 0, bf, 4);
         CHECK(res == -1);
     }

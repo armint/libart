@@ -35,12 +35,13 @@
 
 typedef void (*putcf)(void *, char);
 
-int unsigned_int_to_string(big_uint_t num, int base, int uc, char *bf, int bf_size) {
+int unsigned_int_to_string(big_uint_t num, int base, int use_uppercase, char *bf, int bf_size) {
    int n = 0;
    big_uint_t d = 1;
    while(num / d >= (big_uint_t)base) {
       big_uint_t next_d = d * base;
-      if (next_d < d) break; // Overflow of d
+      if(next_d < d)
+         break; // Overflow of d
       d = next_d;
    }
    while(d != 0) {
@@ -48,8 +49,8 @@ int unsigned_int_to_string(big_uint_t num, int base, int uc, char *bf, int bf_si
       num %= d;
       d /= (big_uint_t)base;
       if(n || dgt > 0 || d == 0) {
-         if (n < bf_size - 1) {
-            *bf++ = dgt + (dgt < 10 ? '0' : (uc ? 'A' : 'a') - 10);
+         if(n < bf_size - 1) {
+            *bf++ = dgt + (dgt < 10 ? '0' : (use_uppercase ? 'A' : 'a') - 10);
             ++n;
          } else {
             *bf = 0;
@@ -64,20 +65,21 @@ int unsigned_int_to_string(big_uint_t num, int base, int uc, char *bf, int bf_si
 int int_to_string(big_int_t num, char *bf, int bf_size) {
    int written = 0;
    if(num < 0) {
-      if (written < bf_size - 1) {
+      if(written < bf_size - 1) {
          *bf++ = '-';
          written++;
       } else {
          return -1;
       }
       big_uint_t unum;
-      if (num == std::numeric_limits<big_int_t>::min()) {
-          unum = (big_uint_t)std::numeric_limits<big_int_t>::max() + 1;
+      if(num == std::numeric_limits<big_int_t>::min()) {
+         unum = (big_uint_t)std::numeric_limits<big_int_t>::max() + 1;
       } else {
-          unum = (big_uint_t)-num;
+         unum = (big_uint_t)-num;
       }
       int res = unsigned_int_to_string(unum, 10, 0, bf, bf_size - written);
-      if (res < 0) return -1;
+      if(res < 0)
+         return -1;
       return written + res;
    }
    return unsigned_int_to_string((big_uint_t)num, 10, 0, bf, bf_size);
@@ -103,18 +105,18 @@ char string_to_int(char ch, const char **src, int base, int *nump) {
       if(digit >= base)
          break;
       big_uint_t next_num = num * (big_uint_t)base + (big_uint_t)digit;
-      if (next_num < num) {
-          num = (big_uint_t)std::numeric_limits<int>::max();
+      if(next_num < num) {
+         num = (big_uint_t)std::numeric_limits<int>::max();
       } else {
-          num = next_num;
+         num = next_num;
       }
       ch = *p++;
    }
    *src = p;
-   if (num > (big_uint_t)std::numeric_limits<int>::max()) {
-       *nump = std::numeric_limits<int>::max();
+   if(num > (big_uint_t)std::numeric_limits<int>::max()) {
+      *nump = std::numeric_limits<int>::max();
    } else {
-       *nump = (int)num;
+      *nump = (int)num;
    }
    return ch;
 }
@@ -175,20 +177,25 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          switch(ch) {
          case 0:
             goto abort;
-         case 'u': {
-#if defined(LIBART_ENABLE_64BIT)
-            if(ll) {
-               unsigned_int_to_string(va_arg(va, uint64_t), 10, 0, bf, sizeof(bf));
-            } else {
-#else
-            {
-#endif
-               unsigned_int_to_string(va_arg(va, uint32_t), 10, 0, bf, sizeof(bf));
+         case 'p':
+            lz = 1;
+            minChars = 8;
+            // Fall through
+         case 'u':
+         case 'b':
+         case 'x':
+         case 'X': {
+            bool upperCase = false;
+            unsigned int base = 10;
+            if(ch == 'b') {
+               base = 2;
+            } else if(ch != 'u') {
+               base = 16;
             }
-            putchw(putp, putf, minChars, lz, bf);
-            break;
-         }
-         case 'b': {
+            if(ch == 'X') {
+               upperCase = true;
+            }
+
 #if defined(LIBART_ENABLE_64BIT)
             if(ll) {
                unsigned_int_to_string(va_arg(va, uint64_t), 2, 0, bf, sizeof(bf));
@@ -196,7 +203,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
 #else
             {
 #endif
-               unsigned_int_to_string(va_arg(va, uint32_t), 2, 0, bf, sizeof(bf));
+               unsigned_int_to_string(va_arg(va, uint32_t), base, upperCase, bf, sizeof(bf));
             }
             putchw(putp, putf, minChars, lz, bf);
             break;
@@ -216,25 +223,6 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             putchw(putp, putf, minChars, lz, bf);
             break;
          }
-         case 'p':
-            // Pointer
-            lz = 1;
-            minChars = 8;
-         // Fall through
-         case 'x':
-         // Fall through
-         case 'X':
-#if defined(LIBART_ENABLE_64BIT)
-            if(ll) {
-               unsigned_int_to_string(va_arg(va, big_uint_t), 16, (ch == 'X'), bf, sizeof(bf));
-            } else {
-#else
-         {
-#endif
-               unsigned_int_to_string(va_arg(va, uint32_t), 16, (ch == 'X'), bf, sizeof(bf));
-            }
-            putchw(putp, putf, minChars, lz, bf);
-            break;
          case 'c':
             putf(putp, (char)(va_arg(va, int)));
             break;

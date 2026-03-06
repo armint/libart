@@ -18,7 +18,7 @@ std::expected<char, Readable::Error> HexReadable::read() {
    }
 
    auto val = (strchr1 - digits) * 16 + (strchr2 - digits);
-   return val;
+   return static_cast<char>(val);
 }
 
 bool HexReadable::available() {

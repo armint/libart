@@ -1,9 +1,8 @@
-#include <catch2/catch_all.hpp>
-#include <catch2/catch_test_macros.hpp>
+#include <doctest/doctest.h>
 #include <streams/PseudoRandomReadable.h>
 #include <vector>
 
-TEST_CASE("[PseudoRandomReadable] Determinism", "[PseudoRandomReadable]") {
+TEST_CASE("[PseudoRandomReadable] Determinism [PseudoRandomReadable]") {
    PseudoRandomReadable prr1(12345);
    PseudoRandomReadable prr2(12345);
 
@@ -16,7 +15,7 @@ TEST_CASE("[PseudoRandomReadable] Determinism", "[PseudoRandomReadable]") {
    }
 }
 
-TEST_CASE("[PseudoRandomReadable] Different seeds", "[PseudoRandomReadable]") {
+TEST_CASE("[PseudoRandomReadable] Different seeds [PseudoRandomReadable]") {
    PseudoRandomReadable prr1(12345);
    PseudoRandomReadable prr2(54321);
 
@@ -34,7 +33,7 @@ TEST_CASE("[PseudoRandomReadable] Different seeds", "[PseudoRandomReadable]") {
    REQUIRE(different);
 }
 
-TEST_CASE("[PseudoRandomReadable] available() is always true", "[PseudoRandomReadable]") {
+TEST_CASE("[PseudoRandomReadable] available() is always true [PseudoRandomReadable]") {
    PseudoRandomReadable prr(12345);
    REQUIRE(prr.available() == true);
    for (int i = 0; i < 100; ++i) {
@@ -43,7 +42,7 @@ TEST_CASE("[PseudoRandomReadable] available() is always true", "[PseudoRandomRea
    }
 }
 
-TEST_CASE("[PseudoRandomReadable] Sequence consistency", "[PseudoRandomReadable]") {
+TEST_CASE("[PseudoRandomReadable] Sequence consistency [PseudoRandomReadable]") {
    PseudoRandomReadable prr(0xDEADBEEF);
    std::vector<uint8_t> bytes;
    for (int i = 0; i < 8; ++i) {
@@ -57,7 +56,7 @@ TEST_CASE("[PseudoRandomReadable] Sequence consistency", "[PseudoRandomReadable]
    }
 }
 
-TEST_CASE("[PseudoRandomReadable] Byte order", "[PseudoRandomReadable]") {
+TEST_CASE("[PseudoRandomReadable] Byte order [PseudoRandomReadable]") {
    PseudoRandomReadable prr(12345);
    pcg::pcg32 rng(12345, 1);
    

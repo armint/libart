@@ -1,10 +1,11 @@
+#include <optional>
 #include <algorithm>
 #include <array>
-#include <catch2/catch_test_macros.hpp>
+#include <doctest/doctest.h>
 #include <cstdint>
 #include <cstring>
 #include <span>
-#include <vector>
+#include <etl/vector.h>
 
 #include "../src/utils/IBMCRC16Digest.h"
 #include "../src/utils/IBMCRC16FastDigest.h"
@@ -17,15 +18,15 @@ static uint16_t digest_value(Digest &d) {
    return *reinterpret_cast<uint16_t *>(out.data());
 }
 
-TEST_CASE("IBMCRC16Digest and IBMCRC16FastDigest produce identical digests (basic cases)", "[crc16]") {
+TEST_CASE("IBMCRC16Digest and IBMCRC16FastDigest produce identical digests (basic cases) [crc16]") {
    IBMCRC16Digest slow{};     // default: polynomial 0xA001, init 0xFFFF
    IBMCRC16FastDigest fast{}; // default: init 0xFFFF
 
-   SECTION("Empty input") {
+   SUBCASE("Empty input") {
       REQUIRE(digest_value(slow) == digest_value(fast));
    }
 
-   SECTION("Known short message: 123456789") {
+   SUBCASE("Known short message: 123456789") {
       const char *msg = "123456789";
       std::span<const uint8_t> data{ reinterpret_cast<const uint8_t *>(msg), strlen(msg) };
       slow.update(data);
@@ -35,7 +36,7 @@ TEST_CASE("IBMCRC16Digest and IBMCRC16FastDigest produce identical digests (basi
       REQUIRE(s == f);
    }
 
-   SECTION("Binary data with zeros and high bits") {
+   SUBCASE("Binary data with zeros and high bits") {
       const std::array<uint8_t, 10> data{ 0x00, 0xFF, 0x01, 0x80, 0x7F, 0x55, 0xAA, 0x10, 0x20, 0x30 };
       slow.update(data);
       fast.update(data);
@@ -43,13 +44,12 @@ TEST_CASE("IBMCRC16Digest and IBMCRC16FastDigest produce identical digests (basi
    }
 }
 
-TEST_CASE("IBMCRC16Digest and IBMCRC16FastDigest produce identical digests (chunked updates)", "[crc16]") {
+TEST_CASE("IBMCRC16Digest and IBMCRC16FastDigest produce identical digests (chunked updates) [crc16]") {
    IBMCRC16Digest slow{};
    IBMCRC16FastDigest fast{};
 
    // Prepare a moderately sized buffer with varying values
-   std::vector<uint8_t> data;
-   data.reserve(256);
+   etl::vector<uint8_t, 256> data;
    for(int i = 0; i < 256; ++i) {
       data.push_back(static_cast<uint8_t>((i * 37) ^ (i >> 1))); // pseudo-random-ish pattern
    }

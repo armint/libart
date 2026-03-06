@@ -10,6 +10,7 @@ class DigestReadable : public Readable {
 
    public:
    DigestReadable(Readable &source, Digest &digest);
+   using Readable::read;
    std::expected<char, Error> read() override;
    bool available() override;
    [[nodiscard]] Digest &digest() const {

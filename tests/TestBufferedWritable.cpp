@@ -1,14 +1,14 @@
-#include <catch2/catch_all.hpp>
-#include <catch2/catch_test_macros.hpp>
+#include <optional>
+#include <doctest/doctest.h>
 
 #include <streams/ArrayWritable.h>
 #include <streams/BufferedWritable.h>
-#include <vector>
+#include <etl/vector.h>
 
 // Mock sink to track writes and flushes
 class MockSink : public Writable {
    public:
-   std::vector<uint8_t> recordedData;
+   etl::vector<uint8_t, 128> recordedData;
    size_t flushCount = 0;
    std::optional<Error> writeError;
    std::optional<Error> flushError;
@@ -16,6 +16,9 @@ class MockSink : public Writable {
    std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
       if(writeError) {
          return std::unexpected(*writeError);
+      }
+      if(recordedData.size() + data.size() > recordedData.max_size()) {
+         return std::unexpected(Overflow);
       }
       recordedData.insert(recordedData.end(), data.begin(), data.end());
       return data.size();
@@ -30,7 +33,7 @@ class MockSink : public Writable {
    }
 };
 
-TEST_CASE("[BufferedWritable] basic buffering", "[BufferedWritable]") {
+TEST_CASE("[BufferedWritable] basic buffering [BufferedWritable]") {
    MockSink sink;
    uint8_t buffer[4];
    BufferedWritable bw(sink, buffer);
@@ -42,7 +45,7 @@ TEST_CASE("[BufferedWritable] basic buffering", "[BufferedWritable]") {
    REQUIRE(bw.getBufferIndex() == 3);
 }
 
-TEST_CASE("[BufferedWritable] full buffer write", "[BufferedWritable]") {
+TEST_CASE("[BufferedWritable] full buffer write [BufferedWritable]") {
    MockSink sink;
    uint8_t buffer[4];
    BufferedWritable bw(sink, buffer);
@@ -53,7 +56,7 @@ TEST_CASE("[BufferedWritable] full buffer write", "[BufferedWritable]") {
    REQUIRE(bw.getBufferIndex() == 0);
 }
 
-TEST_CASE("[BufferedWritable] large write across buffer boundaries", "[BufferedWritable]") {
+TEST_CASE("[BufferedWritable] large write across buffer boundaries [BufferedWritable]") {
    MockSink sink;
    uint8_t buffer[4];
    BufferedWritable bw(sink, buffer);
@@ -69,7 +72,7 @@ TEST_CASE("[BufferedWritable] large write across buffer boundaries", "[BufferedW
    REQUIRE(memcmp(sink.recordedData.data(), "0123456789", 10) == 0);
 }
 
-TEST_CASE("[BufferedWritable] partial write remains in buffer", "[BufferedWritable]") {
+TEST_CASE("[BufferedWritable] partial write remains in buffer [BufferedWritable]") {
    MockSink sink;
    uint8_t buffer[10];
    BufferedWritable bw(sink, buffer);
@@ -84,7 +87,7 @@ TEST_CASE("[BufferedWritable] partial write remains in buffer", "[BufferedWritab
    REQUIRE(bw.getBufferIndex() == 0);
 }
 
-TEST_CASE("[BufferedWritable] flush behavior", "[BufferedWritable]") {
+TEST_CASE("[BufferedWritable] flush behavior [BufferedWritable]") {
    MockSink sink;
    uint8_t buffer[4];
    BufferedWritable bw(sink, buffer);
@@ -101,26 +104,26 @@ TEST_CASE("[BufferedWritable] flush behavior", "[BufferedWritable]") {
    REQUIRE(bw.getBufferIndex() == 0);
 }
 
-TEST_CASE("[BufferedWritable] error propagation", "[BufferedWritable]") {
+TEST_CASE("[BufferedWritable] error propagation [BufferedWritable]") {
    MockSink sink;
    uint8_t buffer[4];
    BufferedWritable bw(sink, buffer);
 
-   SECTION("write error") {
+   SUBCASE("write error") {
       sink.writeError = Writable::CouldNotWrite;
       auto res = bw.write(std::span(reinterpret_cast<const uint8_t *>("abcd"), 4));
       REQUIRE_FALSE(res);
       REQUIRE(res.error() == Writable::CouldNotWrite);
    }
 
-   SECTION("flush error") {
+   SUBCASE("flush error") {
       sink.flushError = Writable::CouldNotWrite;
       auto res = bw.flush();
       REQUIRE_FALSE(res);
       REQUIRE(res.error() == Writable::CouldNotWrite);
    }
 
-   SECTION("partial write on flush") {
+   SUBCASE("partial write on flush") {
       class PartialSink : public Writable {
          public:
          std::expected<size_t, Error> write(std::span<const uint8_t> data) override {

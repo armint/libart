@@ -1,11 +1,11 @@
-#include <catch2/catch_all.hpp>
-#include <catch2/catch_test_macros.hpp>
+#include <optional>
+#include <doctest/doctest.h>
+#include <string_view>
 
 #include <streams/StringWritable.h>
-#include <string>
 #include <cstring>
 
-TEST_CASE("[StringWritable] normal write", "[StringWritable]") {
+TEST_CASE("[StringWritable] normal write [StringWritable]") {
     char buf[10];
     StringWritable sw(buf);
 
@@ -13,10 +13,10 @@ TEST_CASE("[StringWritable] normal write", "[StringWritable]") {
     REQUIRE(res);
     REQUIRE(res.value() == 5);
     REQUIRE(sw.position() == 5);
-    REQUIRE(std::string(buf, 5) == "Hello");
+    REQUIRE(std::string_view(buf, 5) == "Hello");
 }
 
-TEST_CASE("[StringWritable] exactly fill buffer", "[StringWritable]") {
+TEST_CASE("[StringWritable] exactly fill buffer [StringWritable]") {
     char buf[6];
     StringWritable sw(buf);
 
@@ -27,10 +27,10 @@ TEST_CASE("[StringWritable] exactly fill buffer", "[StringWritable]") {
     REQUIRE(res.value() == 6);
     REQUIRE(sw.position() == 6);
     REQUIRE(buf[5] == '\0');
-    REQUIRE(std::string(buf) == "Hello");
+    REQUIRE(std::string_view(buf) == "Hello");
 }
 
-TEST_CASE("[StringWritable] overflow buffer", "[StringWritable]") {
+TEST_CASE("[StringWritable] overflow buffer [StringWritable]") {
     char buf[5];
     StringWritable sw(buf);
 
@@ -40,10 +40,10 @@ TEST_CASE("[StringWritable] overflow buffer", "[StringWritable]") {
     REQUIRE(res.error() == Writable::Overflow);
     REQUIRE(sw.position() == 5);
     REQUIRE(buf[4] == '\0');
-    REQUIRE(std::string(buf) == "Hell");
+    REQUIRE(std::string_view(buf) == "Hell");
 }
 
-TEST_CASE("[StringWritable] multiple writes", "[StringWritable]") {
+TEST_CASE("[StringWritable] multiple writes [StringWritable]") {
     char buf[10];
     StringWritable sw(buf);
 
@@ -53,16 +53,16 @@ TEST_CASE("[StringWritable] multiple writes", "[StringWritable]") {
     sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Def"), 3));
     REQUIRE(sw.position() == 6);
     
-    REQUIRE(std::string(buf, 6) == "AbcDef");
+    REQUIRE(std::string_view(buf, 6) == "AbcDef");
 
     // Fill it up
     sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("GHIJ"), 4));
     REQUIRE(sw.position() == 10);
     REQUIRE(buf[9] == '\0');
-    REQUIRE(std::string(buf) == "AbcDefGHI");
+    REQUIRE(std::string_view(buf) == "AbcDefGHI");
 }
 
-TEST_CASE("[StringWritable] printf", "[StringWritable]") {
+TEST_CASE("[StringWritable] printf [StringWritable]") {
     char buf[20];
     memset(buf, 'X', sizeof(buf));
     StringWritable sw(buf);
@@ -73,11 +73,11 @@ TEST_CASE("[StringWritable] printf", "[StringWritable]") {
     // So here we don't expect it to be zero-terminated by StringWritable itself
     // if it's not full.
     REQUIRE(sw.position() == 8);
-    REQUIRE(std::string(buf, 8) == "Val: 123");
+    REQUIRE(std::string_view(buf, 8) == "Val: 123");
     REQUIRE(buf[8] == 'X'); // Should still be 'X' because it wasn't full
 }
 
-TEST_CASE("[StringWritable] ensure zero-termination when full", "[StringWritable]") {
+TEST_CASE("[StringWritable] ensure zero-termination when full [StringWritable]") {
     char buf[5];
     memset(buf, 'X', sizeof(buf));
     StringWritable sw(buf);
@@ -89,5 +89,5 @@ TEST_CASE("[StringWritable] ensure zero-termination when full", "[StringWritable
     sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("E"), 1));
     REQUIRE(sw.position() == 5);
     REQUIRE(buf[4] == '\0'); // Now it's full, should be zero-terminated (overwriting 'E')
-    REQUIRE(std::string(buf) == "ABCD");
+    REQUIRE(std::string_view(buf) == "ABCD");
 }

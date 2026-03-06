@@ -46,18 +46,25 @@ std::expected<size_t, Writable::Error> ModbusSlave::CRCWritable::writeCRC() {
 }
 
 std::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t function, uint8_t exceptionCode) {
+   enableRx(false);
+   enableTx(true);
    CRCWritable w(writable_);
    uint8_t header[3] = { address_, static_cast<uint8_t>(function | 0x80), exceptionCode };
    auto res = w.write(header);
    if(!res) {
+      writable_.flush();
+      enableTx(false);
+      enableRx(true);
       return res;
    }
    auto count = res.value();
    res = w.writeCRC();
+   writable_.flush();
+   enableTx(false);
+   enableRx(true);
    if(!res) {
       return res;
    }
-   writable_.flush();
    return count + 2;
 }
 
@@ -93,19 +100,27 @@ bool ModbusSlave::handleReadRegisters(ModbusSlave::CRCReadable &r, const uint8_t
       return true;
    }
    if(!isBroadcast) {
+      enableRx(false);
+      enableTx(true);
       CRCWritable w(writable_);
       uint8_t header[3] = { address_, function, static_cast<uint8_t>(count * 2) };
       auto res = w.write(header);
       if(!res) {
          // TODO logging!
+         writable_.flush();
+         enableTx(false);
+         enableRx(true);
          return true;
       }
       if(cb(cb_arg, start, count, w) == Result::AddressOutOfRange) {
          writeException(function, ResultCode::ILLEGAL_ADDRESS);
+         // writeException handles the enables
          return true;
       }
       w.writeCRC();
       writable_.flush();
+      enableTx(false);
+      enableRx(true);
 
       if(!res) {
          // TODO logging!
@@ -175,6 +190,8 @@ bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, cons
    }
    // Send a response
    if(!isBroadcast) {
+      enableRx(false);
+      enableTx(true);
       CRCWritable w(writable_);
       uint8_t response[6];
       response[0] = address_;
@@ -187,10 +204,12 @@ bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, cons
       } else {
          res = w.writeCRC();
       }
+      writable_.flush();
+      enableTx(false);
+      enableRx(true);
       if(!res) {
          // TODO LOGGING!
       }
-      writable_.flush();
    }
    return true;
 }
@@ -236,9 +255,6 @@ bool ModbusSlave::poll() {
    if(rxAddress != address_ && !isBroadcast) {
       // Still consume frame payload+CRC to keep stream in sync, but ignore it
       read_state_ = ReadState::WaitForIdle;
-      if(rxEnabler_) {
-         enableRx(false);
-      }
       return false;
    }
 

@@ -64,7 +64,7 @@ extern "C" {
 #endif
 void tfp_format(void *putp, void (*putf)(void *, char), const char *fmt, va_list va);
 
-int unsigned_int_to_string(big_uint_t num, int base, int uc, char *bf, int bf_size);
+int unsigned_int_to_string(big_uint_t num, int base, int use_uppercase, char *bf, int bf_size);
 int int_to_string(big_int_t num, char *bf, int bf_size);
 char string_to_int(char ch, const char **src, int base, int *nump);
 int get_numeric_value(char ch);

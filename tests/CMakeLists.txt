@@ -2,11 +2,12 @@ cmake_minimum_required(VERSION 3.20)
 Include(FetchContent)
 
 FetchContent_Declare(
-        Catch2
-        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG v3.11.0
+        doctest
+        GIT_REPOSITORY https://github.com/doctest/doctest.git
+        GIT_TAG v2.4.12
 )
-FetchContent_MakeAvailable(Catch2)
+set(DOCTEST_NO_INSTALL ON)
+FetchContent_MakeAvailable(doctest)
 
 FetchContent_Declare(ArduinoJson
         GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git
@@ -40,15 +41,12 @@ if (NOT DEFINED PROJECT_NAME)
     project(libArT-tests C CXX)
 endif ()
 
-list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
-
-# Unit libArT-tests
-include(CTest)
-include(Catch)
-
 # Compiler settings
 set(CMAKE_CXX_STANDARD 23)
 set(CXX_DIALECT gnu)
+
+# Unit libArT-tests
+include(CTest)
 
 # Find all test files
 file(GLOB TEST_SOURCES
@@ -62,6 +60,9 @@ file(GLOB TEST_SOURCES
         TestWritable.cpp
         TestBufferedWritable.cpp
         TestStringWritable.cpp
+        TestTfpPrintf.cpp
+        TestAsymmetricKey.cpp
+        TestSHA256.cpp
         TestPseudoRandomReadable.cpp
         TestTfpPrintfUtils.cpp
 )
@@ -76,6 +77,8 @@ file(GLOB TO_TEST_SOURCES
         ../src/streams/BufferedWritable.cpp
         ../src/streams/DigestReadable.cpp
         ../src/streams/DigestWritable.cpp
+        ../src/streams/AsymmetricKeyWritable.cpp
+        ../src/streams/AsymmetricKeyReadable.cpp
         ../src/modbus/ModbusMaster.cpp
         ../src/modbus/ModbusSlave.cpp
         ../src/settings/SettingBase.cpp
@@ -91,6 +94,7 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/streamutils.cpp
         ../src/utils/IBMCRC16Digest.cpp
         ../src/utils/IBMCRC16FastDigest.cpp
+        ../src/utils/SHA256Digest.cpp
 )
 
 
@@ -110,10 +114,12 @@ target_link_libraries(libArT-tests PUBLIC micro-os-plus::diag-trace)
 
 # ETL
 target_link_libraries(libArT-tests PRIVATE etl::etl)
-# Catch2
-target_link_libraries(libArT-tests PUBLIC Catch2::Catch2WithMain)
+# doctest
+target_link_libraries(libArT-tests PRIVATE doctest::doctest)
+target_include_directories(libArT-tests PRIVATE ${doctest_SOURCE_DIR})
 # JSON library
 target_link_libraries(libArT-tests PUBLIC ArduinoJson)
 
 # Discover all libArT-tests
-catch_discover_tests(libArT-tests)
+# catch_discover_tests(libArT-tests)
+# doctest_discover_tests(libArT-tests) # requires include(doctest)

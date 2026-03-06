@@ -1,12 +1,12 @@
-#include <catch2/catch_all.hpp>
-#include <catch2/catch_test_macros.hpp>
+#include <optional>
+#include <doctest/doctest.h>
+#include <string_view>
 
 #include <streams/ArrayWritable.h>
 #include <streams/Writable.h>
 #include <utils/endian.h>
 
 #include <cstdarg>
-#include <vector>
 
 // A small mock Writable to control flush behavior and optionally inject write errors
 class MockWritable : public Writable {
@@ -63,7 +63,7 @@ class MockWritable : public Writable {
    std::optional<Error> _flushError{};
 };
 
-TEST_CASE("[Writable] write single byte and span", "[Writable]") {
+TEST_CASE("[Writable] write single byte and span [Writable]") {
    uint8_t buf[8]{};
    ArrayWritable w{ std::span<uint8_t>(buf) };
 
@@ -83,7 +83,7 @@ TEST_CASE("[Writable] write single byte and span", "[Writable]") {
    REQUIRE(buf[3] == 'D');
 }
 
-TEST_CASE("[Writable] writeNumber endianness for integers", "[Writable]") {
+TEST_CASE("[Writable] writeNumber endianness for integers [Writable]") {
    // Use a buffer large enough to test different sizes
    uint8_t buf[16]{};
    ArrayWritable w{ std::span<uint8_t>(buf) };
@@ -130,7 +130,7 @@ TEST_CASE("[Writable] writeNumber endianness for integers", "[Writable]") {
    }
 }
 
-TEST_CASE("[Writable] printf and println formatting and counts", "[Writable]") {
+TEST_CASE("[Writable] printf and println formatting and counts [Writable]") {
    uint8_t buf[128]{};
    MockWritable w{ std::span<uint8_t>(buf) };
 
@@ -139,7 +139,7 @@ TEST_CASE("[Writable] printf and println formatting and counts", "[Writable]") {
    REQUIRE(r);
    const char *expected = "Hello World -7 0xabcd"; // tfp_printf emits lowercase hex
    REQUIRE(r.value() == strlen(expected));
-   REQUIRE(std::string(reinterpret_cast<char *>(buf), r.value()) == expected);
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buf), r.value()) == expected);
 
    // println without format (CRLF)
    auto r2 = w.println();
@@ -154,20 +154,20 @@ TEST_CASE("[Writable] printf and println formatting and counts", "[Writable]") {
    REQUIRE(r3);
    const char *expectedLine = "val:42\r\n";
    REQUIRE(r3.value() == strlen(expectedLine));
-   REQUIRE(std::string(reinterpret_cast<char *>(buf) + start, r3.value()) == expectedLine);
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buf) + start, r3.value()) == expectedLine);
 }
 
-TEST_CASE("[Writable] printf_va path (va_list helper)", "[Writable]") {
+TEST_CASE("[Writable] printf_va path (va_list helper) [Writable]") {
    uint8_t buf[64]{};
    MockWritable w{ std::span<uint8_t>(buf) };
 
    // Use printf_va to drive the va_list-based implementation internally
    auto r = w.printf_va("%s %u", "abc", 99u);
    REQUIRE(r);
-   REQUIRE(std::string(reinterpret_cast<char *>(buf), r.value()) == std::string("abc 99"));
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buf), r.value()) == "abc 99");
 }
 
-TEST_CASE("[Writable] error propagation on overflow during printf", "[Writable]") {
+TEST_CASE("[Writable] error propagation on overflow during printf [Writable]") {
    // Use a tiny buffer so that printf cannot fit
    uint8_t buf[4]{};
    ArrayWritable w{ std::span<uint8_t>(buf) };
@@ -176,7 +176,7 @@ TEST_CASE("[Writable] error propagation on overflow during printf", "[Writable]"
    REQUIRE(res.error() == Writable::Overflow);
 }
 
-TEST_CASE("[Writable] flush success and failure", "[Writable]") {
+TEST_CASE("[Writable] flush success and failure [Writable]") {
    uint8_t buf[8]{};
    MockWritable w{ std::span<uint8_t>(buf) };
 
