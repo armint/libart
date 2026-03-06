@@ -124,7 +124,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
          }
          if(isdigit(formatChar)) {
             // read a number from the format string, store in maxChars, and read the next char
-            formatChar = a2i(formatChar, &format, 10, &maxChars);
+            formatChar = string_to_int(formatChar, &format, 10, &maxChars);
          }
          if(formatChar == 'l') {
             formatChar = *(format++);
@@ -333,7 +333,7 @@ std::expected<big_uint_t, Readable::Error> Readable::readUnsigned(std::optional<
          return r;
       }
       // Convert the character into a possible digit
-      int digit = a2d(r.value());
+      int digit = get_numeric_value(r.value());
       if(digit >= base || digit < 0) {
          // Not a digit (anymore)
          break;

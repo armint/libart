@@ -50,6 +50,7 @@ include(CTest)
 
 # Find all test files
 file(GLOB TEST_SOURCES
+        TestNumberUtils.cpp
         TestReadable.cpp
         TestSettings.cpp
         TestCharacterSkippingReadable.cpp
@@ -62,10 +63,13 @@ file(GLOB TEST_SOURCES
         TestTfpPrintf.cpp
         TestAsymmetricKey.cpp
         TestSHA256.cpp
+        TestPseudoRandomReadable.cpp
+        TestTfpPrintfUtils.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
         ../src/streams/Readable.cpp
+        ../src/streams/PseudoRandomReadable.cpp
         ../src/streams/ArrayWritable.cpp
         ../src/streams/CountingWritableWrapper.cpp
         ../src/streams/CharacterSkippingReadable.cpp

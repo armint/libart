@@ -6,7 +6,6 @@
 systems are cortex-m or risc-v microcontrollers running bare-metal or rtos-based (freertos or µOS++ IIIe).
 
 ## Core Components
-
 - **Streams**: `Readable` and `Writable` interfaces for various data sources/sinks (Array, String, Digest, etc.).
 - **Logging**: A flexible logging system (`LogManager`, `Logger`).
 - **Modbus**: Implementations for Modbus Master and Slave.
