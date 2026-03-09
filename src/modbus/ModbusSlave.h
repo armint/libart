@@ -10,7 +10,7 @@
 #include "streams/DigestWritable.h"
 #include "streams/Readable.h"
 #include "streams/Writable.h"
-#include "utils/IBMCRC16Digest.h"
+#include "utils/CrcDigest.h"
 
 namespace modbus {
 
@@ -19,7 +19,7 @@ class ModbusSlave {
    class CRCReadable : public DigestReadable {
       public:
       using Readable::read;
-      IBMCRC16Digest digest_;
+      ModbusCrc digest_;
       explicit CRCReadable(Readable &source)
          : DigestReadable(source, digest_) {}
       bool readCRCAndValidate();
@@ -27,7 +27,7 @@ class ModbusSlave {
 
    class CRCWritable : public DigestWritable {
       public:
-      IBMCRC16Digest digest_;
+      ModbusCrc digest_;
       explicit CRCWritable(Writable &sink)
          : DigestWritable(sink, digest_) {}
       std::expected<size_t, Error> writeCRC();
