@@ -1,10 +1,18 @@
 #pragma once
+#include "Formatter.h"
 #include "Level.h"
 #include "LogManager.h"
 
 #include <utility>
 
 namespace logging {
+
+#ifdef LOGGING_DISABLED
+inline constexpr bool enabled = false;
+#else
+inline constexpr bool enabled = true;
+#endif
+
 class Logger {
    protected:
    const char *topic_;
@@ -26,7 +34,8 @@ class Logger {
    }
 
    [[nodiscard]] bool isEnabled(Level level) const noexcept {
-      return static_cast<int>(level) >= static_cast<int>(level_);
+      return static_cast<int>(level) >= static_cast<int>(level_) &&
+             static_cast<int>(level) >= static_cast<int>(LogManager::getInstance().global_level());
    }
 
    template <typename... Args>
@@ -62,21 +71,32 @@ class Logger {
    protected:
    template <typename... Args>
    void vlog(Level level, const char *format, Args &&...args) {
+      if constexpr(!enabled) {
+         return;
+      }
+
       // Fast-path exit: no sink or level disabled
       auto *sink = LogManager::getInstance().sink();
       if(!sink || !isEnabled(level)) {
          return;
       }
 
-      const char *levelStr = levelStrings[static_cast<int>(level)];
-      if(topic_) {
-         (void)sink->printf("[%s][%s] ", topic_, levelStr);
+      auto *formatter = LogManager::getInstance().formatter();
+      if(formatter) {
+         (void)formatter->formatPrefix(*sink, level, topic_);
+         (void)sink->printf(format, std::forward<Args>(args)...);
+         (void)formatter->formatSuffix(*sink);
       } else {
-         (void)sink->printf("[%s] ", levelStr);
+         const char *levelStr = levelStrings[static_cast<int>(level)];
+         if(topic_) {
+            (void)sink->printf("[%s][%s] ", topic_, levelStr);
+         } else {
+            (void)sink->printf("[%s] ", levelStr);
+         }
+         (void)sink->printf(format, std::forward<Args>(args)...);
+         (void)sink->println();
+         (void)sink->flush();
       }
-      (void)sink->printf(format, std::forward<Args>(args)...);
-      (void)sink->println();
-      (void)sink->flush();
    }
 };
 } // namespace logging
@@ -92,6 +112,16 @@ class Logger {
 
 #define LOG__LEVEL_VALUE(L) static_cast<int>(L)
 #define LOG__CT_ENABLED(L) (LOG__LEVEL_VALUE(L) >= LOG__LEVEL_VALUE(LOG_COMPILED_MIN_LEVEL))
+
+#ifdef LOGGING_DISABLED
+
+#define LOG_TRACE(LOGGER, FMT, ...) ((void)0)
+#define LOG_DEBUG(LOGGER, FMT, ...) ((void)0)
+#define LOG_INFO(LOGGER, FMT, ...) ((void)0)
+#define LOG_WARN(LOGGER, FMT, ...) ((void)0)
+#define LOG_ERROR(LOGGER, FMT, ...) ((void)0)
+
+#else
 
 #define LOG_TRACE(LOGGER, FMT, ...)                                                                                    \
    do {                                                                                                                \
@@ -127,3 +157,5 @@ class Logger {
          (LOGGER).error((FMT), ##__VA_ARGS__);                                                                         \
       }                                                                                                                \
    } while(0)
+
+#endif
