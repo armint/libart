@@ -22,7 +22,7 @@ class Readable {
 
    public:
    using Error = int32_t;
-   enum { EndOfStream = 0, ReadError, Timeout, NotFound, NumberTooBig };
+   enum { EndOfStream = 0, ReadError, Timeout, NotFound, NumberTooBig, EndOfMessage, Break };
 
    /**
     * Read a single character from this stream. This method should be implemented by all derived classes
