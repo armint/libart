@@ -22,20 +22,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(etl)
 
-FetchContent_Declare(utils-lists
-        GIT_REPOSITORY ssh://git@gitlab.vandertogt.org:3022/ht-oven/utils-lists-xpack.git
-        GIT_TAG d63335a397d548a48365fb2107bf59a4714f50cd
-)
-
-FetchContent_MakeAvailable(utils-lists)
-
-FetchContent_Declare(diag-trace
-        GIT_REPOSITORY https://github.com/micro-os-plus/diag-trace-xpack.git
-        GIT_TAG v4.2.0
-)
-
-FetchContent_MakeAvailable(diag-trace)
-
 if (NOT DEFINED PROJECT_NAME)
     # We are not in a subproject
     project(libArT-tests C CXX)
@@ -109,8 +95,6 @@ target_include_directories(libArT-tests PRIVATE
 # strlcpy support
 #target_compile_options(libArT-tests PUBLIC -include "bsd/string.h")
 target_link_libraries(libArT-tests PUBLIC bsd)
-target_link_libraries(libArT-tests PUBLIC micro-os-plus::utils-lists)
-target_link_libraries(libArT-tests PUBLIC micro-os-plus::diag-trace)
 
 # ETL
 target_link_libraries(libArT-tests PRIVATE etl::etl)
