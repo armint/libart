@@ -14,15 +14,24 @@ inline constexpr bool enabled = true;
 #endif
 
 class Logger {
+   friend class ::LogManager;
+
    protected:
    const char *topic_;
    Level level_ = Level::Info;
+   Logger *nextLogger_ = nullptr;
 
    public:
    static inline constexpr const char *levelStrings[] = { "TRACE", "DEBUG", "INFO", "WARN", "ERROR" };
 
    explicit Logger(const char *topic)
-      : topic_(topic) {}
+      : topic_(topic) {
+      LogManager::getInstance().registerLogger(this);
+   }
+
+   [[nodiscard]] const char *topic() const noexcept {
+      return topic_;
+   }
 
    // Logging level control
    void set_level(Level level) noexcept {

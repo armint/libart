@@ -51,6 +51,7 @@ file(GLOB TEST_SOURCES
         TestSHA256.cpp
         TestPseudoRandomReadable.cpp
         TestTfpPrintfUtils.cpp
+        TestLogging.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
@@ -67,8 +68,10 @@ file(GLOB TO_TEST_SOURCES
         ../src/streams/AsymmetricKeyReadable.cpp
         ../src/modbus/ModbusMaster.cpp
         ../src/modbus/ModbusSlave.cpp
+        ../src/logging/LogManager.cpp
         ../src/settings/SettingBase.cpp
         ../src/settings/SettingsManager.cpp
+        ../src/utils/lists.cpp
 )
 
 file(GLOB ADDITIONAL_SOURCES
