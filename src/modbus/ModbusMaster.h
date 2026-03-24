@@ -5,7 +5,7 @@
 #include "streams/DigestWritable.h"
 #include "streams/Writable.h"
 #include "utils/CrcDigest.h"
-#include "utils/systick.h"
+#include "utils/timestamp.h"
 
 #include <streams/DigestReadable.h>
 

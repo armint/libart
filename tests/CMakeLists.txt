@@ -75,7 +75,7 @@ file(GLOB TO_TEST_SOURCES
 )
 
 file(GLOB ADDITIONAL_SOURCES
-        stubs/systick.cpp
+        stubs/timestamp.cpp
         stubs/delay.cpp
         ../src/utils/tfp_printf.cpp
         ../src/utils/JSONReader.cpp
