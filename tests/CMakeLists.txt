@@ -52,6 +52,10 @@ file(GLOB TEST_SOURCES
         TestPseudoRandomReadable.cpp
         TestTfpPrintfUtils.cpp
         TestLogging.cpp
+        storage/TestFatFile.cpp
+        storage/TestFatDir.cpp
+        storage/TestFatFileReadable.cpp
+        storage/TestFatFileWritable.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
@@ -72,6 +76,10 @@ file(GLOB TO_TEST_SOURCES
         ../src/settings/SettingBase.cpp
         ../src/settings/SettingsManager.cpp
         ../src/utils/lists.cpp
+        ../src/storage/FatFileSystem.cpp
+        ../src/storage/FatFile.cpp
+        ../src/storage/FatDir.cpp
+        ../src/storage/diskio.cpp
 )
 
 file(GLOB ADDITIONAL_SOURCES
@@ -84,6 +92,7 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/IBMCRC16Digest.cpp
         ../src/utils/IBMCRC16FastDigest.cpp
         ../src/utils/SHA256Digest.cpp
+        RamDisk.h
 )
 
 
@@ -92,6 +101,9 @@ add_executable(libArT-tests ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOUR
 target_compile_options(libArT-tests PUBLIC -O0 -g)
 target_include_directories(libArT-tests PRIVATE
         ../src
+        ../src/storage
+        .
+        ../src/storage/fatfs
         include
 )
 

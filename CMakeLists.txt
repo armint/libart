@@ -1,7 +1,7 @@
 # ---------- ESP-IDF component build ----------
 if(ESP_PLATFORM)
     idf_component_register(
-            SRC_DIRS "src" "src/logging" "src/modbus" "src/settings" "src/streams" "src/utils"
+            SRC_DIRS "src" "src/logging" "src/modbus" "src/settings" "src/streams" "src/utils" "src/storage" "src/storage/fatfs"
             INCLUDE_DIRS "src"
     )
 
