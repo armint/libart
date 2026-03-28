@@ -52,6 +52,9 @@ file(GLOB TEST_SOURCES
         TestPseudoRandomReadable.cpp
         TestTfpPrintfUtils.cpp
         TestLogging.cpp
+        TestKTypeThermocoupleSensor.cpp
+        TestSTypeThermocoupleSensor.cpp
+        TestCompensatedThermocoupleSensor.cpp
         storage/TestFatFile.cpp
         storage/TestFatDir.cpp
         storage/TestFatFileReadable.cpp
@@ -80,6 +83,8 @@ file(GLOB TO_TEST_SOURCES
         ../src/storage/FatFile.cpp
         ../src/storage/FatDir.cpp
         ../src/storage/diskio.cpp
+        ../src/sensors/ThermocoupleSensor.cpp
+        ../src/sensors/CompensatedThermocoupleSensor.cpp
 )
 
 file(GLOB ADDITIONAL_SOURCES
