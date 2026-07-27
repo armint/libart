@@ -143,5 +143,8 @@ configure_package_config_file(
 install(FILES
         ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfig.cmake
         ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfigVersion.cmake
+        ${CMAKE_CURRENT_LIST_DIR}/cmake/BuildConfig.cmake
+        ${CMAKE_CURRENT_LIST_DIR}/cmake/output_files.cmake
+        ${CMAKE_CURRENT_LIST_DIR}/cmake/generate_version.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/art-core)
 
