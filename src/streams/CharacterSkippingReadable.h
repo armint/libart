@@ -13,6 +13,12 @@ class CharacterSkippingReadable : public Readable {
 
    public:
    CharacterSkippingReadable(Readable &source, const char *charactersToSkip);
+
+   CharacterSkippingReadable(CharacterSkippingReadable&&) = default;
+   CharacterSkippingReadable& operator=(CharacterSkippingReadable&&) = delete;
+   CharacterSkippingReadable(const CharacterSkippingReadable&) = delete;
+   CharacterSkippingReadable& operator=(const CharacterSkippingReadable&) = delete;
+
    virtual std::expected<char, Error> read() override;
    virtual bool available() override;
 };

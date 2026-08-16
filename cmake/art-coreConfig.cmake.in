@@ -7,15 +7,21 @@ include(CMakeFindDependencyMacro)
 # Dependencies providing the following targets used by art-core:
 #   - etl::etl (package: etl)
 #   - ArduinoJson (package: ArduinoJson)
-#   - micro-os-plus::utils-lists (package: micro-os-plus-utils-lists)
-#   - micro-os-plus::diag-trace (package: micro-os-plus-diag-trace)
 find_dependency(etl)
 find_dependency(ArduinoJson)
-find_dependency(micro-os-plus-diag-trace)
-find_dependency(micro-os-plus-utils-lists)
 
 # Load the exported targets for this package (installed by install(EXPORT ...))
 include("${CMAKE_CURRENT_LIST_DIR}/art-core-targets.cmake")
+
+# Make shared CMake utility functions available to consumers immediately.
+# After find_package(art-core), callers can use:
+#   art_setup_build_config()  — from BuildConfig.cmake
+#   ADD_DUMP_TARGET()         — from output_files.cmake
+#   PRINT_SIZE_OF_TARGETS()   — from output_files.cmake
+# generate_version.cmake is installed alongside these files but must be
+# included explicitly because it executes git describe at configure time.
+include("${CMAKE_CURRENT_LIST_DIR}/BuildConfig.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/output_files.cmake")
 
 # Optional: ensure all requested components are found (if you define any)
 check_required_components(art-core)

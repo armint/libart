@@ -1,8 +1,7 @@
-#include <optional>
 #include <chrono>
-#include <utils/systick.h>
+#include <utils/timestamp.h>
 
-timestamp_t getSysTick() {
+timestamp_t timestamp_in_ms() {
    using namespace std::chrono;
    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }

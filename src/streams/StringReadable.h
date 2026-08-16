@@ -19,4 +19,9 @@ class StringReadable : public ArrayReadable {
    public:
    explicit StringReadable(const char *str)
       : ArrayReadable(std::span(reinterpret_cast<const uint8_t *>(str), strlen(str))) {}
+
+   StringReadable(StringReadable&&) = default;
+   StringReadable& operator=(StringReadable&&) = default;
+   StringReadable(const StringReadable&) = default;
+   StringReadable& operator=(const StringReadable&) = default;
 };

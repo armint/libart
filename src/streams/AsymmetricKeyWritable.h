@@ -17,6 +17,11 @@ class AsymmetricKeyWritable : public Writable {
       : key_(key)
       , sink_(sink) {}
 
+   AsymmetricKeyWritable(AsymmetricKeyWritable&&) = default;
+   AsymmetricKeyWritable& operator=(AsymmetricKeyWritable&&) = delete;
+   AsymmetricKeyWritable(const AsymmetricKeyWritable&) = delete;
+   AsymmetricKeyWritable& operator=(const AsymmetricKeyWritable&) = delete;
+
    using Writable::write;
    std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
    std::expected<void, Error> flush() override;

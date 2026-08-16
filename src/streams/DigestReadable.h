@@ -10,6 +10,12 @@ class DigestReadable : public Readable {
 
    public:
    DigestReadable(Readable &source, Digest &digest);
+
+   DigestReadable(DigestReadable&&) = default;
+   DigestReadable& operator=(DigestReadable&&) = delete;
+   DigestReadable(const DigestReadable&) = delete;
+   DigestReadable& operator=(const DigestReadable&) = delete;
+
    using Readable::read;
    std::expected<char, Error> read() override;
    bool available() override;

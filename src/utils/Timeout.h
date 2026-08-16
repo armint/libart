@@ -1,7 +1,7 @@
 #pragma once
 
 #include <limits>
-#include <utils/systick.h>
+#include <utils/timestamp.h>
 
 namespace utils {
 /**
@@ -25,7 +25,12 @@ class Timeout {
     * @param time The duration of the timeout in system ticks.
     */
    explicit Timeout(duration_t time)
-      : _deadline(getSysTick() + time) {}
+      : _deadline(timestamp_in_ms() + time) {}
+
+   Timeout(const Timeout &) = default;
+   Timeout(Timeout &&) = default;
+   Timeout &operator=(const Timeout &) = default;
+   Timeout &operator=(Timeout &&) = default;
 
    /**
     * @brief Checks if the timeout has expired.
@@ -33,7 +38,7 @@ class Timeout {
     * @return Returns true if the current system tick is past the deadline, false otherwise.
     */
    inline bool hasExpired() const {
-      return _deadline <= getSysTick();
+      return _deadline <= timestamp_in_ms();
    }
 
    /**
@@ -42,7 +47,7 @@ class Timeout {
     * @return The number of system ticks remaining until the deadline. Returns 0 if the timeout has expired.
     */
    inline duration_t getDurationLeft() const {
-      timestamp_t now = getSysTick();
+      timestamp_t now = timestamp_in_ms();
       if(_deadline <= now) {
          return 0;
       }

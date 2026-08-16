@@ -12,6 +12,11 @@ class ArrayReadable : public RandomAccessReadable {
    explicit ArrayReadable(std::span<const uint8_t> data)
       : data(data) {}
 
+   ArrayReadable(ArrayReadable&&) = default;
+   ArrayReadable& operator=(ArrayReadable&&) = default;
+   ArrayReadable(const ArrayReadable&) = default;
+   ArrayReadable& operator=(const ArrayReadable&) = default;
+
    std::expected<char, Error> read() override {
       if(index >= data.size()) {
          return std::unexpected(EndOfStream);

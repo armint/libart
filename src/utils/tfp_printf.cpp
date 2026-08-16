@@ -31,34 +31,61 @@
 #include "tfp_printf.h"
 #include <art_types.h>
 #include <cmath>
+#include <limits>
+
 typedef void (*putcf)(void *, char);
 
-static void ui2a(big_uint_t num, unsigned int base, int uc, char *bf) {
+int unsigned_int_to_string(big_uint_t num, int base, int use_uppercase, char *bf, int bf_size) {
    int n = 0;
    big_uint_t d = 1;
-   while(num / d >= base)
-      d *= base;
+   while(num / d >= (big_uint_t)base) {
+      big_uint_t next_d = d * base;
+      if(next_d < d)
+         break; // Overflow of d
+      d = next_d;
+   }
    while(d != 0) {
       uint32_t dgt = num / d;
       num %= d;
-      d /= base;
+      d /= (big_uint_t)base;
       if(n || dgt > 0 || d == 0) {
-         *bf++ = dgt + (dgt < 10 ? '0' : (uc ? 'A' : 'a') - 10);
-         ++n;
+         if(n < bf_size - 1) {
+            *bf++ = dgt + (dgt < 10 ? '0' : (use_uppercase ? 'A' : 'a') - 10);
+            ++n;
+         } else {
+            *bf = 0;
+            return -1;
+         }
       }
    }
    *bf = 0;
+   return n;
 }
 
-static void i2a(big_int_t num, char *bf) {
+int int_to_string(big_int_t num, char *bf, int bf_size) {
+   int written = 0;
    if(num < 0) {
-      num = -num;
-      *bf++ = '-';
+      if(written < bf_size - 1) {
+         *bf++ = '-';
+         written++;
+      } else {
+         return -1;
+      }
+      big_uint_t unum;
+      if(num == std::numeric_limits<big_int_t>::min()) {
+         unum = (big_uint_t)std::numeric_limits<big_int_t>::max() + 1;
+      } else {
+         unum = (big_uint_t)-num;
+      }
+      int res = unsigned_int_to_string(unum, 10, 0, bf, bf_size - written);
+      if(res < 0)
+         return -1;
+      return written + res;
    }
-   ui2a(num, 10, 0, bf);
+   return unsigned_int_to_string((big_uint_t)num, 10, 0, bf, bf_size);
 }
 
-int a2d(char ch) {
+int get_numeric_value(char ch) {
    int val = -1;
    if(ch >= '0' && ch <= '9') {
       val = ch - '0';
@@ -70,18 +97,27 @@ int a2d(char ch) {
    return val;
 }
 
-char a2i(char ch, const char **src, int base, int *nump) {
+char string_to_int(char ch, const char **src, int base, int *nump) {
    const char *p = *src;
-   int num = 0;
+   big_uint_t num = 0;
    int digit;
-   while((digit = a2d(ch)) >= 0) {
+   while((digit = get_numeric_value(ch)) >= 0) {
       if(digit >= base)
          break;
-      num = num * base + digit;
+      big_uint_t next_num = num * (big_uint_t)base + (big_uint_t)digit;
+      if(next_num < num) {
+         num = (big_uint_t)std::numeric_limits<int>::max();
+      } else {
+         num = next_num;
+      }
       ch = *p++;
    }
    *src = p;
-   *nump = num;
+   if(num > (big_uint_t)std::numeric_limits<int>::max()) {
+      *nump = std::numeric_limits<int>::max();
+   } else {
+      *nump = (int)num;
+   }
    return ch;
 }
 
@@ -112,6 +148,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          char lz = 0;
          int minChars = 0;
          int decimals = 3;
+         bool l = false;
 #if defined(LIBART_ENABLE_64BIT)
          bool ll = false;
 #endif
@@ -121,15 +158,16 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             lz = 1;
          }
          if(ch >= '0' && ch <= '9') {
-            ch = a2i(ch, &fmt, 10, &minChars);
+            ch = string_to_int(ch, &fmt, 10, &minChars);
          }
          if(ch == '.') {
             ch = *(fmt++);
             if(ch >= '0' && ch <= '9') {
-               ch = a2i(ch, &fmt, 10, &decimals);
+               ch = string_to_int(ch, &fmt, 10, &decimals);
             }
          }
          if(ch == 'l') {
+            l = true;
             ch = *(fmt++);
             if(ch == 'l') {
 #if defined(LIBART_ENABLE_64BIT)
@@ -149,21 +187,29 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 'b':
          case 'x':
          case 'X': {
+            bool upperCase = false;
             unsigned int base = 10;
             if(ch == 'b') {
                base = 2;
             } else if(ch != 'u') {
                base = 16;
             }
+            if(ch == 'X') {
+               upperCase = true;
+            }
 
 #if defined(LIBART_ENABLE_64BIT)
             if(ll) {
-               ui2a(va_arg(va, big_uint_t), base, (ch == 'X'), bf);
+               unsigned_int_to_string(va_arg(va, uint64_t), 2, upperCase, bf, sizeof(bf));
+            } else if(l) {
+               unsigned_int_to_string(va_arg(va, unsigned long), base, upperCase, bf, sizeof(bf));
             } else {
 #else
-            {
+            if(l) {
+               unsigned_int_to_string(va_arg(va, unsigned long), base, upperCase, bf, sizeof(bf));
+            } else {
 #endif
-               ui2a(va_arg(va, uint32_t), base, (ch == 'X'), bf);
+               unsigned_int_to_string(va_arg(va, uint32_t), base, upperCase, bf, sizeof(bf));
             }
             putchw(putp, putf, minChars, lz, bf);
             break;
@@ -173,12 +219,16 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 'd': {
 #if defined(LIBART_ENABLE_64BIT)
             if(ll) {
-               i2a(va_arg(va, int64_t), bf);
+               int_to_string(va_arg(va, int64_t), bf, sizeof(bf));
+            } else if(l) {
+               int_to_string(va_arg(va, long), bf, sizeof(bf));
             } else {
 #else
-            {
+            if(l) {
+               int_to_string(va_arg(va, long), bf, sizeof(bf));
+            } else {
 #endif
-               i2a(va_arg(va, int32_t), bf);
+               int_to_string(va_arg(va, int32_t), bf, sizeof(bf));
             }
             putchw(putp, putf, minChars, lz, bf);
             break;
@@ -194,12 +244,12 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             // Fall through
          case 'F': {
             float num = va_arg(va, double);
-            i2a(truncf(num), bf);
+            int_to_string(truncf(num), bf, sizeof(bf));
             putchw(putp, putf, minChars, lz, bf);
             putf(putp, '.');
             num -= truncf(num);
-            float rest = num * powf(10.0f, decimals);
-            i2a(truncf(rest), bf);
+            float rest = num * powf(10.0f, (float)decimals);
+            int_to_string(truncf(rest), bf, sizeof(bf));
             putchw(putp, putf, decimals, 1, bf);
          } break;
 #endif

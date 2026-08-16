@@ -12,6 +12,12 @@ class CountingWritableWrapper : public CountingWritable {
    public:
    CountingWritableWrapper(Writable &writable)
       : _sink(writable) {}
+
+   CountingWritableWrapper(CountingWritableWrapper&&) = default;
+   CountingWritableWrapper& operator=(CountingWritableWrapper&&) = delete;
+   CountingWritableWrapper(const CountingWritableWrapper&) = delete;
+   CountingWritableWrapper& operator=(const CountingWritableWrapper&) = delete;
+
    virtual std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
 
    virtual size_t written() override {

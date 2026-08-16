@@ -1,9 +1,49 @@
+# ---------- ESP-IDF component build ----------
+if(ESP_PLATFORM)
+    idf_component_register(
+            SRC_DIRS "src" "src/logging" "src/modbus" "src/settings" "src/streams" "src/utils" "src/storage" "src/storage/fatfs"
+            INCLUDE_DIRS "src"
+    )
+
+    # Fetch header-only dependencies without processing their CMakeLists.txt,
+    # because they call idf_component_register() themselves which conflicts
+    # with our component registration above.
+    Include(FetchContent)
+
+    FetchContent_Declare(
+            etl
+            GIT_REPOSITORY https://github.com/ETLCPP/etl.git
+            GIT_TAG 20.41.7
+    )
+    FetchContent_GetProperties(etl)
+    if(NOT etl_POPULATED)
+        FetchContent_Populate(etl)
+    endif()
+
+    FetchContent_Declare(ArduinoJson
+            GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git
+            GIT_TAG v6.21.5
+    )
+    FetchContent_GetProperties(ArduinoJson)
+    if(NOT arduinojson_POPULATED)
+        FetchContent_Populate(ArduinoJson)
+    endif()
+
+    target_include_directories(${COMPONENT_LIB} PUBLIC
+            ${etl_SOURCE_DIR}/include
+            ${arduinojson_SOURCE_DIR}/src
+    )
+
+    return()
+endif()
+
+# ---------- Standalone CMake build (STM32, native tests, etc.) ----------
 cmake_minimum_required(VERSION 3.20)
 
 Include(FetchContent)
 
 # Extract git revision
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate_version.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/generate_version.cmake")
 
 project(art-core VERSION 0.1.0 LANGUAGES C CXX ASM)
 
@@ -103,5 +143,8 @@ configure_package_config_file(
 install(FILES
         ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfig.cmake
         ${CMAKE_CURRENT_BINARY_DIR}/art-coreConfigVersion.cmake
+        ${CMAKE_CURRENT_LIST_DIR}/cmake/BuildConfig.cmake
+        ${CMAKE_CURRENT_LIST_DIR}/cmake/output_files.cmake
+        ${CMAKE_CURRENT_LIST_DIR}/cmake/generate_version.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/art-core)
 

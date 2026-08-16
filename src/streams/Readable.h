@@ -22,7 +22,7 @@ class Readable {
 
    public:
    using Error = int32_t;
-   enum { EndOfStream = 0, ReadError, Timeout, NotFound, NumberTooBig };
+   enum { EndOfStream = 0, ReadError, Timeout, NotFound, NumberTooBig, EndOfMessage, Break };
 
    /**
     * Read a single character from this stream. This method should be implemented by all derived classes
@@ -151,7 +151,12 @@ class Readable {
       timeout_ = timeout;
    }
 
+   Readable() = default;
    virtual ~Readable() = default;
+   Readable(Readable&&) = default;
+   Readable& operator=(Readable&&) = default;
+   Readable(const Readable&) = default;
+   Readable& operator=(const Readable&) = default;
 
    protected:
    std::expected<char, Error> scanfRead();

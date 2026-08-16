@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <expected>
+#include <limits>
 #include <span>
+#include <string_view>
 #include <type_traits>
 
 enum class DecodeError { NumberTooBig, MalformedInput };
@@ -147,4 +149,75 @@ std::expected<size_t, DecodeError> decodeRLEZigZag(T &dest, std::span<uint8_t> s
       }
    }
    return result;
+}
+
+/**
+ * @brief Converts a string to an integer with a given base.
+ *
+ * @tparam T The integer type to convert to.
+ * @param str The string view to convert.
+ * @param base The base to use for conversion (default is 10).
+ * @return A std::expected containing the converted value or a DecodeError.
+ */
+template <typename T>
+std::expected<T, DecodeError> stringToInteger(std::string_view str, int base = 10) {
+   if(str.empty()) {
+      return std::unexpected(DecodeError::MalformedInput);
+   }
+
+   bool negative = false;
+   size_t i = 0;
+
+   if constexpr(std::is_signed_v<T>) {
+      if(str[0] == '-') {
+         negative = true;
+         i = 1;
+      } else if(str[0] == '+') {
+         i = 1;
+      }
+   }
+
+   if(i == str.size()) {
+      return std::unexpected(DecodeError::MalformedInput);
+   }
+
+   using UnsignedT = std::make_unsigned_t<T>;
+   UnsignedT result = 0;
+   for(; i < str.size(); ++i) {
+      uint8_t digit;
+      if(str[i] >= '0' && str[i] <= '9') {
+         digit = str[i] - '0';
+      } else if(str[i] >= 'a' && str[i] <= 'z') {
+         digit = str[i] - 'a' + 10;
+      } else if(str[i] >= 'A' && str[i] <= 'Z') {
+         digit = str[i] - 'A' + 10;
+      } else {
+         return std::unexpected(DecodeError::MalformedInput);
+      }
+
+      if(digit >= base) {
+         return std::unexpected(DecodeError::MalformedInput);
+      }
+
+      if(__builtin_mul_overflow(result, static_cast<UnsignedT>(base), &result)) {
+         return std::unexpected(DecodeError::NumberTooBig);
+      }
+      if(__builtin_add_overflow(result, static_cast<UnsignedT>(digit), &result)) {
+         return std::unexpected(DecodeError::NumberTooBig);
+      }
+   }
+
+   if constexpr(std::is_signed_v<T>) {
+      if(negative) {
+         if(result > static_cast<UnsignedT>(std::numeric_limits<T>::max()) + 1) {
+            return std::unexpected(DecodeError::NumberTooBig);
+         }
+         return static_cast<T>(~result + 1);
+      }
+      if(result > static_cast<UnsignedT>(std::numeric_limits<T>::max())) {
+         return std::unexpected(DecodeError::NumberTooBig);
+      }
+   }
+
+   return static_cast<T>(result);
 }

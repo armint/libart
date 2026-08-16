@@ -11,6 +11,11 @@ class HexReadable : public Readable {
    explicit HexReadable(Readable &source)
       : source_(source) {}
 
+   HexReadable(HexReadable&&) = default;
+   HexReadable& operator=(HexReadable&&) = delete;
+   HexReadable(const HexReadable&) = delete;
+   HexReadable& operator=(const HexReadable&) = delete;
+
    std::expected<char, Error> read() override;
    bool available() override;
 };

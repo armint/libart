@@ -29,6 +29,10 @@ class Writable {
    public:
    Writable() = default;
    virtual ~Writable() = default;
+   Writable(Writable&&) = default;
+   Writable& operator=(Writable&&) = default;
+   Writable(const Writable&) = default;
+   Writable& operator=(const Writable&) = default;
 
    /** Write an amount of data to this writable
     * \param data the data to write

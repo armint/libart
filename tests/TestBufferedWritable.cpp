@@ -122,4 +122,22 @@ TEST_CASE("[BufferedWritable] error propagation [BufferedWritable]") {
       REQUIRE_FALSE(res);
       REQUIRE(res.error() == Writable::CouldNotWrite);
    }
+
+   SUBCASE("partial write on flush") {
+      class PartialSink : public Writable {
+         public:
+         std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
+            return data.size() / 2;
+         }
+         std::expected<void, Error> flush() override {
+            return {};
+         }
+      } pSink;
+      BufferedWritable bw2(pSink, buffer);
+      bw2.write(std::span(reinterpret_cast<const uint8_t *>("ab"), 2));
+      REQUIRE(bw2.getBufferIndex() == 2);
+      auto res = bw2.flush();
+      REQUIRE_FALSE(res);
+      REQUIRE(bw2.getBufferIndex() == 1);
+   }
 }

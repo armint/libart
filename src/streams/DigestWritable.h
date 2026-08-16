@@ -14,6 +14,11 @@ class DigestWritable : public Writable {
       : digest_(digest)
       , sink_(sink) {}
 
+   DigestWritable(DigestWritable&&) = default;
+   DigestWritable& operator=(DigestWritable&&) = delete;
+   DigestWritable(const DigestWritable&) = delete;
+   DigestWritable& operator=(const DigestWritable&) = delete;
+
    using Writable::write;
    std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
    std::expected<void, Error> flush() override;
