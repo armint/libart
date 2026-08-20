@@ -55,6 +55,7 @@ file(GLOB TEST_SOURCES
         TestKTypeThermocoupleSensor.cpp
         TestSTypeThermocoupleSensor.cpp
         TestCompensatedThermocoupleSensor.cpp
+        TestRingBuffer.cpp
         storage/TestFatFile.cpp
         storage/TestFatDir.cpp
         storage/TestFatFileReadable.cpp
