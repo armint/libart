@@ -176,6 +176,14 @@ struct Index {
 // constructed by the caller. Only the single-element producer/consumer
 // operations are exposed here; bulk and zero-copy access still require the
 // concrete type.
+//
+// Cost of inheriting this: every RingBuffer<T, Size, IndexT> instantiation
+// gains a vtable pointer (sizeof grows accordingly) plus one indirect call
+// per single-element operation when accessed through RingBufferBase&/*. Each
+// distinct instantiation also emits its own vtable and out-of-line virtual
+// destructor, which is flash cost beyond the usual per-instantiation template
+// code bloat. Skip this base class (use the concrete RingBuffer directly) if
+// neither the non-templated call site nor the vtable/flash cost is wanted.
 // ---------------------------------------------------------------------------
 template <typename T>
 class RingBufferBase {
