@@ -168,12 +168,46 @@ struct Index {
 } // namespace rb_detail
 
 // ---------------------------------------------------------------------------
+// Type-erased interface over a RingBuffer<T, Size, IndexT> of any Size.
+//
+// Lets a consumer (e.g. a driver whose class shouldn't itself be templated
+// on a buffer size) hold a reference/pointer to "a ring buffer of T" while
+// the concrete RingBuffer, with its compile-time capacity, is owned and
+// constructed by the caller. Only the single-element producer/consumer
+// operations are exposed here; bulk and zero-copy access still require the
+// concrete type.
+// ---------------------------------------------------------------------------
+template <typename T>
+class RingBufferBase {
+public:
+    virtual ~RingBufferBase() = default;
+
+    [[nodiscard]] virtual bool try_push(const T& value) noexcept = 0;
+    [[nodiscard]] virtual bool try_pop(T& out) noexcept = 0;
+
+    /**
+     * Read the front element without removing it.
+     * @return true if an element was available.
+     */
+    [[nodiscard]] virtual bool peek(T& out) const noexcept = 0;
+
+    [[nodiscard]] virtual std::size_t size() const noexcept = 0;
+    [[nodiscard]] virtual bool empty() const noexcept = 0;
+    [[nodiscard]] virtual bool full() const noexcept = 0;
+
+    /**
+     * Reset to empty. Only safe when neither producer nor consumer is active.
+     */
+    virtual void clear() noexcept = 0;
+};
+
+// ---------------------------------------------------------------------------
 // SPSC Ring Buffer
 // ---------------------------------------------------------------------------
 template <typename T,
           std::size_t Size,
           typename IndexT = typename rb_detail::default_index<Size>::type>
-class RingBuffer {
+class RingBuffer : public RingBufferBase<T> {
     static_assert((Size & (Size - 1)) == 0, "Size must be a power of two");
     static_assert(Size >= 2, "Size must be at least 2");
     static_assert(std::is_trivially_copyable<T>::value,
@@ -207,7 +241,7 @@ public:
      * Try to push one element. Non-blocking, ISR-safe.
      * @return true if pushed, false if full.
      */
-    [[nodiscard]] bool try_push(const T& value) noexcept {
+    [[nodiscard]] bool try_push(const T& value) noexcept override {
         const std::size_t head = head_.load_relaxed();
         const std::size_t next = (head + 1u) & mask_;
         if (next == tail_.load_acquire()) return false;   // full
@@ -284,7 +318,7 @@ public:
      * Try to pop one element. Non-blocking, ISR-safe.
      * @return true if popped, false if empty.
      */
-    [[nodiscard]] bool try_pop(T& out) noexcept {
+    [[nodiscard]] bool try_pop(T& out) noexcept override {
         const std::size_t tail = tail_.load_relaxed();
         if (tail == head_.load_acquire()) return false;   // empty
         out = buffer_[tail];
@@ -296,7 +330,7 @@ public:
      * Read the front element without removing it.
      * @return true if an element was available.
      */
-    [[nodiscard]] bool peek(T& out) const noexcept {
+    [[nodiscard]] bool peek(T& out) const noexcept override {
         const std::size_t tail = tail_.load_relaxed();
         if (tail == head_.load_acquire()) return false;
         out = buffer_[tail];
@@ -369,7 +403,7 @@ public:
     // never over-estimates available data. Safe to call from either side, but
     // treat the result as a lower bound on what you can do.
 
-    [[nodiscard]] std::size_t size() const noexcept {
+    [[nodiscard]] std::size_t size() const noexcept override {
         const std::size_t h = head_.load_acquire();
         const std::size_t t = tail_.load_acquire();
         return (h - t) & mask_;
@@ -383,11 +417,11 @@ public:
         return capacity() - size();
     }
 
-    [[nodiscard]] bool empty() const noexcept {
+    [[nodiscard]] bool empty() const noexcept override {
         return head_.load_acquire() == tail_.load_acquire();
     }
 
-    [[nodiscard]] bool full() const noexcept {
+    [[nodiscard]] bool full() const noexcept override {
         const std::size_t h = head_.load_acquire();
         return ((h + 1u) & mask_) == tail_.load_acquire();
     }
@@ -396,7 +430,7 @@ public:
      * Reset to empty. Only safe when neither producer nor consumer is active
      * — i.e. with the relevant interrupt disabled.
      */
-    void clear() noexcept {
+    void clear() noexcept override {
         head_.store_relaxed(0);
         tail_.store_relaxed(0);
     }
