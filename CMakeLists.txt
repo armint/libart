@@ -76,15 +76,11 @@ file(GLOB_RECURSE PROJECT_SOURCES
 )
 
 # src/os/ integrates with a specific RTOS (currently µOS++ IIIe) rather than
-# being portable across every consumer of this library (e.g. ESP-IDF, which
-# never defines micro-os-plus::iii). Exclude it from the general glob, and
-# only add it back once the RTOS target it needs actually exists.
+# being portable across every consumer of this library, so it's excluded
+# from art-core itself entirely (see below).
 file(GLOB_RECURSE OS_INTEGRATION_SOURCES "${PROJECT_SOURCE_DIR}/src/os/*.c" "${PROJECT_SOURCE_DIR}/src/os/*.cpp")
 if(OS_INTEGRATION_SOURCES)
     list(REMOVE_ITEM PROJECT_SOURCES ${OS_INTEGRATION_SOURCES})
-endif()
-if(TARGET micro-os-plus::iii)
-    list(APPEND PROJECT_SOURCES ${OS_INTEGRATION_SOURCES})
 endif()
 
 file(GLOB_RECURSE PROJECT_HEADERS
@@ -125,12 +121,29 @@ if (TARGET art-build-config)
     target_link_libraries(art-core PRIVATE $<BUILD_INTERFACE:art-build-config>)
 endif ()
 
-# Needed to compile src/os/ above, when present. PRIVATE and build-interface
-# only: consumers that want os::trace:: themselves already link µOS++
-# directly, and this must not appear in the installed package's exported
-# dependencies.
-if (TARGET micro-os-plus::iii)
-    target_link_libraries(art-core PRIVATE $<BUILD_INTERFACE:micro-os-plus::iii>)
+# src/os/MicroOsPlusTraceSink.cpp, as an INTERFACE library rather than part
+# of art-core itself: micro-os-plus::iii is itself an INTERFACE library
+# (its RTOS kernel sources are compiled fresh into whichever target links
+# it), so linking it PRIVATE into art-core would compile the entire RTOS
+# kernel as part of art-core too — which then needs headers (e.g.
+# cmsis_device.h, from a board support package like system-stm32) that
+# art-core has no business depending on. Consumers that want the trace
+# sink link art::os-trace themselves (in addition to art::core and
+# micro-os-plus::iii), so the sink's TU compiles as part of a target that
+# already has that visibility, the same way micro-os-plus::iii's own
+# sources do. Only defined once micro-os-plus::iii exists, which requires
+# the superproject to add_subdirectory() µOS++ before this library.
+if (TARGET micro-os-plus::iii AND OS_INTEGRATION_SOURCES)
+    add_library(art-os-trace-interface INTERFACE)
+    target_sources(art-os-trace-interface INTERFACE ${OS_INTEGRATION_SOURCES})
+    target_link_libraries(art-os-trace-interface INTERFACE art::core micro-os-plus::iii)
+    if (TARGET micro-os-plus::architecture)
+        target_link_libraries(art-os-trace-interface INTERFACE micro-os-plus::architecture)
+    endif ()
+    add_library(art::os-trace ALIAS art-os-trace-interface)
+elseif (OS_INTEGRATION_SOURCES)
+    message(STATUS "art-core: micro-os-plus::iii not yet defined; art::os-trace not created "
+                    "(add_subdirectory() micro-os-plus before this library if it's expected to be)")
 endif ()
 
 # Ensure the exported interface does not pull non-exported targets.
