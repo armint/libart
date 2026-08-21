@@ -16,7 +16,11 @@
  *
  * write() is called with arbitrary byte chunks, not necessarily whole
  * lines, so bytes are buffered here and only forwarded to the logger
- * once a line terminator is seen.
+ * once a line terminator is seen. The critical section around the buffer
+ * only guarantees memory safety under concurrent/ISR callers, not line
+ * atomicity: a write() from one context can still observe the buffer
+ * mid-append from another, concatenating onto whatever's already there
+ * before the next newline. Acceptable for diagnostic trace output.
  */
 
 #if defined(OS_USE_OS_APP_CONFIG_H)
