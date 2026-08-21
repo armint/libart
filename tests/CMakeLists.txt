@@ -74,6 +74,8 @@ file(GLOB TO_TEST_SOURCES
         ../src/streams/DigestWritable.cpp
         ../src/streams/AsymmetricKeyWritable.cpp
         ../src/streams/AsymmetricKeyReadable.cpp
+        ../src/streams/FatFileReadable.cpp
+        ../src/streams/FatFileWritable.cpp
         ../src/modbus/ModbusMaster.cpp
         ../src/modbus/ModbusSlave.cpp
         ../src/logging/LogManager.cpp
@@ -84,6 +86,9 @@ file(GLOB TO_TEST_SOURCES
         ../src/storage/FatFile.cpp
         ../src/storage/FatDir.cpp
         ../src/storage/diskio.cpp
+        ../src/storage/fatfs/ff.c
+        ../src/storage/fatfs/ffsystem.c
+        ../src/storage/fatfs/ffunicode.c
         ../src/sensors/ThermocoupleSensor.cpp
         ../src/sensors/CompensatedThermocoupleSensor.cpp
 )
@@ -105,6 +110,9 @@ file(GLOB ADDITIONAL_SOURCES
 add_executable(libArT-tests ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
 
 target_compile_options(libArT-tests PUBLIC -O0 -g)
+# Needed for FatFile::MockState/FatFile::state, used by
+# storage/TestFatFileReadable.cpp and storage/TestFatFileWritable.cpp.
+target_compile_definitions(libArT-tests PRIVATE UNIT_TESTING)
 target_include_directories(libArT-tests PRIVATE
         ../src
         ../src/storage

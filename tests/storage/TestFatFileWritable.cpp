@@ -1,10 +1,10 @@
 #include "storage/FatFile.h"
 #include "streams/FatFileWritable.h"
-#include <catch2/catch_test_macros.hpp>
+#include <doctest/doctest.h>
 #include <vector>
 
 
-TEST_CASE("FatFileWritable buffering and flush", "[FatFileWritable]") {
+TEST_CASE("[FatFileWritable] buffering and flush [FatFileWritable]") {
    FatFile::MockState mockState;
    FatFile::state = &mockState;
 
@@ -12,7 +12,7 @@ TEST_CASE("FatFileWritable buffering and flush", "[FatFileWritable]") {
    uint8_t bufferMem[10];
    FatFileWritable writable(file, bufferMem);
 
-   SECTION("Data is buffered and not written until buffer is full") {
+   SUBCASE("Data is buffered and not written until buffer is full") {
       uint8_t data[] = { 1, 2, 3 };
       auto res = writable.write(data);
       REQUIRE(res.has_value());
@@ -20,7 +20,7 @@ TEST_CASE("FatFileWritable buffering and flush", "[FatFileWritable]") {
       CHECK(writable.position() == 3);
    }
 
-   SECTION("Flush writes buffered data") {
+   SUBCASE("Flush writes buffered data") {
       uint8_t data[] = { 1, 2, 3 };
       writable.write(data);
       auto res = writable.flush();
@@ -33,7 +33,7 @@ TEST_CASE("FatFileWritable buffering and flush", "[FatFileWritable]") {
       CHECK(mockState.syncCalled);
    }
 
-   SECTION("Reset flushes buffer") {
+   SUBCASE("Reset flushes buffer") {
       uint8_t data[] = { 1, 2, 3 };
       writable.write(data);
       writable.reset(0);
@@ -42,7 +42,7 @@ TEST_CASE("FatFileWritable buffering and flush", "[FatFileWritable]") {
       CHECK(mockState.currentPosition == 0);
    }
 
-   SECTION("Destructor flushes buffer") {
+   SUBCASE("Destructor flushes buffer") {
       {
          FatFileWritable writable2(file, bufferMem);
          uint8_t data[] = { 4, 5, 6 };

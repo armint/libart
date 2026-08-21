@@ -1,15 +1,20 @@
 #include "RamDisk.h"
 #include "storage/FatFile.h"
+#include "storage/FatFileSystem.h"
 #include "storage/fatfs/ff.h"
 #include <array>
-#include <catch2/catch_test_macros.hpp>
 #include <cstring>
+#include <doctest/doctest.h>
 #include <string_view>
 
 // ---------------------------------------------------------------------------
 // Fixture: formats and mounts a fresh FAT volume before each test case.
 // ---------------------------------------------------------------------------
 struct FsFixture {
+   // Registers RamDisk::instance() as drive 0 in FatFileSystem::devices[],
+   // which diskio.cpp's disk_*() calls route through; without this,
+   // f_mkfs()/f_mount() below fail with FR_NOT_READY.
+   FatFileSystem fatFileSystem{ RamDisk::instance() };
    FATFS fatfs{};
    uint8_t workBuf[512]{};
 
@@ -29,13 +34,13 @@ struct FsFixture {
 // ---------------------------------------------------------------------------
 // Open / existence
 // ---------------------------------------------------------------------------
-TEST_CASE("FatFile: opening a non-existent file for reading fails", "[FatFile]") {
+TEST_CASE("[FatFile] opening a non-existent file for reading fails [FatFile]") {
    FsFixture fs;
    FatFile f("0:/ghost.txt", FA_READ);
    CHECK_FALSE(f.exists());
 }
 
-TEST_CASE("FatFile: creating a new file succeeds", "[FatFile]") {
+TEST_CASE("[FatFile] creating a new file succeeds [FatFile]") {
    FsFixture fs;
    FatFile f("0:/new.txt", FA_WRITE | FA_CREATE_ALWAYS);
    CHECK(f.exists());
@@ -44,11 +49,11 @@ TEST_CASE("FatFile: creating a new file succeeds", "[FatFile]") {
 // ---------------------------------------------------------------------------
 // Write / read round-trip
 // ---------------------------------------------------------------------------
-TEST_CASE("FatFile: write then read back", "[FatFile]") {
+TEST_CASE("[FatFile] write then read back [FatFile]") {
    FsFixture fs;
    constexpr std::string_view msg = "Hello, FAT!";
 
-   SECTION("write returns byte count") {
+   SUBCASE("write returns byte count") {
       FatFile f("0:/test.txt", FA_WRITE | FA_CREATE_ALWAYS);
       REQUIRE(f.exists());
       auto result = f.write({ reinterpret_cast<const uint8_t *>(msg.data()), msg.size() });
@@ -56,7 +61,7 @@ TEST_CASE("FatFile: write then read back", "[FatFile]") {
       CHECK(*result == msg.size());
    }
 
-   SECTION("data is readable after reopen") {
+   SUBCASE("data is readable after reopen") {
       {
          FatFile f("0:/test.txt", FA_WRITE | FA_CREATE_ALWAYS);
          REQUIRE(f.exists());
@@ -73,7 +78,7 @@ TEST_CASE("FatFile: write then read back", "[FatFile]") {
    }
 }
 
-TEST_CASE("FatFile: partial reads fill the buffer with available bytes", "[FatFile]") {
+TEST_CASE("[FatFile] partial reads fill the buffer with available bytes [FatFile]") {
    FsFixture fs;
    constexpr std::string_view msg = "ABCDE";
 
@@ -107,7 +112,7 @@ TEST_CASE("FatFile: partial reads fill the buffer with available bytes", "[FatFi
 // ---------------------------------------------------------------------------
 // size() and tell()
 // ---------------------------------------------------------------------------
-TEST_CASE("FatFile: size reports bytes written", "[FatFile]") {
+TEST_CASE("[FatFile] size reports bytes written [FatFile]") {
    FsFixture fs;
 
    FatFile f("0:/sz.txt", FA_WRITE | FA_READ | FA_CREATE_ALWAYS);
@@ -119,7 +124,7 @@ TEST_CASE("FatFile: size reports bytes written", "[FatFile]") {
    CHECK(f.size() == data.size());
 }
 
-TEST_CASE("FatFile: tell tracks write position", "[FatFile]") {
+TEST_CASE("[FatFile] tell tracks write position [FatFile]") {
    FsFixture fs;
    FatFile f("0:/tell.txt", FA_WRITE | FA_CREATE_ALWAYS);
    REQUIRE(f.exists());
@@ -133,7 +138,7 @@ TEST_CASE("FatFile: tell tracks write position", "[FatFile]") {
 // ---------------------------------------------------------------------------
 // seek()
 // ---------------------------------------------------------------------------
-TEST_CASE("FatFile: seek changes read position", "[FatFile]") {
+TEST_CASE("[FatFile] seek changes read position [FatFile]") {
    FsFixture fs;
    constexpr std::string_view msg = "ABCDEFGH";
 
@@ -145,7 +150,7 @@ TEST_CASE("FatFile: seek changes read position", "[FatFile]") {
    FatFile f("0:/seek.txt", FA_READ);
    REQUIRE(f.exists());
 
-   SECTION("seek to middle") {
+   SUBCASE("seek to middle") {
       auto res = f.seek(3);
       REQUIRE(res.has_value());
       CHECK(f.tell() == 3);
@@ -156,13 +161,13 @@ TEST_CASE("FatFile: seek changes read position", "[FatFile]") {
       CHECK(ch[0] == 'D');
    }
 
-   SECTION("seek to beginning") {
+   SUBCASE("seek to beginning") {
       f.seek(5);
       f.seek(0);
       CHECK(f.tell() == 0);
    }
 
-   SECTION("seek to end equals size") {
+   SUBCASE("seek to end equals size") {
       f.seek(msg.size());
       CHECK(f.tell() == msg.size());
    }
@@ -171,7 +176,7 @@ TEST_CASE("FatFile: seek changes read position", "[FatFile]") {
 // ---------------------------------------------------------------------------
 // flush()
 // ---------------------------------------------------------------------------
-TEST_CASE("FatFile: flush returns success on open file", "[FatFile]") {
+TEST_CASE("[FatFile] flush returns success on open file [FatFile]") {
    FsFixture fs;
    FatFile f("0:/flush.txt", FA_WRITE | FA_CREATE_ALWAYS);
    REQUIRE(f.exists());
@@ -183,7 +188,7 @@ TEST_CASE("FatFile: flush returns success on open file", "[FatFile]") {
 // ---------------------------------------------------------------------------
 // Multiple files
 // ---------------------------------------------------------------------------
-TEST_CASE("FatFile: multiple files coexist on the volume", "[FatFile]") {
+TEST_CASE("[FatFile] multiple files coexist on the volume [FatFile]") {
    FsFixture fs;
 
    {

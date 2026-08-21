@@ -1,13 +1,18 @@
 #include "RamDisk.h"
 #include "storage/FatDir.h"
+#include "storage/FatFileSystem.h"
 #include "storage/fatfs/ff.h"
 #include <array>
-#include <catch2/catch_test_macros.hpp>
+#include <doctest/doctest.h>
 
 // ---------------------------------------------------------------------------
 // Fixture: formats and mounts a fresh FAT volume before each test case.
 // ---------------------------------------------------------------------------
 struct DirFsFixture {
+   // Registers RamDisk::instance() as drive 0 in FatFileSystem::devices[],
+   // which diskio.cpp's disk_*() calls route through; without this,
+   // f_mkfs()/f_mount() below fail with FR_NOT_READY.
+   FatFileSystem fatFileSystem{ RamDisk::instance() };
    FATFS fatfs{};
    uint8_t workBuf[512]{};
 
@@ -34,19 +39,19 @@ struct DirFsFixture {
 // ---------------------------------------------------------------------------
 // Open / existence
 // ---------------------------------------------------------------------------
-TEST_CASE("FatDir: opening root directory succeeds", "[FatDir]") {
+TEST_CASE("[FatDir] opening root directory succeeds [FatDir]") {
    DirFsFixture fs;
    FatDir dir("0:/");
    CHECK(dir.exists());
 }
 
-TEST_CASE("FatDir: opening a non-existent directory fails", "[FatDir]") {
+TEST_CASE("[FatDir] opening a non-existent directory fails [FatDir]") {
    DirFsFixture fs;
    FatDir dir("0:/nosuchdir");
    CHECK_FALSE(dir.exists());
 }
 
-TEST_CASE("FatDir: opening an explicitly created subdirectory succeeds", "[FatDir]") {
+TEST_CASE("[FatDir] opening an explicitly created subdirectory succeeds [FatDir]") {
    DirFsFixture fs;
    REQUIRE(f_mkdir("0:/subdir") == FR_OK);
    FatDir dir("0:/subdir");
@@ -56,7 +61,7 @@ TEST_CASE("FatDir: opening an explicitly created subdirectory succeeds", "[FatDi
 // ---------------------------------------------------------------------------
 // tell()
 // ---------------------------------------------------------------------------
-TEST_CASE("FatDir: tell returns 0 on freshly opened directory", "[FatDir]") {
+TEST_CASE("[FatDir] tell returns 0 on freshly opened directory [FatDir]") {
    DirFsFixture fs;
    FatDir dir("0:/");
    REQUIRE(dir.exists());
@@ -66,7 +71,7 @@ TEST_CASE("FatDir: tell returns 0 on freshly opened directory", "[FatDir]") {
 // ---------------------------------------------------------------------------
 // read() — currently an unimplemented stub
 // ---------------------------------------------------------------------------
-TEST_CASE("FatDir: read returns FR_DENIED (stub not yet implemented)", "[FatDir]") {
+TEST_CASE("[FatDir] read returns FR_DENIED (stub not yet implemented) [FatDir]") {
    DirFsFixture fs;
    FatDir dir("0:/");
    REQUIRE(dir.exists());
@@ -78,7 +83,7 @@ TEST_CASE("FatDir: read returns FR_DENIED (stub not yet implemented)", "[FatDir]
 // ---------------------------------------------------------------------------
 // seek()
 // ---------------------------------------------------------------------------
-TEST_CASE("FatDir: seek on empty directory to offset 0 succeeds", "[FatDir]") {
+TEST_CASE("[FatDir] seek on empty directory to offset 0 succeeds [FatDir]") {
    DirFsFixture fs;
    FatDir dir("0:/");
    REQUIRE(dir.exists());
@@ -87,7 +92,7 @@ TEST_CASE("FatDir: seek on empty directory to offset 0 succeeds", "[FatDir]") {
    CHECK(dir.tell() == 0);
 }
 
-TEST_CASE("FatDir: seek advances past directory entries", "[FatDir]") {
+TEST_CASE("[FatDir] seek advances past directory entries [FatDir]") {
    DirFsFixture fs;
    // Use short 8.3 names so each entry occupies exactly one 32-byte slot.
    fs.touch("0:/A.TXT");
@@ -103,19 +108,19 @@ TEST_CASE("FatDir: seek advances past directory entries", "[FatDir]") {
    size_t pos = dir.tell();
    CHECK(pos >= 32);
 
-   SECTION("seek back to start rewinds") {
+   SUBCASE("seek back to start rewinds") {
       REQUIRE(dir.seek(0) == FR_OK);
       CHECK(dir.tell() == 0);
    }
 
-   SECTION("seek past all entries returns FR_NO_PATH") {
+   SUBCASE("seek past all entries returns FR_NO_PATH") {
       // Seeking far beyond the actual number of entries should return FR_NO_PATH.
       FRESULT res = dir.seek(0xFFFFFF);
       CHECK(res == FR_NO_PATH);
    }
 }
 
-TEST_CASE("FatDir: seek on subdirectory works", "[FatDir]") {
+TEST_CASE("[FatDir] seek on subdirectory works [FatDir]") {
    DirFsFixture fs;
    REQUIRE(f_mkdir("0:/mydir") == FR_OK);
    fs.touch("0:/mydir/X.TXT");
