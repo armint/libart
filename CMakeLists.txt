@@ -133,6 +133,21 @@ endif ()
 # already has that visibility, the same way micro-os-plus::iii's own
 # sources do. Only defined once micro-os-plus::iii exists, which requires
 # the superproject to add_subdirectory() µOS++ before this library.
+#
+# Two things a consumer needs to know that aren't enforceable from here:
+#   - Link art::os-trace into the final executable target, not into an
+#     intermediate static library. Its os::trace::write() etc. override
+#     symbols µOS++'s own trace.cpp also defines weakly; if µOS++'s
+#     sources end up compiled directly into the executable (as an
+#     INTERFACE library, they normally are) while this sink sits inside a
+#     static archive linked afterwards, the weak symbol is already
+#     resolved by the time the linker reaches that archive, so this TU's
+#     object file is never even extracted from it — the override silently
+#     loses, with no error.
+#   - <cmsis-plus/rtos/os.h> pulls in port- and device-specific headers
+#     (cmsis_device.h, ...), so whatever target links art::os-trace must
+#     already have that include path — typically true of a board support
+#     package target, not of a plain application source file.
 if (TARGET micro-os-plus::iii AND OS_INTEGRATION_SOURCES)
     add_library(art-os-trace-interface INTERFACE)
     target_sources(art-os-trace-interface INTERFACE ${OS_INTEGRATION_SOURCES})
