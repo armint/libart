@@ -10,8 +10,10 @@ workflow:
       when: never
     - if: "$CI_COMMIT_BRANCH"
 
-# Builds the art-core static library on its own (no tests/ subdirectory),
-# the same target downstream projects consume via add_subdirectory().
+# Builds the art-core static library target, the same one downstream
+# projects consume via add_subdirectory(). This still configures and
+# fetches tests/ too (CMakeLists.txt adds it whenever not cross-compiling),
+# just doesn't build the test binary — the test job below does that.
 build:
   stage: build
   variables:
@@ -30,4 +32,13 @@ test:
   script:
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug
     - cmake --build build --target libArT-tests -j$(nproc)
+    # doctest writes every active reporter's output to the same --out file,
+    # which corrupts the XML if the console reporter is also active; run
+    # twice instead — console output determines job pass/fail, the second
+    # run just produces the JUnit artifact for the MR widget.
     - ./build/tests/libArT-tests
+    - ./build/tests/libArT-tests --reporters=junit --out=build/junit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: build/junit.xml
