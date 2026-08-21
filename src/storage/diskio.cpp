@@ -24,14 +24,19 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
    if(pdrv >= std::size(FatFileSystem::devices) || !FatFileSystem::devices[pdrv] || !count) {
       return RES_PARERR;
    }
-   return static_cast<DRESULT>((*FatFileSystem::devices[pdrv])->read(buff, sector, count));
+   // StorageDevice::read() returns the number of sectors actually read (0 on
+   // error), not a DRESULT code — a previous direct cast happened to work
+   // out to RES_OK only when count == 0, misreporting every successful
+   // single-sector read as RES_ERROR (RES_ERROR == 1 == a 1-sector count).
+   return (*FatFileSystem::devices[pdrv])->read(buff, sector, count) == count ? RES_OK : RES_ERROR;
 }
 
 DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
    if(pdrv >= std::size(FatFileSystem::devices) || !FatFileSystem::devices[pdrv] || !count) {
       return RES_PARERR;
    }
-   return static_cast<DRESULT>((*FatFileSystem::devices[pdrv])->write(buff, sector, count));
+   // See disk_read() above: write() returns a sector count, not a DRESULT.
+   return (*FatFileSystem::devices[pdrv])->write(buff, sector, count) == count ? RES_OK : RES_ERROR;
 }
 
 DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void *buff) {
