@@ -1,3 +1,4 @@
+#include "FatFileMockGuard.h"
 #include "storage/FatFile.h"
 #include "streams/FatFileReadable.h"
 #include <doctest/doctest.h>
@@ -5,8 +6,8 @@
 
 
 TEST_CASE("[FatFileReadable] basic reading [FatFileReadable]") {
-   FatFile::MockState mockState;
-   FatFile::state = &mockState;
+   FatFileMockGuard guard;
+   auto &mockState = guard.state;
    mockState.fileData = { 'a', 'b', 'c', 'd', 'e' };
 
    FatFile file("test.txt", 0);
@@ -69,13 +70,11 @@ TEST_CASE("[FatFileReadable] basic reading [FatFileReadable]") {
       CHECK(!readable.available());
       CHECK(readable.bytesLeft() == 0);
    }
-
-   FatFile::state = nullptr;
 }
 
 TEST_CASE("[FatFileReadable] edge cases [FatFileReadable]") {
-   FatFile::MockState mockState;
-   FatFile::state = &mockState;
+   FatFileMockGuard guard;
+   auto &mockState = guard.state;
    mockState.fileData = { 'a', 'b', 'c' };
 
    FatFile file("test.txt", 0);
@@ -88,13 +87,11 @@ TEST_CASE("[FatFileReadable] edge cases [FatFileReadable]") {
       REQUIRE(!res.has_value());
       CHECK(res.error() == Readable::ReadError);
    }
-
-   FatFile::state = nullptr;
 }
 
 TEST_CASE("[FatFileReadable] seek and reset [FatFileReadable]") {
-   FatFile::MockState mockState;
-   FatFile::state = &mockState;
+   FatFileMockGuard guard;
+   auto &mockState = guard.state;
    mockState.fileData = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
 
    FatFile file("test.txt", 0);
@@ -137,13 +134,11 @@ TEST_CASE("[FatFileReadable] seek and reset [FatFileReadable]") {
       CHECK(*res == '2');
       CHECK(readable.position() == 3);
    }
-
-   FatFile::state = nullptr;
 }
 
 TEST_CASE("[FatFileReadable] error handling [FatFileReadable]") {
-   FatFile::MockState mockState;
-   FatFile::state = &mockState;
+   FatFileMockGuard guard;
+   auto &mockState = guard.state;
    mockState.fileData = { 'a', 'b', 'c' };
 
    FatFile file("test.txt", 0);
@@ -156,6 +151,4 @@ TEST_CASE("[FatFileReadable] error handling [FatFileReadable]") {
       REQUIRE(!res.has_value());
       CHECK(res.error() == Readable::ReadError);
    }
-
-   FatFile::state = nullptr;
 }

@@ -1,3 +1,4 @@
+#include "FatFileMockGuard.h"
 #include "storage/FatFile.h"
 #include "streams/FatFileWritable.h"
 #include <doctest/doctest.h>
@@ -5,8 +6,8 @@
 
 
 TEST_CASE("[FatFileWritable] buffering and flush [FatFileWritable]") {
-   FatFile::MockState mockState;
-   FatFile::state = &mockState;
+   FatFileMockGuard guard;
+   auto &mockState = guard.state;
 
    FatFile file("test.txt", 0);
    uint8_t bufferMem[10];
@@ -52,6 +53,4 @@ TEST_CASE("[FatFileWritable] buffering and flush [FatFileWritable]") {
       CHECK(mockState.writtenData.size() == 3);
       CHECK(mockState.writtenData[0] == 4);
    }
-
-   FatFile::state = nullptr;
 }
