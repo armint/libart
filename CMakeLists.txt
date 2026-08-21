@@ -75,6 +75,18 @@ file(GLOB_RECURSE PROJECT_SOURCES
         "${PROJECT_SOURCE_DIR}/src/*.cpp"
 )
 
+# src/os/ integrates with a specific RTOS (currently µOS++ IIIe) rather than
+# being portable across every consumer of this library (e.g. ESP-IDF, which
+# never defines micro-os-plus::iii). Exclude it from the general glob, and
+# only add it back once the RTOS target it needs actually exists.
+file(GLOB_RECURSE OS_INTEGRATION_SOURCES "${PROJECT_SOURCE_DIR}/src/os/*.c" "${PROJECT_SOURCE_DIR}/src/os/*.cpp")
+if(OS_INTEGRATION_SOURCES)
+    list(REMOVE_ITEM PROJECT_SOURCES ${OS_INTEGRATION_SOURCES})
+endif()
+if(TARGET micro-os-plus::iii)
+    list(APPEND PROJECT_SOURCES ${OS_INTEGRATION_SOURCES})
+endif()
+
 file(GLOB_RECURSE PROJECT_HEADERS
         "src/*.h"
         "src/*.hpp"
@@ -111,6 +123,14 @@ target_link_libraries(art-core
 if (TARGET art-build-config)
     # Only affect this target's compilation in the build tree; do not appear in installed export
     target_link_libraries(art-core PRIVATE $<BUILD_INTERFACE:art-build-config>)
+endif ()
+
+# Needed to compile src/os/ above, when present. PRIVATE and build-interface
+# only: consumers that want os::trace:: themselves already link µOS++
+# directly, and this must not appear in the installed package's exported
+# dependencies.
+if (TARGET micro-os-plus::iii)
+    target_link_libraries(art-core PRIVATE $<BUILD_INTERFACE:micro-os-plus::iii>)
 endif ()
 
 # Ensure the exported interface does not pull non-exported targets.
