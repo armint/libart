@@ -66,11 +66,7 @@ public:
    }
 
    bd_size_t getEraseSize() override {
-      // No real erase-block granularity for a RAM-backed device, unlike
-      // flash/SD; DEFAULT_ERASE_SIZE (4096, i.e. 8-sector alignment) makes
-      // f_mkfs's auto cluster sizing fail (FR_MKFS_ABORTED) on this
-      // volume's modest 1 MB size.
-      return SECTOR_SIZE;
+      return DEFAULT_ERASE_SIZE;
    }
 
    bd_size_t erase(bd_size_t start, bd_size_t count) override {
