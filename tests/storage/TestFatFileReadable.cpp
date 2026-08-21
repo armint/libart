@@ -1,19 +1,20 @@
+#include "FatFileMockGuard.h"
 #include "storage/FatFile.h"
 #include "streams/FatFileReadable.h"
-#include <catch2/catch_test_macros.hpp>
+#include <doctest/doctest.h>
 #include <vector>
 
 
-TEST_CASE("FatFileReadable basic reading", "[FatFileReadable]") {
-   FatFile::MockState mockState;
-   FatFile::state = &mockState;
+TEST_CASE("[FatFileReadable] basic reading [FatFileReadable]") {
+   FatFileMockGuard guard;
+   auto &mockState = guard.state;
    mockState.fileData = { 'a', 'b', 'c', 'd', 'e' };
 
    FatFile file("test.txt", 0);
    uint8_t bufferMem[3];
    FatFileReadable readable(file, bufferMem);
 
-   SECTION("Read characters one by one") {
+   SUBCASE("Read characters one by one") {
       auto res1 = readable.read();
       REQUIRE(res1.has_value());
       CHECK(*res1 == 'a');
@@ -25,7 +26,7 @@ TEST_CASE("FatFileReadable basic reading", "[FatFileReadable]") {
       CHECK(readable.position() == 2);
    }
 
-   SECTION("Buffering works") {
+   SUBCASE("Buffering works") {
       // First read should fill buffer with 'a', 'b', 'c'
       auto res1 = readable.read();
       REQUIRE(res1.has_value());
@@ -47,7 +48,7 @@ TEST_CASE("FatFileReadable basic reading", "[FatFileReadable]") {
       CHECK(readable.position() == 4);
    }
 
-   SECTION("End of stream") {
+   SUBCASE("End of stream") {
       for(int i = 0; i < 5; ++i) {
          REQUIRE(readable.read().has_value());
       }
@@ -56,7 +57,7 @@ TEST_CASE("FatFileReadable basic reading", "[FatFileReadable]") {
       CHECK(res.error() == Readable::EndOfStream);
    }
 
-   SECTION("available() and bytesLeft()") {
+   SUBCASE("available() and bytesLeft()") {
       CHECK(readable.available());
       CHECK(readable.bytesLeft() == 5);
 
@@ -69,18 +70,16 @@ TEST_CASE("FatFileReadable basic reading", "[FatFileReadable]") {
       CHECK(!readable.available());
       CHECK(readable.bytesLeft() == 0);
    }
-
-   FatFile::state = nullptr;
 }
 
-TEST_CASE("FatFileReadable edge cases", "[FatFileReadable]") {
-   FatFile::MockState mockState;
-   FatFile::state = &mockState;
+TEST_CASE("[FatFileReadable] edge cases [FatFileReadable]") {
+   FatFileMockGuard guard;
+   auto &mockState = guard.state;
    mockState.fileData = { 'a', 'b', 'c' };
 
    FatFile file("test.txt", 0);
 
-   SECTION("Empty buffer") {
+   SUBCASE("Empty buffer") {
       std::span<uint8_t> emptyBuffer;
       FatFileReadable readable(file, emptyBuffer);
 
@@ -88,20 +87,18 @@ TEST_CASE("FatFileReadable edge cases", "[FatFileReadable]") {
       REQUIRE(!res.has_value());
       CHECK(res.error() == Readable::ReadError);
    }
-
-   FatFile::state = nullptr;
 }
 
-TEST_CASE("FatFileReadable seek and reset", "[FatFileReadable]") {
-   FatFile::MockState mockState;
-   FatFile::state = &mockState;
+TEST_CASE("[FatFileReadable] seek and reset [FatFileReadable]") {
+   FatFileMockGuard guard;
+   auto &mockState = guard.state;
    mockState.fileData = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
 
    FatFile file("test.txt", 0);
    uint8_t bufferMem[3];
    FatFileReadable readable(file, bufferMem);
 
-   SECTION("Reset to beginning") {
+   SUBCASE("Reset to beginning") {
       readable.read(); // '0'
       readable.read(); // '1'
       readable.reset(0);
@@ -110,7 +107,7 @@ TEST_CASE("FatFileReadable seek and reset", "[FatFileReadable]") {
       CHECK(*res == '0');
    }
 
-   SECTION("Reset to middle") {
+   SUBCASE("Reset to middle") {
       readable.reset(5);
       auto res = readable.read();
       REQUIRE(res.has_value());
@@ -118,7 +115,7 @@ TEST_CASE("FatFileReadable seek and reset", "[FatFileReadable]") {
       CHECK(readable.position() == 6);
    }
 
-   SECTION("Reset within buffer optimization") {
+   SUBCASE("Reset within buffer optimization") {
       // Buffer size is 3.
       readable.read(); // '0', triggers read of '0', '1', '2' into buffer. file.tell() = 3.
       CHECK(file.tell() == 3);
@@ -137,25 +134,21 @@ TEST_CASE("FatFileReadable seek and reset", "[FatFileReadable]") {
       CHECK(*res == '2');
       CHECK(readable.position() == 3);
    }
-
-   FatFile::state = nullptr;
 }
 
-TEST_CASE("FatFileReadable error handling", "[FatFileReadable]") {
-   FatFile::MockState mockState;
-   FatFile::state = &mockState;
+TEST_CASE("[FatFileReadable] error handling [FatFileReadable]") {
+   FatFileMockGuard guard;
+   auto &mockState = guard.state;
    mockState.fileData = { 'a', 'b', 'c' };
 
    FatFile file("test.txt", 0);
    uint8_t bufferMem[3];
    FatFileReadable readable(file, bufferMem);
 
-   SECTION("Read error") {
+   SUBCASE("Read error") {
       mockState.nextReadResult = FR_DISK_ERR;
       auto res = readable.read();
       REQUIRE(!res.has_value());
       CHECK(res.error() == Readable::ReadError);
    }
-
-   FatFile::state = nullptr;
 }
