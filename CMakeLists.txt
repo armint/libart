@@ -75,6 +75,14 @@ file(GLOB_RECURSE PROJECT_SOURCES
         "${PROJECT_SOURCE_DIR}/src/*.cpp"
 )
 
+# src/os/ integrates with a specific RTOS (currently µOS++ IIIe) rather than
+# being portable across every consumer of this library, so it's excluded
+# from art-core itself entirely (see below).
+file(GLOB_RECURSE OS_INTEGRATION_SOURCES "${PROJECT_SOURCE_DIR}/src/os/*.c" "${PROJECT_SOURCE_DIR}/src/os/*.cpp")
+if(OS_INTEGRATION_SOURCES)
+    list(REMOVE_ITEM PROJECT_SOURCES ${OS_INTEGRATION_SOURCES})
+endif()
+
 file(GLOB_RECURSE PROJECT_HEADERS
         "src/*.h"
         "src/*.hpp"
@@ -113,27 +121,50 @@ if (TARGET art-build-config)
     target_link_libraries(art-core PRIVATE $<BUILD_INTERFACE:art-build-config>)
 endif ()
 
-# Interface target for C++23 FreeRTOS wrapper headers (src/rtos/)
-add_library(art-rtos INTERFACE)
-add_library(art::rtos ALIAS art-rtos)
-target_include_directories(art-rtos INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
-target_compile_features(art-rtos INTERFACE cxx_std_23)
-if (TARGET freertos)
-    target_link_libraries(art-rtos INTERFACE $<BUILD_INTERFACE:freertos>)
-elseif (TARGET freertos_kernel)
-    target_link_libraries(art-rtos INTERFACE $<BUILD_INTERFACE:freertos_kernel>)
-endif()
-if (TARGET art-build-config)
-    target_link_libraries(art-rtos INTERFACE $<BUILD_INTERFACE:art-build-config>)
-endif()
+# src/os/MicroOsPlusTraceSink.cpp, as an INTERFACE library rather than part
+# of art-core itself: micro-os-plus::iii is itself an INTERFACE library
+# (its RTOS kernel sources are compiled fresh into whichever target links
+# it), so linking it PRIVATE into art-core would compile the entire RTOS
+# kernel as part of art-core too — which then needs headers (e.g.
+# cmsis_device.h, from a board support package like system-stm32) that
+# art-core has no business depending on. Consumers that want the trace
+# sink link art::os-trace themselves (in addition to art::core and
+# micro-os-plus::iii), so the sink's TU compiles as part of a target that
+# already has that visibility, the same way micro-os-plus::iii's own
+# sources do. Only defined once micro-os-plus::iii exists, which requires
+# the superproject to add_subdirectory() µOS++ before this library.
+#
+# Two things a consumer needs to know that aren't enforceable from here:
+#   - Link art::os-trace into the final executable target, not into an
+#     intermediate static library. Its os::trace::write() etc. override
+#     symbols µOS++'s own trace.cpp also defines weakly; if µOS++'s
+#     sources end up compiled directly into the executable (as an
+#     INTERFACE library, they normally are) while this sink sits inside a
+#     static archive linked afterwards, the weak symbol is already
+#     resolved by the time the linker reaches that archive, so this TU's
+#     object file is never even extracted from it — the override silently
+#     loses, with no error.
+#   - <cmsis-plus/rtos/os.h> pulls in port- and device-specific headers
+#     (cmsis_device.h, ...), so whatever target links art::os-trace must
+#     already have that include path — typically true of a board support
+#     package target, not of a plain application source file.
+if (TARGET micro-os-plus::iii AND OS_INTEGRATION_SOURCES)
+    add_library(art-os-trace-interface INTERFACE)
+    target_sources(art-os-trace-interface INTERFACE ${OS_INTEGRATION_SOURCES})
+    target_link_libraries(art-os-trace-interface INTERFACE art::core micro-os-plus::iii)
+    if (TARGET micro-os-plus::architecture)
+        target_link_libraries(art-os-trace-interface INTERFACE micro-os-plus::architecture)
+    endif ()
+    add_library(art::os-trace ALIAS art-os-trace-interface)
+elseif (OS_INTEGRATION_SOURCES)
+    message(STATUS "art-core: micro-os-plus::iii not yet defined; art::os-trace not created "
+                    "(add_subdirectory() micro-os-plus before this library if it's expected to be)")
+endif ()
 
 # Ensure the exported interface does not pull non-exported targets.
 set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
 
-install(TARGETS art-core art-rtos
+install(TARGETS art-core
         EXPORT art-core-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

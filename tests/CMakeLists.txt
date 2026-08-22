@@ -118,7 +118,6 @@ target_include_directories(libArT-tests PRIVATE
         ../src/storage
         .
         ../src/storage/fatfs
-        stubs/freertos
         include
 )
 
