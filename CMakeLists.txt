@@ -113,7 +113,7 @@ if (TARGET art-build-config)
     target_link_libraries(art-core PRIVATE $<BUILD_INTERFACE:art-build-config>)
 endif ()
 
-# Interface target for C++23 FreeRTOS wrapper headers (src/rtos/)
+# Interface target for C++23 FreeRTOS wrapper headers (src/freertos/)
 add_library(art-rtos INTERFACE)
 add_library(art::rtos ALIAS art-rtos)
 target_include_directories(art-rtos INTERFACE
