@@ -1,5 +1,5 @@
 #include <doctest/doctest.h>
-#include <rtos/Rtos.h>
+#include <freertos/Rtos.h>
 
 TEST_SUITE("art::rtos") {
 
