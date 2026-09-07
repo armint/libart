@@ -10,6 +10,7 @@ static_assert(configSUPPORT_STATIC_ALLOCATION == 1,
 #include "CriticalSection.h"
 #include "EventFlags.h"
 #include "Mutex.h"
+#include "RecursiveMutex.h"
 #include "Semaphore.h"
 #include "SysClock.h"
 #include "Thread.h"
