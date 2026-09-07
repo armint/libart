@@ -23,6 +23,7 @@ std::expected<size_t, Writable::Error> Writable::printf_va(const char *format, .
    return ret;
 }
 std::expected<size_t, Writable::Error> Writable::vprintf(const char *format, va_list va_l) {
+   auto session = writeSession();
    TfpHelper helper{ this, 0 };
    tfp_format(&helper, &writeCharacter, format, va_l);
    return helper.result;

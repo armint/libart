@@ -90,6 +90,11 @@ class Logger {
          return;
       }
 
+      // Hold one session across prefix, body, suffix and flush so a sink that opts in
+      // (overrides Writable::beginWriteSession()/endWriteSession()) can make the whole
+      // line atomic instead of only each individual printf() call.
+      auto session = sink->writeSession();
+
       auto *formatter = LogManager::getInstance().formatter();
       if(formatter) {
          (void)formatter->formatPrefix(*sink, level, topic_);
