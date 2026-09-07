@@ -26,6 +26,14 @@ class Writable {
 
    static void writeCharacter(void *ptr, char c);
 
+   /** Called when a WriteSession begins. Override to take a lock or start batching for the
+    *  duration of the session. Default is a no-op. */
+   virtual void beginWriteSession() noexcept {}
+
+   /** Called when a WriteSession ends. Override to release a lock or flush batching started
+    *  in beginWriteSession(). Default is a no-op. */
+   virtual void endWriteSession() noexcept {}
+
    public:
    Writable() = default;
    virtual ~Writable() = default;
@@ -94,6 +102,54 @@ class Writable {
     */
    inline std::expected<size_t, Error> write(const uint8_t c) {
       return write(std::span(&c, 1));
+   }
+
+   /**
+    * RAII scope bracketing a sequence of write()/printf() calls, so a sink whose write()
+    * does non-trivial per-call work (locking, context switches, ...) can do that work once
+    * for the whole sequence instead of once per call.
+    *
+    * Obtained via writeSession(); the default beginWriteSession()/endWriteSession() hooks are
+    * no-ops, so opening a session costs nothing for sinks that do not override them.
+    * `vprintf()` opens one for the duration of a single format; callers such as
+    * `logging::Logger` can hold a wider one across several printf()/write() calls (e.g. a log
+    * line's prefix, body, suffix and flush) to make the whole sequence atomic from the sink's
+    * point of view.
+    *
+    * Sessions may nest (an outer session held by a caller, with `vprintf()` opening its own
+    * inner one for each formatted call within it). The base class does not track nesting
+    * depth -- a sink whose begin/end hooks are not naturally reentrant (e.g. they take a lock)
+    * must handle that itself, for instance with a recursive lock.
+    */
+   class WriteSession {
+      public:
+      explicit WriteSession(Writable &writable) noexcept
+         : writable_(&writable) {
+         writable_->beginWriteSession();
+      }
+      ~WriteSession() {
+         if(writable_) {
+            writable_->endWriteSession();
+         }
+      }
+
+      WriteSession(const WriteSession &) = delete;
+      WriteSession &operator=(const WriteSession &) = delete;
+      WriteSession &operator=(WriteSession &&) = delete;
+
+      WriteSession(WriteSession &&other) noexcept
+         : writable_(other.writable_) {
+         other.writable_ = nullptr;
+      }
+
+      private:
+      Writable *writable_;
+   };
+
+   /** Open a WriteSession bracketing subsequent write()/printf() calls until the returned
+    *  object is destroyed. See WriteSession. */
+   [[nodiscard]] WriteSession writeSession() noexcept {
+      return WriteSession(*this);
    }
 
    /**

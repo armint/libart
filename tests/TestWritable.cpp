@@ -176,6 +176,106 @@ TEST_CASE("[Writable] error propagation on overflow during printf [Writable]") {
    REQUIRE(res.error() == Writable::Overflow);
 }
 
+// A Writable that records begin/end write session calls, to verify session bracketing.
+class SessionTrackingWritable : public Writable {
+   public:
+   explicit SessionTrackingWritable(std::span<uint8_t> buffer)
+      : _buffer(buffer) {}
+
+   std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
+      size_t written = 0;
+      for(size_t i = 0; i < data.size() && _position < _buffer.size(); ++i, ++_position, ++written) {
+         _buffer[_position] = data[i];
+      }
+      if(written != data.size()) {
+         return std::unexpected(Overflow);
+      }
+      return written;
+   }
+
+   std::expected<void, Error> flush() override {
+      return {};
+   }
+
+   int beginCount = 0;
+   int endCount = 0;
+
+   protected:
+   void beginWriteSession() noexcept override {
+      ++beginCount;
+   }
+   void endWriteSession() noexcept override {
+      ++endCount;
+   }
+
+   private:
+   std::span<uint8_t> _buffer;
+   size_t _position{ 0 };
+};
+
+TEST_CASE("[Writable] default beginWriteSession/endWriteSession are no-ops [Writable]") {
+   // A sink that does not override the hooks (MockWritable) must behave exactly as before:
+   // printf/println still work, and there is nothing to observe about session state.
+   uint8_t buf[64]{};
+   MockWritable w{ std::span<uint8_t>(buf) };
+   auto r = w.printf("%s=%d", "x", 5);
+   REQUIRE(r);
+   REQUIRE(std::string_view(reinterpret_cast<char *>(buf), r.value()) == "x=5");
+}
+
+TEST_CASE("[Writable] vprintf (via printf) opens exactly one session per call [Writable]") {
+   uint8_t buf[64]{};
+   SessionTrackingWritable w{ std::span<uint8_t>(buf) };
+
+   auto r = w.printf("%s", "hi");
+   REQUIRE(r);
+   CHECK(w.beginCount == 1);
+   CHECK(w.endCount == 1);
+
+   auto r2 = w.println("bye");
+   REQUIRE(r2);
+   // println() = printf() + write(), so only the printf() call opens a session.
+   CHECK(w.beginCount == 2);
+   CHECK(w.endCount == 2);
+}
+
+TEST_CASE("[Writable] a caller-held writeSession() stays open across multiple printf() calls [Writable]") {
+   uint8_t buf[64]{};
+   SessionTrackingWritable w{ std::span<uint8_t>(buf) };
+
+   {
+      auto outer = w.writeSession();
+      CHECK(w.beginCount == 1);
+      CHECK(w.endCount == 0);
+
+      (void)w.printf("a");
+      (void)w.printf("b");
+      // Nested sessions from printf()'s own vprintf() each begin and end in turn...
+      CHECK(w.beginCount == 3);
+      CHECK(w.endCount == 2);
+      // ...while the outer session is still open.
+   }
+   // Outer session closes once it goes out of scope.
+   CHECK(w.beginCount == 3);
+   CHECK(w.endCount == 3);
+}
+
+TEST_CASE("[Writable] writeSession() is move-only and end fires exactly once [Writable]") {
+   uint8_t buf[16]{};
+   SessionTrackingWritable w{ std::span<uint8_t>(buf) };
+
+   {
+      auto s1 = w.writeSession();
+      CHECK(w.beginCount == 1);
+      auto s2 = std::move(s1);
+      // Moving must not run the end hook.
+      CHECK(w.endCount == 0);
+   }
+   // Only the moved-to object's destructor ends the session.
+   CHECK(w.beginCount == 1);
+   CHECK(w.endCount == 1);
+}
+
 TEST_CASE("[Writable] flush success and failure [Writable]") {
    uint8_t buf[8]{};
    MockWritable w{ std::span<uint8_t>(buf) };
