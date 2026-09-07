@@ -1,7 +1,9 @@
 
 #include <doctest/doctest.h>
 #include <cstring>
+#include <span>
 #include <string>
+#include <vector>
 
 #include <logging/Level.h>
 #include <logging/LogManager.h>
@@ -118,6 +120,94 @@ TEST_CASE("[Logging] Logger writes formatted output to sink") {
    CHECK(output.find("[Out]") != std::string::npos);
    CHECK(output.find("[INFO]") != std::string::npos);
    CHECK(output.find("hello 42") != std::string::npos);
+
+   LogManager::getInstance().set_sink(nullptr);
+}
+
+// A Writable that records write session begin/end calls and the begin/end counts observed
+// at the time of each write(), used to verify a Logger line is written inside one session.
+class SessionCountingWritable : public Writable {
+   public:
+   explicit SessionCountingWritable(std::span<uint8_t> buffer)
+      : _buffer(buffer) {}
+
+   std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
+      // Record the session nesting depth open at the time of this write(): 0 = no session,
+      // 1 = only the caller's own (e.g. printf()'s) session, 2 = also nested inside a wider
+      // one held by a caller such as Logger. tfp_format() writes one character (a 1-byte
+      // span) at a time via printf(); println()'s trailing CRLF is a direct 2-byte write().
+      int depth = beginCount - endCount;
+      if(data.size() == 1) {
+         depthDuringCharacterWrite.push_back(depth);
+      } else {
+         depthDuringDirectWrite.push_back(depth);
+      }
+      size_t written = 0;
+      for(size_t i = 0; i < data.size() && _position < _buffer.size(); ++i, ++_position, ++written) {
+         _buffer[_position] = data[i];
+      }
+      if(written != data.size()) {
+         return std::unexpected(Overflow);
+      }
+      return written;
+   }
+
+   std::expected<void, Error> flush() override {
+      depthDuringFlush = beginCount - endCount;
+      return {};
+   }
+
+   size_t written() const {
+      return _position;
+   }
+
+   int beginCount = 0;
+   int endCount = 0;
+   int depthDuringFlush = 0;
+   std::vector<int> depthDuringCharacterWrite;
+   std::vector<int> depthDuringDirectWrite;
+
+   protected:
+   void beginWriteSession() noexcept override {
+      ++beginCount;
+   }
+   void endWriteSession() noexcept override {
+      ++endCount;
+   }
+
+   private:
+   std::span<uint8_t> _buffer;
+   size_t _position{ 0 };
+};
+
+TEST_CASE("[Logging] Logger holds a single write session across prefix, body, suffix and flush") {
+   uint8_t buffer[256] = {};
+   SessionCountingWritable writable(buffer);
+   LogManager::getInstance().set_sink(&writable);
+   LogManager::getInstance().set_formatter(nullptr);
+   LogManager::getInstance().set_global_level(logging::Level::Trace);
+
+   logging::Logger logger("SessionTest");
+   logger.set_level(logging::Level::Trace);
+   logger.info("value=%d", 7);
+
+   // The outer session (plus one nested session per printf() call within it) was opened
+   // and fully closed again by the time the line is done.
+   CHECK(writable.beginCount > 0);
+   CHECK(writable.beginCount == writable.endCount);
+
+   // Characters written by printf() (the "[SessionTest][INFO] " prefix and the "value=7"
+   // body) happen at depth 2: Logger's outer session plus vprintf()'s own inner one.
+   REQUIRE_FALSE(writable.depthDuringCharacterWrite.empty());
+   for(int depth : writable.depthDuringCharacterWrite) {
+      CHECK(depth == 2);
+   }
+   // The CRLF written directly by println() (not through printf()) and flush() are not
+   // wrapped in their own session, yet still happen at depth 1 -- proving they run inside
+   // the wider session Logger holds across the whole line, not just inside a printf() call.
+   REQUIRE(writable.depthDuringDirectWrite.size() == 1);
+   CHECK(writable.depthDuringDirectWrite[0] == 1);
+   CHECK(writable.depthDuringFlush == 1);
 
    LogManager::getInstance().set_sink(nullptr);
 }
