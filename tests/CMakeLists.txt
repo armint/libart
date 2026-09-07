@@ -52,6 +52,7 @@ file(GLOB TEST_SOURCES
         TestPseudoRandomReadable.cpp
         TestTfpPrintfUtils.cpp
         TestLogging.cpp
+        TestRtos.cpp
         TestKTypeThermocoupleSensor.cpp
         TestSTypeThermocoupleSensor.cpp
         TestCompensatedThermocoupleSensor.cpp
