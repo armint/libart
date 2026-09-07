@@ -499,3 +499,52 @@ TEST_CASE("[RingBuffer] write_ptr on full buffer returns zero length") {
    uint8_t* ptr = rb.write_ptr(len);
    CHECK(len == 0);
 }
+
+TEST_CASE("[RingBuffer] try_push_bulk on full buffer returns 0") {
+   RingBuffer<uint8_t, 8> rb;
+
+   // Fill completely (capacity = 7)
+   uint8_t data[7] = {1, 2, 3, 4, 5, 6, 7};
+   CHECK(rb.try_push_bulk(data, 7) == 7);
+   CHECK(rb.full());
+   CHECK(rb.size() == 7);
+
+   // Try to push more on full buffer: should return 0 (early return when count > avail)
+   uint8_t more[3] = {10, 20, 30};
+   std::size_t pushed = rb.try_push_bulk(more, 3);
+   CHECK(pushed == 0);
+
+   // Verify buffer unchanged
+   CHECK(rb.full());
+   CHECK(rb.size() == 7);
+
+   // Verify contents unchanged
+   uint8_t out = 0;
+   for (uint8_t i = 1; i <= 7; i++) {
+      CHECK(rb.try_pop(out));
+      CHECK(out == i);
+   }
+   CHECK(rb.empty());
+}
+
+TEST_CASE("[RingBuffer] try_pop_bulk on empty buffer returns 0") {
+   RingBuffer<uint8_t, 8> rb;
+
+   // Verify empty
+   CHECK(rb.empty());
+   CHECK(rb.size() == 0);
+
+   // Try to pop from empty buffer: should return 0 (early return when count > avail)
+   uint8_t result[3] = {0};
+   std::size_t popped = rb.try_pop_bulk(result, 3);
+   CHECK(popped == 0);
+
+   // Verify buffer still empty
+   CHECK(rb.empty());
+   CHECK(rb.size() == 0);
+
+   // Verify no data was written to result
+   CHECK(result[0] == 0);
+   CHECK(result[1] == 0);
+   CHECK(result[2] == 0);
+}
