@@ -62,6 +62,50 @@ TEST_CASE("Mutex and MutexGuard work properly") {
   CHECK(mutex.unlock() == true);
 }
 
+TEST_CASE("RecursiveMutex and RecursiveMutexGuard work properly") {
+  art::rtos::RecursiveMutex mutex;
+  CHECK(mutex.handle() != nullptr);
+
+  CHECK(mutex.try_lock() == true);
+  CHECK(mutex.unlock() == true);
+
+  CHECK(mutex.lock() == true);
+  CHECK(mutex.unlock() == true);
+
+  {
+    art::rtos::RecursiveMutexGuard guard(mutex);
+    CHECK(guard.owns_lock() == true);
+    // A nested guard on the same task must not deadlock or fail, unlike Mutex.
+    art::rtos::RecursiveMutexGuard nestedGuard(mutex);
+    CHECK(nestedGuard.owns_lock() == true);
+  }
+  // Both guards unwound; the mutex is free again.
+  CHECK(mutex.try_lock() == true);
+  CHECK(mutex.unlock() == true);
+}
+
+TEST_CASE("RecursiveMutex requires a matching unlock for every nested lock") {
+  art::rtos::RecursiveMutex mutex;
+
+  // Two nested locks from the "same task" (this single-threaded harness has only one)...
+  CHECK(mutex.lock() == true);
+  CHECK(mutex.lock() == true);
+
+  // ...are not released by a single unlock(). This is the property a naive stub could get
+  // wrong by modelling recursive take/give as a plain binary semaphore, where the first
+  // give would already free it -- so assert on the underlying FreeRTOS recursion-count
+  // semantics directly rather than only re-checking with a same-task try_lock/lock, which
+  // would pass either way and not actually distinguish correct recursive behaviour from a
+  // mutex that (incorrectly) unlocked early.
+  CHECK(mutex.unlock() == true);
+  CHECK(xSemaphoreTake(mutex.handle(), 0) == pdFALSE);
+
+  // The second, matching unlock() actually releases it.
+  CHECK(mutex.unlock() == true);
+  CHECK(xSemaphoreTake(mutex.handle(), 0) == pdTRUE);
+  CHECK(xSemaphoreGive(mutex.handle()) == pdTRUE);
+}
+
 TEST_CASE("Semaphore creates and acquires/releases") {
   art::rtos::Semaphore binSem;
   CHECK(binSem.handle() != nullptr);
