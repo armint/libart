@@ -116,10 +116,18 @@ class Writable {
     * line's prefix, body, suffix and flush) to make the whole sequence atomic from the sink's
     * point of view.
     *
-    * Sessions may nest (an outer session held by a caller, with `vprintf()` opening its own
-    * inner one for each formatted call within it). The base class does not track nesting
-    * depth -- a sink whose begin/end hooks are not naturally reentrant (e.g. they take a lock)
-    * must handle that itself, for instance with a recursive lock.
+    * Sessions may nest -- and on the logging path this is the default, not an edge case:
+    * `logging::Logger::vlog()` holds an outer session across the whole line, and each
+    * `printf()` call within it (prefix, body) opens its own inner one via `vprintf()`. The
+    * base class does not track nesting depth itself, so a sink whose begin/end hooks are
+    * not naturally reentrant (e.g. they take a lock) must handle that itself.
+    *
+    * libArT does not provide a recursive mutex today (`art::rtos::Mutex` wraps a plain
+    * `xSemaphoreCreateMutexStatic` -- see `src/freertos/Mutex.h`). A sink that overrides
+    * these hooks with a plain `art::rtos::Mutex` will self-deadlock the first time it logs
+    * a line, since the same task takes the lock twice before releasing it once. Such a sink
+    * needs a recursive lock (or equivalent per-task reentrancy tracking) before it can
+    * safely opt in.
     */
    class WriteSession {
       public:
