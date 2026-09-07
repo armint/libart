@@ -19,6 +19,11 @@ struct StaticSemaphore_t {
   bool isMutex{false};
   uint32_t count{0};
   uint32_t maxCount{1};
+  // Recursive-mutex bookkeeping (unused by plain/binary/counting semaphores): how many
+  // unmatched xSemaphoreTakeRecursive() calls are currently outstanding. The underlying
+  // count is only released once this drops back to 0, so nested takes stay held until
+  // every one of them is given back.
+  uint32_t recursionCount{0};
 };
 
 struct StaticEventGroup_t {
