@@ -15,6 +15,7 @@ static_assert(configUSE_RECURSIVE_MUTEXES == 1,
 #include "CriticalSection.h"
 #include "EventFlags.h"
 #include "Mutex.h"
+#include "Queue.h"
 #include "RecursiveMutex.h"
 #include "Semaphore.h"
 #include "SysClock.h"

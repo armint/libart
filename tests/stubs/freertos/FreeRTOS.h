@@ -39,10 +39,23 @@ struct StaticTimer_t {
   bool active{false};
 };
 
+// Minimal circular-buffer bookkeeping for the queue stub. Unlike the real FreeRTOS
+// StaticQueue_t (opaque storage cast internally to a Queue_t), this struct holds the
+// stub's actual state directly, mirroring how StaticSemaphore_t is reused as the handle
+// itself above.
+struct StaticQueue_t {
+  uint8_t *storage{nullptr};
+  size_t itemSize{0};
+  size_t length{0};
+  size_t head{0};
+  size_t count{0};
+};
+
 using TaskHandle_t = StaticTask_t*;
 using SemaphoreHandle_t = StaticSemaphore_t*;
 using EventGroupHandle_t = StaticEventGroup_t*;
 using TimerHandle_t = StaticTimer_t*;
+using QueueHandle_t = StaticQueue_t*;
 
 using TaskFunction_t = void (*)(void*);
 using TimerCallbackFunction_t = void (*)(TimerHandle_t);
