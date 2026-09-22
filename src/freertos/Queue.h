@@ -21,6 +21,7 @@ template <typename T, size_t Capacity>
 class Queue {
   static_assert(Capacity > 0, "Queue capacity must be greater than zero");
   static_assert(std::is_trivially_copyable_v<T>, "Queue<T> requires a trivially copyable T");
+  static_assert(std::is_default_constructible_v<T>, "Queue<T> requires a default-constructible T");
 
 public:
   Queue() {
@@ -63,7 +64,7 @@ public:
    * indefinitely, 0 does not block.
    * @return The dequeued item, or std::nullopt on timeout.
    */
-  std::optional<T> timedWait(uint32_t timeoutMs = UINT32_MAX) {
+  std::optional<T> receive(uint32_t timeoutMs = UINT32_MAX) {
     const TickType_t ticks = (timeoutMs == UINT32_MAX) ? portMAX_DELAY : pdMS_TO_TICKS(timeoutMs);
     T msg;
     if (xQueueReceive(handle_, &msg, ticks) == pdTRUE) {
@@ -73,7 +74,45 @@ public:
   }
 
   /**
+   * @brief Enqueues a copy of msg at the back of the queue from ISR context.
+   *
+   * @note Requires INCLUDE_xQueueGenericSendFromISR support (enabled by default in FreeRTOS).
+   */
+  bool postFromIsr(const T &msg, BaseType_t *higherPriorityTaskWoken = nullptr) {
+    if (higherPriorityTaskWoken != nullptr) {
+      return xQueueSendToBackFromISR(handle_, &msg, higherPriorityTaskWoken) == pdTRUE;
+    }
+    BaseType_t woken = pdFALSE;
+    const BaseType_t res = xQueueSendToBackFromISR(handle_, &msg, &woken);
+    portYIELD_FROM_ISR(woken);
+    return res == pdTRUE;
+  }
+
+  /**
+   * @brief Dequeues an item from the front of the queue from ISR context.
+   */
+  std::optional<T> receiveFromIsr(BaseType_t *higherPriorityTaskWoken = nullptr) {
+    T msg;
+    BaseType_t res;
+    if (higherPriorityTaskWoken != nullptr) {
+      res = xQueueReceiveFromISR(handle_, &msg, higherPriorityTaskWoken);
+    } else {
+      BaseType_t woken = pdFALSE;
+      res = xQueueReceiveFromISR(handle_, &msg, &woken);
+      portYIELD_FROM_ISR(woken);
+    }
+    if (res == pdTRUE) {
+      return msg;
+    }
+    return std::nullopt;
+  }
+
+  /**
    * @brief Returns whether the queue currently has room for at least one more item.
+   *
+   * @note Advisory only: concurrent posts/receives from other tasks or ISRs can change the
+   * result immediately after it is read. Do not use as a substitute for checking post()'s
+   * return value.
    */
   bool hasCapacity() const {
     return uxQueueSpacesAvailable(handle_) > 0;
@@ -82,7 +121,7 @@ public:
   QueueHandle_t handle() const { return handle_; }
 
 private:
-  uint8_t storage_[Capacity * sizeof(T)]{};
+  alignas(T) uint8_t storage_[Capacity * sizeof(T)]{};
   StaticQueue_t buf_{};
   QueueHandle_t handle_{nullptr};
 };

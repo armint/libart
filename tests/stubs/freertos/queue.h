@@ -2,6 +2,13 @@
 #include "FreeRTOS.h"
 #include <cstring>
 
+// This stub is a synthetic, single-threaded model: like the Semaphore/Mutex stubs alongside
+// it, it accepts xTicksToWait but never actually blocks the caller on it -- a full/empty
+// queue simply fails immediately regardless of the requested timeout, since there is no
+// other task here that could ever change that state while waiting. Tests that exercise
+// timeout behaviour are therefore checking the post()/receive() return value at a given
+// instant, not real RTOS blocking.
+
 inline QueueHandle_t xQueueCreateStatic(UBaseType_t uxQueueLength, UBaseType_t uxItemSize,
                                          uint8_t *pucQueueStorage, StaticQueue_t *pxQueueBuffer) {
   if (pxQueueBuffer) {
@@ -46,6 +53,17 @@ inline BaseType_t xQueueReceive(QueueHandle_t xQueue, void *pvBuffer, TickType_t
   xQueue->head = (xQueue->head + 1) % xQueue->length;
   xQueue->count--;
   return pdTRUE;
+}
+
+inline BaseType_t xQueueSendToBackFromISR(QueueHandle_t xQueue, const void *pvItemToQueue,
+                                           BaseType_t *pxHigherPriorityTaskWoken) {
+  if (pxHigherPriorityTaskWoken) *pxHigherPriorityTaskWoken = pdFALSE;
+  return xQueueGenericSend(xQueue, pvItemToQueue, 0, queueSEND_TO_BACK);
+}
+
+inline BaseType_t xQueueReceiveFromISR(QueueHandle_t xQueue, void *pvBuffer, BaseType_t *pxHigherPriorityTaskWoken) {
+  if (pxHigherPriorityTaskWoken) *pxHigherPriorityTaskWoken = pdFALSE;
+  return xQueueReceive(xQueue, pvBuffer, 0);
 }
 
 inline UBaseType_t uxQueueMessagesWaiting(const QueueHandle_t xQueue) {
