@@ -179,7 +179,7 @@ TEST_CASE("Timer lifecycle and operations") {
   CHECK(timer.getTimerId() == &dummy);
 }
 
-TEST_CASE("Queue post/timedWait respects FIFO order and capacity") {
+TEST_CASE("Queue post/receive respects FIFO order and capacity") {
   art::rtos::Queue<uint32_t, 3> queue;
   CHECK(queue.handle() != nullptr);
   CHECK(queue.hasCapacity() == true);
@@ -187,26 +187,101 @@ TEST_CASE("Queue post/timedWait respects FIFO order and capacity") {
   CHECK(queue.post(1) == true);
   CHECK(queue.post(2) == true);
   CHECK(queue.post(3) == true);
-  // Queue is now full; hasCapacity() must reflect that, and a further post with a
-  // zero timeout must fail rather than block.
+  // Queue is now full; hasCapacity() must reflect that. This stub's post()/receive() never
+  // actually block on xTicksToWait (see the note at the top of the queue.h stub), so a
+  // timed post on a full queue fails immediately rather than demonstrating a real timeout.
   CHECK(queue.hasCapacity() == false);
   CHECK(queue.post(4, 0) == false);
 
-  const auto first = queue.timedWait(0);
+  const auto first = queue.receive(0);
   REQUIRE(first.has_value());
   CHECK(*first == 1);
   CHECK(queue.hasCapacity() == true);
 
-  const auto second = queue.timedWait(0);
+  const auto second = queue.receive(0);
   REQUIRE(second.has_value());
   CHECK(*second == 2);
 
-  const auto third = queue.timedWait(0);
+  const auto third = queue.receive(0);
   REQUIRE(third.has_value());
   CHECK(*third == 3);
 
-  // Queue is now empty; a zero-timeout wait must fail rather than block.
-  CHECK(queue.timedWait(0).has_value() == false);
+  // Queue is now empty; same caveat as above applies to a timed receive.
+  CHECK(queue.receive(0).has_value() == false);
+}
+
+TEST_CASE("Queue storage index wraps around the ring buffer correctly") {
+  art::rtos::Queue<uint32_t, 2> queue;
+
+  // Repeatedly fill and drain past the capacity boundary so head/tail must wrap modulo
+  // Capacity more than once; an off-by-one in the ring-buffer index would eventually
+  // corrupt ordering or overwrite an unread slot.
+  for (uint32_t cycle = 0; cycle < 5; ++cycle) {
+    CHECK(queue.post(cycle * 10 + 1) == true);
+    CHECK(queue.post(cycle * 10 + 2) == true);
+    CHECK(queue.hasCapacity() == false);
+
+    const auto first = queue.receive(0);
+    REQUIRE(first.has_value());
+    CHECK(*first == cycle * 10 + 1);
+
+    const auto second = queue.receive(0);
+    REQUIRE(second.has_value());
+    CHECK(*second == cycle * 10 + 2);
+
+    CHECK(queue.receive(0).has_value() == false);
+  }
+}
+
+TEST_CASE("Queue supports trivially copyable struct payloads") {
+  struct SensorSample {
+    uint32_t timestampMs;
+    int16_t temperatureCentiC;
+    uint8_t flags;
+  };
+
+  art::rtos::Queue<SensorSample, 2> queue;
+  CHECK(queue.post(SensorSample{1000, 2150, 0x01}) == true);
+  CHECK(queue.post(SensorSample{2000, 2180, 0x02}) == true);
+
+  const auto first = queue.receive(0);
+  REQUIRE(first.has_value());
+  CHECK(first->timestampMs == 1000);
+  CHECK(first->temperatureCentiC == 2150);
+  CHECK(first->flags == 0x01);
+
+  const auto second = queue.receive(0);
+  REQUIRE(second.has_value());
+  CHECK(second->timestampMs == 2000);
+  CHECK(second->temperatureCentiC == 2180);
+  CHECK(second->flags == 0x02);
+}
+
+TEST_CASE("Queue postFromIsr/receiveFromIsr operate correctly") {
+  art::rtos::Queue<uint32_t, 2> queue;
+
+  CHECK(queue.postFromIsr(7) == true);
+  CHECK(queue.postFromIsr(8) == true);
+  // Queue is now full.
+  CHECK(queue.postFromIsr(9) == false);
+
+  const auto first = queue.receiveFromIsr();
+  REQUIRE(first.has_value());
+  CHECK(*first == 7);
+
+  const auto second = queue.receiveFromIsr();
+  REQUIRE(second.has_value());
+  CHECK(*second == 8);
+
+  // Queue is now empty.
+  CHECK(queue.receiveFromIsr().has_value() == false);
+
+  // Explicit higherPriorityTaskWoken pointer variant.
+  BaseType_t woken = pdFALSE;
+  CHECK(queue.postFromIsr(42, &woken) == true);
+  const auto third = queue.receiveFromIsr(&woken);
+  REQUIRE(third.has_value());
+  CHECK(*third == 42);
 }
 
 TEST_CASE("Thread static allocation and start") {
