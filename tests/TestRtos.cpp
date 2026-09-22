@@ -179,6 +179,36 @@ TEST_CASE("Timer lifecycle and operations") {
   CHECK(timer.getTimerId() == &dummy);
 }
 
+TEST_CASE("Queue post/timedWait respects FIFO order and capacity") {
+  art::rtos::Queue<uint32_t, 3> queue;
+  CHECK(queue.handle() != nullptr);
+  CHECK(queue.hasCapacity() == true);
+
+  CHECK(queue.post(1) == true);
+  CHECK(queue.post(2) == true);
+  CHECK(queue.post(3) == true);
+  // Queue is now full; hasCapacity() must reflect that, and a further post with a
+  // zero timeout must fail rather than block.
+  CHECK(queue.hasCapacity() == false);
+  CHECK(queue.post(4, 0) == false);
+
+  const auto first = queue.timedWait(0);
+  REQUIRE(first.has_value());
+  CHECK(*first == 1);
+  CHECK(queue.hasCapacity() == true);
+
+  const auto second = queue.timedWait(0);
+  REQUIRE(second.has_value());
+  CHECK(*second == 2);
+
+  const auto third = queue.timedWait(0);
+  REQUIRE(third.has_value());
+  CHECK(*third == 3);
+
+  // Queue is now empty; a zero-timeout wait must fail rather than block.
+  CHECK(queue.timedWait(0).has_value() == false);
+}
+
 TEST_CASE("Thread static allocation and start") {
   auto taskFn = [](void *) {};
   art::rtos::Thread<256> thread("testTask", taskFn, nullptr, 1);
