@@ -75,8 +75,6 @@ public:
 
   /**
    * @brief Enqueues a copy of msg at the back of the queue from ISR context.
-   *
-   * @note Requires INCLUDE_xQueueGenericSendFromISR support (enabled by default in FreeRTOS).
    */
   bool postFromIsr(const T &msg, BaseType_t *higherPriorityTaskWoken = nullptr) {
     if (higherPriorityTaskWoken != nullptr) {
