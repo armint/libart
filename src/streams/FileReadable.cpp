@@ -32,21 +32,43 @@ std::expected<char, Readable::Error> FileReadable::read() {
    return static_cast<char>(buffer_[bufferIndex_++]);
 }
 
+bool FileReadable::fileExtent(art::storage::offset_t &position, art::storage::offset_t &size) {
+   const auto filePosition = file_.tell();
+   if(!filePosition) {
+      lastError_ = filePosition.error();
+      return false;
+   }
+   const auto fileSize = file_.size();
+   if(!fileSize) {
+      lastError_ = fileSize.error();
+      return false;
+   }
+   position = *filePosition;
+   size = *fileSize;
+   return true;
+}
+
+art::storage::offset_t FileReadable::bufferStart(art::storage::offset_t filePosition) const {
+   // The file position is at least the buffered byte count unless the file was moved behind the stream's back.
+   return filePosition > bytesBuffered_ ? filePosition - bytesBuffered_ : 0;
+}
+
 bool FileReadable::available() {
    if(bufferIndex_ < bytesBuffered_) {
       return true;
    }
-   const auto position = file_.tell();
-   const auto size = file_.size();
-   return position && size && *position < *size;
+   art::storage::offset_t position = 0;
+   art::storage::offset_t size = 0;
+   return fileExtent(position, size) && position < size;
 }
 
 size_t FileReadable::bytesLeft() {
+   // Unlike available(), this needs the file size even when the buffer holds unread bytes.
    size_t left = bytesBuffered_ - bufferIndex_;
-   const auto position = file_.tell();
-   const auto size = file_.size();
-   if(position && size && *size > *position) {
-      left += saturatingSize(*size - *position);
+   art::storage::offset_t position = 0;
+   art::storage::offset_t size = 0;
+   if(fileExtent(position, size) && size > position) {
+      left += saturatingSize(size - position);
    }
    return left;
 }
@@ -57,9 +79,9 @@ void FileReadable::reset(size_t position) {
       lastError_ = filePosition.error();
       return;
    }
-   const art::storage::offset_t bufferStart = *filePosition - bytesBuffered_;
-   if(bytesBuffered_ > 0 && position >= bufferStart && position < bufferStart + bytesBuffered_) {
-      bufferIndex_ = static_cast<size_t>(position - bufferStart);
+   const art::storage::offset_t start = bufferStart(*filePosition);
+   if(bytesBuffered_ > 0 && position >= start && position < start + bytesBuffered_) {
+      bufferIndex_ = static_cast<size_t>(position - start);
       return;
    }
    const auto result = file_.seek(position);
@@ -77,5 +99,5 @@ size_t FileReadable::position() {
       lastError_ = filePosition.error();
       return 0;
    }
-   return saturatingSize(*filePosition - bytesBuffered_ + bufferIndex_);
+   return saturatingSize(bufferStart(*filePosition) + bufferIndex_);
 }

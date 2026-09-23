@@ -29,6 +29,11 @@ class FileReadable : public RandomAccessReadable {
    size_t bytesBuffered_ = 0;
    std::optional<art::storage::Error> lastError_;
 
+   /// Reads the file position and size; on failure records the cause and returns false.
+   bool fileExtent(art::storage::offset_t &position, art::storage::offset_t &size);
+   /// File offset of the first byte in the buffer, given the current file position.
+   art::storage::offset_t bufferStart(art::storage::offset_t filePosition) const;
+
    public:
    /**
     * @param file the open file to read from; it must outlive the stream
@@ -38,7 +43,8 @@ class FileReadable : public RandomAccessReadable {
       : file_(file)
       , buffer_(buffer) {}
 
-   FileReadable(FileReadable &&) = default;
+   // Not movable: a moved-from stream would stay live on the same file and position.
+   FileReadable(FileReadable &&) = delete;
    FileReadable &operator=(FileReadable &&) = delete;
    FileReadable(const FileReadable &) = delete;
    FileReadable &operator=(const FileReadable &) = delete;
@@ -51,10 +57,13 @@ class FileReadable : public RandomAccessReadable {
    using RandomAccessReadable::read;
    std::expected<char, Error> read() override;
 
-   /** True if read() returns a byte: buffered data is left, or the file has data beyond its position. */
+   /**
+    * True if read() returns a byte: buffered data is left, or the file has data beyond its position. False at
+    * the end of the file and also when the file fails; the failure is recorded in lastError().
+    */
    bool available() override;
 
-   /** Bytes left to read, buffered and in the file. 0 if the file cannot report its position or size. */
+   /** Bytes left to read, buffered and in the file. Only the buffered part if the file fails; see lastError(). */
    size_t bytesLeft() override;
 
    /**
