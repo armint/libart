@@ -12,12 +12,20 @@ namespace {
 
 constexpr uint64_t kDeviceSize = 1024u;
 
+// clang-format off
 // NOR-like: byte reads, 4 byte program unit, 256 byte erase unit.
-constexpr Geometry kNorGeometry{ .readSize = 1u, .programSize = 4u, .eraseSize = 256u, .size = kDeviceSize, .eraseBeforeProgram = true };
+constexpr Geometry kNorGeometry{
+   .readSize = 1u, .programSize = 4u, .eraseSize = 256u, .size = kDeviceSize, .eraseBeforeProgram = true
+};
 // SD-like: 8 byte units, no erase, overwritable.
-constexpr Geometry kSdGeometry{ .readSize = 8u, .programSize = 8u, .eraseSize = 0u, .size = kDeviceSize, .eraseBeforeProgram = false };
+constexpr Geometry kSdGeometry{
+   .readSize = 8u, .programSize = 8u, .eraseSize = 0u, .size = kDeviceSize, .eraseBeforeProgram = false
+};
 // NOR with page-sized program unit larger than the cipher sector.
-constexpr Geometry kPageNorGeometry{ .readSize = 4u, .programSize = 16u, .eraseSize = 512u, .size = 2u * kDeviceSize, .eraseBeforeProgram = true };
+constexpr Geometry kPageNorGeometry{
+   .readSize = 4u, .programSize = 16u, .eraseSize = 512u, .size = 2u * kDeviceSize, .eraseBeforeProgram = true
+};
+// clang-format on
 
 // Owns the backing array on the test host; the device itself does not allocate.
 template <uint64_t Size>
@@ -29,33 +37,37 @@ struct RamFixture {
    RamBlockDevice device;
 };
 
-std::expected<void, Error> program(BlockDevice &device, offset_t offset, std::span<const uint8_t> data) {
-   return device.program(offset, data);
-}
-
 } // namespace
 
 TEST_SUITE("art::storage::BlockDevice contract") {
 
    TEST_CASE("RamBlockDevice as NOR passes the contract") {
       RamFixture<kDeviceSize> ram{ kNorGeometry };
-      checkBlockDeviceContract(ram.device);
+      checkBlockDeviceContract(ram.device, kNorErasedByte);
    }
 
    TEST_CASE("RamBlockDevice with coarse page NOR geometry passes the contract") {
       RamFixture<2u * kDeviceSize> ram{ kPageNorGeometry };
-      checkBlockDeviceContract(ram.device);
+      checkBlockDeviceContract(ram.device, kNorErasedByte);
+   }
+
+   TEST_CASE("RamBlockDevice with 64 KiB erase units passes the contract") {
+      constexpr Geometry largeErase{
+         .readSize = 1u, .programSize = 256u, .eraseSize = 64u * 1024u, .size = 256u * 1024u, .eraseBeforeProgram = true
+      };
+      RamFixture<256u * 1024u> ram{ largeErase };
+      checkBlockDeviceContract(ram.device, kNorErasedByte);
    }
 
    TEST_CASE("RamBlockDevice as SD card passes the contract") {
       RamFixture<kDeviceSize> ram{ kSdGeometry };
-      checkBlockDeviceContract(ram.device);
+      checkBlockDeviceContract(ram.device, RamBlockDevice::kErasedByte);
    }
 
    TEST_CASE("pass-through decorator passes the contract") {
       RamFixture<kDeviceSize> ram{ kNorGeometry };
       BlockDeviceDecorator passThrough{ ram.device };
-      checkBlockDeviceContract(passThrough);
+      checkBlockDeviceContract(passThrough, kNorErasedByte);
    }
 
    TEST_CASE("MockCipherBlockDevice on NOR passes the contract") {
@@ -338,7 +350,7 @@ TEST_SUITE("art::storage fault injection") {
       ram.device.failNthOperation(1u);
       CHECK(failedWith(passThrough.erase(0u, 256u), Error::Io));
       ram.device.truncateNextProgram(2u);
-      CHECK(failedWith(program(passThrough, 0u, data), Error::Io));
+      CHECK(failedWith(passThrough.program(0u, data), Error::Io));
       CHECK(ram.device.contents()[1] == 0x02u);
       CHECK(ram.device.contents()[2] == 0xFFu);
    }
@@ -453,8 +465,18 @@ TEST_SUITE("art::storage::MockCipherBlockDevice") {
       CHECK_FALSE(std::all_of(content.begin(), content.begin() + 20, [](uint8_t byte) { return byte == 0xFFu; }));
    }
 
+   TEST_CASE("init rejects a device below whose size is not a multiple of the sector") {
+      Geometry odd = kSdGeometry;
+      odd.size = 1000u; // multiple of the 8 byte units, not of 16
+      RamFixture<kDeviceSize> ram{ odd };
+      MockCipherBlockDevice cipher{ ram.device };
+      CHECK(failedWith(cipher.init(), Error::Unsupported));
+   }
+
    TEST_CASE("init rejects a device below with incompatible granularity") {
-      constexpr Geometry coarse{ .readSize = 32u, .programSize = 32u, .eraseSize = 256u, .size = kDeviceSize, .eraseBeforeProgram = true };
+      Geometry coarse = kNorGeometry;
+      coarse.readSize = 32u;
+      coarse.programSize = 32u;
       RamFixture<kDeviceSize> ram{ coarse };
       MockCipherBlockDevice cipher{ ram.device };
       CHECK(failedWith(cipher.init(), Error::Unsupported));
