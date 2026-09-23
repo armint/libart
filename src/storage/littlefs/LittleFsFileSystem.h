@@ -83,10 +83,10 @@ class LittleFsFileSystemBase : public FileSystem {
    bool isPathOpen(uint32_t pathHash) const;
    Error toError(int lfsError) const;
 
-   static int readBlock(const lfs_config *cfg, lfs_block_t block, lfs_off_t off, void *buf, lfs_size_t size);
-   static int programBlock(const lfs_config *cfg, lfs_block_t block, lfs_off_t off, const void *buf, lfs_size_t size);
-   static int eraseBlock(const lfs_config *cfg, lfs_block_t block);
-   static int syncDevice(const lfs_config *cfg);
+   static int lfsGet(const lfs_config *cfg, lfs_block_t blk, lfs_off_t at, void *buf, lfs_size_t n);
+   static int lfsPut(const lfs_config *cfg, lfs_block_t blk, lfs_off_t at, const void *buf, lfs_size_t n);
+   static int lfsErase(const lfs_config *cfg, lfs_block_t blk);
+   static int lfsSync(const lfs_config *cfg);
 
    BlockDevice &device_;
    Buffers buffers_;
