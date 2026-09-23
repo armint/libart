@@ -61,6 +61,7 @@ file(GLOB TEST_SOURCES
         storage/TestFatDir.cpp
         storage/TestFatFileReadable.cpp
         storage/TestFatFileWritable.cpp
+        storage/TestBlockDeviceDecorator.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
