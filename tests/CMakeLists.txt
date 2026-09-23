@@ -60,6 +60,7 @@ file(GLOB TEST_SOURCES
         storage/TestBlockDeviceDecorator.cpp
         storage/BlockDeviceContract.cpp
         storage/TestBlockDevice.cpp
+        storage/TestFileSystem.cpp
         storage/TestFatFile.cpp
         storage/TestFatDir.cpp
         storage/TestFatFileReadable.cpp
@@ -86,6 +87,8 @@ file(GLOB TO_TEST_SOURCES
         ../src/settings/SettingBase.cpp
         ../src/settings/SettingsManager.cpp
         ../src/utils/lists.cpp
+        ../src/storage/File.cpp
+        ../src/storage/FileSystem.cpp
         ../src/storage/FatFileSystem.cpp
         ../src/storage/FatFile.cpp
         ../src/storage/FatDir.cpp
@@ -109,6 +112,7 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/SHA256Digest.cpp
         RamDisk.h
         storage/RamBlockDevice.h
+        storage/InMemoryFileSystem.h
         storage/MockCipherBlockDevice.h
         storage/BlockDeviceContract.h
 )
