@@ -86,6 +86,7 @@ class LittleFsFileSystemBase : public FileSystem {
    Error noteFailure(FileSlot &slot, int lfsError);
    static bool isErrored(const FileSlot &slot);
    bool isPathOpen(uint32_t pathHash) const;
+   void dropReadCaches();
    Error toError(int lfsError) const;
 
    static int lfsGet(const lfs_config *c, lfs_block_t blk, lfs_off_t at, void *buf, lfs_size_t n);
@@ -149,6 +150,12 @@ class LittleFsFileSystemBase : public FileSystem {
  * - Open paths are recognised by a 32 bit hash of the path with empty and "." components removed, so
  *   different spellings of one path match. A hash collision can make an unrelated path report Busy. Paths
  *   with ".." components are rejected with Error::InvalidArgument.
+ *
+ * @par Failed device reads
+ * A read that fails on the device is reported as its own error (Timeout, Io, ...) and the operation can be
+ * repeated once the device works again. littlefs alone does not allow that: it keeps a range marked as cached
+ * after the read that should have filled it failed, so the repeat could return stale bytes. The binding drops the
+ * read caches whenever the device fails a read; see dropReadCaches() in LittleFsFileSystem.cpp.
  *
  * @par Stack use
  * visitDirectory() and stat() keep an lfs_info (about 260 bytes) and an lfs_dir_t on the stack.
