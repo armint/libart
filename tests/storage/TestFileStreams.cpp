@@ -227,21 +227,26 @@ TEST_SUITE("FileReadable and FileWritable over LittleFsFileSystem") {
          CHECK(readable.position() == 0u); // a failed refill leaves no buffered bytes behind
       }
 
-      SUBCASE("a failed refill leaves the position at the last byte that was read") {
-         // The file system may still serve a few refills from its own read cache, so read until one fails.
-         // Reading again after the device recovers is not asserted: littlefs v2.9.3 keeps a read cache that a
-         // failed device read leaves marked valid, so the file system itself may return wrong data afterwards.
+      SUBCASE("a failed refill leaves the position at the last byte read, and the stream continues after it") {
+         const auto data = Fixture::pattern(9000u);
          File file = fixture.open("/f", OpenMode::Read);
          std::array<uint8_t, 16> buffer{};
          FileReadable readable(file, buffer);
+         // The file system may still serve a few refills from its own read cache, so read until one fails.
          fixture.failing.failWith = Error::Timeout;
          size_t consumed = 0u;
          while(readable.read().has_value()) {
-            REQUIRE(++consumed < 9000u);
+            REQUIRE(++consumed < data.size());
          }
          CHECK(readable.lastError() == Error::Timeout);
          CHECK(readable.position() == consumed);
-         CHECK(readable.bytesLeft() == 9000u - consumed);
+         CHECK(readable.bytesLeft() == data.size() - consumed);
+
+         fixture.failing.failWith.reset();
+         const auto next = readable.read();
+         REQUIRE(next.has_value());
+         CHECK(static_cast<uint8_t>(*next) == data[consumed]);
+         CHECK(readable.position() == consumed + 1u);
       }
 
       SUBCASE("any other error is Readable::ReadError") {
