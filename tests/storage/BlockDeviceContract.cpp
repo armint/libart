@@ -1,0 +1,351 @@
+#include "BlockDeviceContract.h"
+#include <algorithm>
+#include <array>
+#include <doctest/doctest.h>
+#include <limits>
+#include <numeric>
+#include <span>
+
+namespace art::storage::test {
+
+namespace {
+
+constexpr uint64_t kPreferredWindowBytes = 512u;
+constexpr uint64_t kMaxWindowBytes = 16384u;
+
+constexpr uint64_t alignDown(uint64_t value, uint64_t granularity) {
+   return value / granularity * granularity;
+}
+
+constexpr uint64_t alignUp(uint64_t value, uint64_t granularity) {
+   return alignDown(value + granularity - 1u, granularity);
+}
+
+// Test data that is not constant, so shifted or duplicated writes are detected.
+constexpr uint8_t patternByte(uint64_t index, uint8_t seed) {
+   return static_cast<uint8_t>((index * 31u + seed * 17u + 7u) ^ (index >> 3u));
+}
+
+class ContractChecker {
+   public:
+   ContractChecker(BlockDevice &device, std::optional<uint8_t> erasedByte)
+      : device_(device)
+      , erasedByte_(erasedByte) {}
+
+   void run() {
+      const Geometry beforeInit = device_.geometry();
+      REQUIRE(device_.init().has_value());
+      setUpGeometry(beforeInit);
+      checkProgramReadRoundTrip();
+      checkErase();
+      checkOverwrite();
+      checkReinitKeepsData();
+      checkRangeRejection();
+      checkAlignmentRejection();
+      CHECK(device_.sync().has_value());
+   }
+
+   private:
+   // Everything below relies on these relations, so a violation ends the contract run.
+   void setUpGeometry(const Geometry &beforeInit) {
+      geometry_ = device_.geometry();
+      CHECK(geometry_.readSize == beforeInit.readSize);
+      CHECK(geometry_.programSize == beforeInit.programSize);
+      CHECK(geometry_.eraseSize == beforeInit.eraseSize);
+      CHECK(geometry_.size == beforeInit.size);
+      CHECK(geometry_.eraseBeforeProgram == beforeInit.eraseBeforeProgram);
+
+      REQUIRE(geometry_.readSize > 0u);
+      REQUIRE(geometry_.programSize > 0u);
+      REQUIRE(geometry_.size > 0u);
+      REQUIRE(geometry_.size % geometry_.readSize == 0u);
+      REQUIRE(geometry_.size % geometry_.programSize == 0u);
+      if(geometry_.eraseSize != 0u) {
+         REQUIRE(geometry_.eraseSize % geometry_.readSize == 0u);
+         REQUIRE(geometry_.eraseSize % geometry_.programSize == 0u);
+         REQUIRE(geometry_.size % geometry_.eraseSize == 0u);
+      }
+      // A device that must be erased before programming needs an erase operation.
+      REQUIRE((!geometry_.eraseBeforeProgram || geometry_.eraseSize != 0u));
+
+      // granule_ is the unit in which the checks erase and read back: whole erase units, or on a device
+      // without erase the smallest range that is both read and program aligned.
+      const uint64_t readProgramUnit = std::lcm<uint64_t>(geometry_.readSize, geometry_.programSize);
+      granule_ = geometry_.eraseSize != 0u ? geometry_.eraseSize : readProgramUnit;
+      const uint64_t commonUnit = std::lcm<uint64_t>(readProgramUnit, granule_);
+      window_ = alignDown(std::min(geometry_.size, std::max(kPreferredWindowBytes, 2u * commonUnit)), commonUnit);
+      REQUIRE(window_ > 0u);
+      REQUIRE(window_ <= kMaxWindowBytes);
+   }
+
+   // A device without erase (eraseSize 0) has nothing to erase, so this does nothing there.
+   void eraseRange(uint64_t offset, uint64_t length) {
+      if(geometry_.eraseSize != 0u) {
+         INFO("erase offset " << offset << " length " << length);
+         REQUIRE(device_.erase(offset, length).has_value());
+      }
+   }
+
+   void readRange(uint64_t offset, std::span<uint8_t> out) {
+      INFO("read offset " << offset << " length " << out.size());
+      REQUIRE(device_.read(offset, out).has_value());
+   }
+
+   void programRange(uint64_t offset, std::span<const uint8_t> data) {
+      INFO("program offset " << offset << " length " << data.size());
+      REQUIRE(device_.program(offset, data).has_value());
+   }
+
+   std::span<uint8_t> pattern(size_t length, uint64_t firstIndex, uint8_t seed) {
+      for(size_t index = 0u; index < length; ++index) {
+         pattern_[index] = patternByte(firstIndex + index, seed);
+      }
+      return std::span<uint8_t>{ pattern_.data(), length };
+   }
+
+   static bool sameBytes(std::span<const uint8_t> first, std::span<const uint8_t> second) {
+      return std::ranges::equal(first, second);
+   }
+
+   bool allBytesEqual(std::span<const uint8_t> bytes, uint8_t value) const {
+      return std::ranges::all_of(bytes, [value](uint8_t byte) { return byte == value; });
+   }
+
+   void checkProgramReadRoundTrip() {
+      const uint64_t programSize = geometry_.programSize;
+      for(uint64_t offset = 0u; offset < window_; offset += programSize) {
+         for(uint64_t units = 1u; units <= 3u && offset + units * programSize <= window_; ++units) {
+            checkRoundTripAt(offset, units * programSize);
+         }
+      }
+   }
+
+   void checkRoundTripAt(uint64_t offset, uint64_t length) {
+      INFO("round trip offset " << offset << " length " << length);
+      const uint64_t regionStart = alignDown(offset, granule_);
+      const uint64_t regionEnd = alignUp(offset + length, granule_);
+      const std::span<uint8_t> before{ snapshot_.data(), regionEnd - regionStart };
+      const std::span<uint8_t> after{ readback_.data(), regionEnd - regionStart };
+
+      eraseRange(regionStart, regionEnd - regionStart);
+      readRange(regionStart, before);
+      const std::span<const uint8_t> data = pattern(length, offset, 1u);
+      programRange(offset, data);
+      readRange(regionStart, after);
+
+      const size_t headSize = offset - regionStart;
+      CHECK(sameBytes(after.first(headSize), before.first(headSize)));
+      CHECK(sameBytes(after.subspan(headSize, length), data));
+      const size_t tailStart = headSize + length;
+      CHECK(sameBytes(after.subspan(tailStart), before.subspan(tailStart)));
+
+      // Reads at every readSize alignment inside the programmed range.
+      const uint64_t readSize = geometry_.readSize;
+      if(offset % readSize != 0u || length % readSize != 0u) {
+         return;
+      }
+      for(uint64_t position = 0u; position < length; position += readSize) {
+         for(uint64_t units = 1u; units <= 2u && position + units * readSize <= length; ++units) {
+            const std::span<uint8_t> partial{ readback_.data(), units * readSize };
+            readRange(offset + position, partial);
+            CHECK(sameBytes(partial, data.subspan(position, units * readSize)));
+         }
+      }
+   }
+
+   // Bytes programmed by the erase and overwrite checks: at least 16, so that matching the erased pattern by
+   // chance is not a concern.
+   uint64_t probeLength() const {
+      const uint64_t length = alignUp(16u, geometry_.programSize);
+      return geometry_.eraseSize != 0u ? std::min<uint64_t>(length, geometry_.eraseSize) : length;
+   }
+
+   void checkErase() {
+      if(geometry_.eraseSize == 0u) {
+         // No erase: the call must succeed and change nothing.
+         const uint64_t length = probeLength();
+         const std::span<const uint8_t> data = pattern(length, 0u, 2u);
+         programRange(0u, data);
+         CHECK(device_.erase(0u, granule_).has_value());
+         const std::span<uint8_t> after{ readback_.data(), alignUp(length, granule_) };
+         readRange(0u, after);
+         CHECK(sameBytes(after.first(length), data));
+         return;
+      }
+
+      const uint64_t eraseSize = geometry_.eraseSize;
+      const uint64_t length = probeLength();
+      const bool hasSecondUnit = window_ >= 2u * eraseSize;
+      const std::span<uint8_t> unit{ readback_.data(), eraseSize };
+
+      eraseRange(0u, window_);
+      if(erasedByte_) {
+         const std::span<uint8_t> all{ snapshot_.data(), window_ };
+         readRange(0u, all);
+         CHECK(allBytesEqual(all, *erasedByte_));
+      }
+
+      programRange(0u, pattern(length, 0u, 2u));
+      if(hasSecondUnit) {
+         programRange(eraseSize, pattern(length, eraseSize, 3u));
+      }
+      const std::span<uint8_t> secondCheck{ snapshot_.data(), length };
+      if(hasSecondUnit) {
+         readRange(eraseSize, secondCheck);
+         CHECK(sameBytes(secondCheck, pattern(length, eraseSize, 3u)));
+      }
+
+      // Erase only the first unit.
+      REQUIRE(device_.erase(0u, eraseSize).has_value());
+      readRange(0u, unit);
+      if(erasedByte_) {
+         CHECK(allBytesEqual(unit, *erasedByte_));
+      }
+      CHECK_FALSE(sameBytes(unit.first(length), pattern(length, 0u, 2u)));
+      // Erased content is stable: reading does not change it.
+      const std::span<uint8_t> unitAgain{ nextRead_.data(), eraseSize };
+      readRange(0u, unitAgain);
+      CHECK(sameBytes(unit, unitAgain));
+      if(hasSecondUnit) {
+         readRange(eraseSize, secondCheck);
+         CHECK(sameBytes(secondCheck, pattern(length, eraseSize, 3u)));
+      }
+
+      // Erase across several units in one call.
+      REQUIRE(device_.erase(0u, window_).has_value());
+      if(hasSecondUnit) {
+         readRange(eraseSize, secondCheck);
+         CHECK_FALSE(sameBytes(secondCheck, pattern(length, eraseSize, 3u)));
+      }
+      if(erasedByte_) {
+         const std::span<uint8_t> all{ snapshot_.data(), window_ };
+         readRange(0u, all);
+         CHECK(allBytesEqual(all, *erasedByte_));
+      }
+   }
+
+   void checkOverwrite() {
+      const uint64_t length = probeLength();
+      const std::span<uint8_t> region{ readback_.data(), alignUp(length, granule_) };
+
+      eraseRange(0u, granule_);
+      programRange(0u, pattern(length, 0u, 4u));
+      if(!geometry_.eraseBeforeProgram) {
+         // Claimed to be overwritable in place: programming again without erase must replace the data.
+         programRange(0u, pattern(length, 0u, 5u));
+         readRange(0u, region);
+         CHECK(sameBytes(region.first(length), pattern(length, 0u, 5u)));
+      }
+      // Erase-then-program must work again after the range was programmed.
+      eraseRange(0u, granule_);
+      programRange(0u, pattern(length, 0u, 6u));
+      readRange(0u, region);
+      CHECK(sameBytes(region.first(length), pattern(length, 0u, 6u)));
+   }
+
+   void checkReinitKeepsData() {
+      const uint64_t length = probeLength();
+      const std::span<uint8_t> region{ readback_.data(), alignUp(length, granule_) };
+      eraseRange(0u, granule_);
+      programRange(0u, pattern(length, 0u, 7u));
+      CHECK(device_.init().has_value());
+      readRange(0u, region);
+      CHECK(sameBytes(region.first(length), pattern(length, 0u, 7u)));
+      CHECK(sameGeometry(device_.geometry(), geometry_));
+   }
+
+   static bool sameGeometry(const Geometry &first, const Geometry &second) {
+      return first.readSize == second.readSize && first.programSize == second.programSize && first.eraseSize == second.eraseSize &&
+             first.size == second.size && first.eraseBeforeProgram == second.eraseBeforeProgram;
+   }
+
+   bool readFails(uint64_t offset, uint64_t length) {
+      INFO("read offset " << offset << " length " << length);
+      return failedWith(device_.read(offset, std::span<uint8_t>{ readback_.data(), length }), Error::InvalidArgument);
+   }
+
+   bool programFails(uint64_t offset, uint64_t length) {
+      INFO("program offset " << offset << " length " << length);
+      return failedWith(device_.program(offset, pattern(length, 0u, 8u)), Error::InvalidArgument);
+   }
+
+   bool eraseFails(uint64_t offset, uint64_t length) {
+      INFO("erase offset " << offset << " length " << length);
+      return failedWith(device_.erase(offset, length), Error::InvalidArgument);
+   }
+
+   void checkRangeRejection() {
+      constexpr uint64_t kMax = std::numeric_limits<uint64_t>::max();
+      const uint64_t size = geometry_.size;
+      const uint64_t readSize = geometry_.readSize;
+      const uint64_t programSize = geometry_.programSize;
+
+      CHECK(readFails(size, readSize));
+      CHECK(readFails(size + readSize, readSize));
+      CHECK(readFails(size - readSize, 2u * readSize));
+      CHECK(readFails(alignDown(kMax, readSize), readSize)); // offset + length wraps around
+
+      CHECK(programFails(size, programSize));
+      CHECK(programFails(size + programSize, programSize));
+      CHECK(programFails(size - programSize, 2u * programSize));
+      CHECK(programFails(alignDown(kMax, programSize), programSize));
+
+      if(const uint64_t eraseSize = geometry_.eraseSize; eraseSize != 0u) {
+         CHECK(eraseFails(size, eraseSize));
+         CHECK(eraseFails(size - eraseSize, 2u * eraseSize));
+         CHECK(eraseFails(0u, size + eraseSize));
+         CHECK(eraseFails(alignDown(kMax, eraseSize), eraseSize));
+      }
+   }
+
+   void checkAlignmentRejection() {
+      // Rejected calls must also leave the medium as it was: put known data at the start and compare.
+      const uint64_t regionSize = std::min(2u * granule_, window_);
+      const std::span<uint8_t> before{ snapshot_.data(), regionSize };
+      const std::span<uint8_t> after{ readback_.data(), regionSize };
+      eraseRange(0u, window_);
+      programRange(0u, pattern(geometry_.programSize, 0u, 9u));
+      readRange(0u, before);
+
+      const uint64_t readSize = geometry_.readSize;
+      if(readSize > 1u) {
+         CHECK(readFails(1u, readSize));
+         CHECK(readFails(0u, readSize + 1u));
+         CHECK(readFails(readSize - 1u, readSize));
+      }
+      const uint64_t programSize = geometry_.programSize;
+      if(programSize > 1u) {
+         CHECK(programFails(1u, programSize));
+         CHECK(programFails(0u, programSize + 1u));
+         CHECK(programFails(programSize - 1u, programSize));
+      }
+      const uint64_t eraseSize = geometry_.eraseSize;
+      if(eraseSize > 1u) {
+         CHECK(eraseFails(1u, eraseSize));
+         CHECK(eraseFails(0u, eraseSize + 1u));
+         CHECK(eraseFails(eraseSize - 1u, eraseSize));
+      }
+
+      readRange(0u, after);
+      CHECK(sameBytes(before, after));
+   }
+
+   BlockDevice &device_;
+   std::optional<uint8_t> erasedByte_;
+   Geometry geometry_{};
+   uint64_t granule_{ 1u };
+   uint64_t window_{ 0u };
+   std::array<uint8_t, kMaxWindowBytes> snapshot_{};
+   std::array<uint8_t, kMaxWindowBytes> readback_{};
+   std::array<uint8_t, kMaxWindowBytes> nextRead_{};
+   std::array<uint8_t, kMaxWindowBytes> pattern_{};
+};
+
+} // namespace
+
+void checkBlockDeviceContract(BlockDevice &device, std::optional<uint8_t> erasedByte) {
+   ContractChecker checker{ device, erasedByte };
+   checker.run();
+}
+
+} // namespace art::storage::test
