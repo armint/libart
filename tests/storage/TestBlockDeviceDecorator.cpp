@@ -155,6 +155,62 @@ TEST_SUITE("art::storage::BlockDeviceDecorator") {
       CHECK_FALSE(geometry.eraseBeforeProgram); // no erase unit, so erase-before-program cannot apply
    }
 
+   TEST_CASE("Geometry::isValid checks the invariants") {
+      constexpr Geometry nor{ .readSize = 1u, .programSize = 256u, .eraseSize = 4096u, .size = 1u << 20, .eraseBeforeProgram = true };
+      static_assert(nor.isValid());
+      CHECK(nor.isValid());
+
+      const Geometry ram{ .size = 1024u };
+      CHECK(ram.isValid());
+      CHECK(Geometry{}.isValid()); // the default is an empty but consistent device
+
+      Geometry broken = nor;
+      broken.eraseSize = 0u; // erase-before-program without an erase unit
+      CHECK_FALSE(broken.isValid());
+      broken = nor;
+      broken.readSize = 0u;
+      CHECK_FALSE(broken.isValid());
+      broken = nor;
+      broken.programSize = 0u;
+      CHECK_FALSE(broken.isValid());
+      broken = nor;
+      broken.eraseSize = 4000u; // not a multiple of programSize
+      CHECK_FALSE(broken.isValid());
+      broken = nor;
+      broken.size += 1u; // not a multiple of eraseSize
+      CHECK_FALSE(broken.isValid());
+   }
+
+   TEST_CASE("Geometry range checks enforce alignment and bounds") {
+      constexpr Geometry nor{ .readSize = 4u, .programSize = 256u, .eraseSize = 4096u, .size = 8192u, .eraseBeforeProgram = true };
+
+      CHECK(nor.isValidRead(0u, 8192u));
+      CHECK(nor.isValidRead(4u, 4u));
+      CHECK_FALSE(nor.isValidRead(2u, 4u));
+      CHECK_FALSE(nor.isValidRead(0u, 6u));
+      CHECK_FALSE(nor.isValidRead(0u, 8196u));
+      CHECK_FALSE(nor.isValidRead(8192u, 4u));
+      CHECK(nor.isValidRead(8192u, 0u)); // empty range at the end
+
+      CHECK(nor.isValidProgram(256u, 512u));
+      CHECK_FALSE(nor.isValidProgram(4u, 256u));
+      CHECK_FALSE(nor.isValidProgram(0u, 100u));
+
+      CHECK(nor.isValidErase(4096u, 4096u));
+      CHECK_FALSE(nor.isValidErase(256u, 4096u));
+      CHECK_FALSE(nor.isValidErase(4096u, 8192u));
+
+      // offset + length would wrap around 64 bits
+      CHECK_FALSE(nor.isValidRead(0xFFFF'FFFF'FFFF'FFFCull, 8u));
+      CHECK_FALSE(nor.isValidProgram(4096u, 0xFFFF'FFFF'FFFF'FF00ull));
+   }
+
+   TEST_CASE("Geometry::isValidErase accepts any in-bounds range without an erase unit") {
+      const Geometry ram{ .size = 1000u };
+      CHECK(ram.isValidErase(3u, 7u));
+      CHECK_FALSE(ram.isValidErase(999u, 2u));
+   }
+
    TEST_CASE("toString covers every error code") {
       CHECK(std::string_view{ toString(Error::Io) } == "Io");
       CHECK(std::string_view{ toString(Error::Unsupported) } == "Unsupported");

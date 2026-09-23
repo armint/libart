@@ -24,6 +24,10 @@ using offset_t = uint64_t;
  * `eraseBeforeProgram == true` requires `eraseSize > 0`, because there must be an erase unit to erase with.
  * Equivalently, `eraseSize == 0` implies `eraseBeforeProgram == false`. The defaults describe a RAM-like device
  * without erase that can be overwritten freely; a driver fills in the fields that differ.
+ *
+ * The isValid*() members are the single definition of the alignment and bounds rules of the BlockDevice
+ * contract. Devices use them to reject bad calls with Error::InvalidArgument, and file systems use isValid()
+ * to check the geometry they mount on. A zero-length range is valid.
  */
 struct Geometry {
    /// Smallest readable unit in bytes. Read offsets and lengths are multiples of it.
@@ -38,6 +42,46 @@ struct Geometry {
    /// Requires eraseSize > 0. The two fields are independent otherwise: an SD card has an erase unit but does not
    /// require erase before program.
    bool eraseBeforeProgram{ false };
+
+   /**
+    * @brief Checks that the geometry is self-consistent.
+    *
+    * True if readSize and programSize are non-zero, the eraseBeforeProgram invariant holds, size is a multiple
+    * of readSize and programSize, and, if there is an erase unit, eraseSize is a multiple of both and divides
+    * size. A file system should reject a device whose geometry fails this check.
+    */
+   constexpr bool isValid() const {
+      if(readSize == 0u || programSize == 0u || size % readSize != 0u || size % programSize != 0u) {
+         return false;
+      }
+      if(eraseSize == 0u) {
+         return !eraseBeforeProgram;
+      }
+      return eraseSize % readSize == 0u && eraseSize % programSize == 0u && size % eraseSize == 0u;
+   }
+
+   /// True if a read of `length` bytes at `offset` is aligned to readSize and lies within size.
+   constexpr bool isValidRead(offset_t offset, offset_t length) const {
+      return isValidRange(offset, length, readSize);
+   }
+
+   /// True if a program of `length` bytes at `offset` is aligned to programSize and lies within size.
+   constexpr bool isValidProgram(offset_t offset, offset_t length) const {
+      return isValidRange(offset, length, programSize);
+   }
+
+   /// True if an erase of `length` bytes at `offset` is aligned to eraseSize and lies within size. Without an
+   /// erase unit (eraseSize 0) any range within size is valid.
+   constexpr bool isValidErase(offset_t offset, offset_t length) const {
+      return isValidRange(offset, length, eraseSize == 0u ? 1u : eraseSize);
+   }
+
+   private:
+   // Written as `length <= size - offset` so that offset + length cannot overflow 64 bits.
+   constexpr bool isValidRange(offset_t offset, offset_t length, uint32_t granularity) const {
+      return granularity != 0u && offset % granularity == 0u && length % granularity == 0u && offset <= size &&
+             length <= size - offset;
+   }
 };
 
 /**
