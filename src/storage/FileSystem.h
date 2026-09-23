@@ -1,6 +1,6 @@
 #pragma once
 
-#include "storage/BlockDevice.h"
+#include "storage/StorageTypes.h"
 #include "storage/File.h"
 #include "storage/StorageError.h"
 #include <cstddef>

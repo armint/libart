@@ -1,18 +1,12 @@
 #pragma once
 
 #include "storage/StorageError.h"
+#include "storage/StorageTypes.h"
 #include <cstdint>
 #include <expected>
 #include <span>
 
 namespace art::storage {
-
-/**
- * @brief Byte offset into a block device.
- *
- * 64 bits wide so that SD cards above 4 GB remain addressable.
- */
-using offset_t = uint64_t;
 
 /**
  * @brief Physical layout and access granularity of a block device.
