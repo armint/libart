@@ -35,16 +35,16 @@ class MockCipherBlockDevice : public BlockDeviceDecorator {
          return initialised;
       }
       const Geometry below = lower().geometry();
-      if(below.readSize == 0u || below.programSize == 0u || kSectorSize % below.readSize != 0u ||
-         kSectorSize % below.programSize != 0u || below.eraseSize % kSectorSize != 0u) {
+      if(!below.isValid() || kSectorSize % below.readSize != 0u || kSectorSize % below.programSize != 0u ||
+         below.eraseSize % kSectorSize != 0u) {
          return std::unexpected(Error::Unsupported);
       }
       return {};
    }
 
    std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
-      if(auto valid = validate(offset, buffer.size()); !valid) {
-         return valid;
+      if(!geometry().isValidRead(offset, buffer.size())) {
+         return std::unexpected(Error::InvalidArgument);
       }
       if(auto result = lower().read(offset, buffer); !result) {
          return result;
@@ -55,8 +55,8 @@ class MockCipherBlockDevice : public BlockDeviceDecorator {
 
    std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
       // Validate up front so a rejected call writes nothing, even though the data is encrypted in chunks.
-      if(auto valid = validate(offset, data.size()); !valid) {
-         return valid;
+      if(!geometry().isValidProgram(offset, data.size())) {
+         return std::unexpected(Error::InvalidArgument);
       }
       size_t done = 0u;
       while(done < data.size()) {
@@ -87,15 +87,6 @@ class MockCipherBlockDevice : public BlockDeviceDecorator {
       for(size_t index = 0u; index < bytes.size(); ++index) {
          bytes[index] ^= keyByte(offset + index);
       }
-   }
-
-   std::expected<void, Error> validate(offset_t offset, offset_t length) const {
-      const offset_t size = lower().geometry().size;
-      const bool inRange = offset <= size && length <= size - offset;
-      if(!inRange || offset % kSectorSize != 0u || length % kSectorSize != 0u) {
-         return std::unexpected(Error::InvalidArgument);
-      }
-      return {};
    }
 
    // Multiple of kSectorSize, so every chunk stays sector aligned.
