@@ -1,8 +1,8 @@
 #pragma once
 
-#include "storage/StorageTypes.h"
 #include "storage/File.h"
 #include "storage/StorageError.h"
+#include "storage/StorageTypes.h"
 #include <cstddef>
 #include <cstdint>
 #include <etl/delegate.h>
