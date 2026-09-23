@@ -22,7 +22,8 @@ std::expected<size_t, Error> FileSystem::readFile(const char *path, std::span<ui
          return std::unexpected(bytesRead.error());
       }
       if(*bytesRead == 0u) {
-         break;
+         // The file ended before the size it reported: fail rather than return a silently short count.
+         return std::unexpected(Error::Io);
       }
       total += *bytesRead;
    }
