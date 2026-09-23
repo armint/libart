@@ -21,8 +21,14 @@ namespace art::storage {
  * - FR_TIMEOUT: Timeout. FR_LOCKED: Busy. FR_WRITE_PROTECTED: WriteProtected.
  * - FR_INT_ERR, FR_NO_FILESYSTEM: Corrupt (no valid FAT volume on the medium).
  * - FR_NO_FILE, FR_NO_PATH: NoEntry. FR_EXIST: Exists.
- * - FR_DENIED: NoSpace (directory or medium full; FatFs also uses it for a read-only attribute, which the
- *   adapter cannot tell apart, so callers must not act on more than "the write was refused").
+ * - FR_DENIED is not one condition; FatFs returns it for unrelated causes, so map it per call site, never as
+ *   a blanket code:
+ *   - no free cluster or directory entry, too many short-name collisions, f_mkdir or f_expand without room
+ *     (dir_next, dir_register, f_mkdir, f_expand): NoSpace. f_expand over the size limit: TooBig.
+ *   - f_unlink of a non-empty directory: NotEmpty. f_unlink of the current directory, or f_rename of a
+ *     directory in the current path: Busy.
+ *   - f_open with FA_WRITE on a read-only file, or write/sync/truncate through a handle opened without
+ *     write access: InvalidArgument. f_open creating over a directory: IsDirectory.
  * - FR_INVALID_NAME, FR_INVALID_DRIVE, FR_INVALID_PARAMETER: InvalidArgument. FR_INVALID_OBJECT: BadHandle.
  * - FR_NOT_ENABLED: NotMounted.
  * - FR_NOT_ENOUGH_CORE, FR_TOO_MANY_OPEN_FILES: NoMemory (a static buffer or pool is exhausted).
