@@ -581,6 +581,7 @@ std::expected<offset_t, Error> LittleFsFileSystemBase::fileTell(FileHandle handl
    if(slot == nullptr) {
       return failure(Error::BadHandle);
    }
+   deviceError_.reset();
    const lfs_soff_t position = lfs_file_tell(&lfs_, &slot->file);
    if(position < 0) {
       return failure(toError(position));
@@ -594,6 +595,7 @@ std::expected<offset_t, Error> LittleFsFileSystemBase::fileSize(FileHandle handl
    if(slot == nullptr) {
       return failure(Error::BadHandle);
    }
+   deviceError_.reset();
    const lfs_soff_t size = lfs_file_size(&lfs_, &slot->file);
    if(size < 0) {
       return failure(toError(size));
