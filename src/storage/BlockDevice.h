@@ -19,18 +19,25 @@ using offset_t = uint64_t;
  *
  * The values returned by BlockDevice::geometry() are authoritative. Code above a device must not assume
  * the page or sector size of a particular driver.
+ *
+ * @par Invariant
+ * `eraseBeforeProgram == true` requires `eraseSize > 0`, because there must be an erase unit to erase with.
+ * Equivalently, `eraseSize == 0` implies `eraseBeforeProgram == false`. The defaults describe a RAM-like device
+ * without erase that can be overwritten freely; a driver fills in the fields that differ.
  */
 struct Geometry {
    /// Smallest readable unit in bytes. Read offsets and lengths are multiples of it.
    uint32_t readSize{ 1u };
    /// Smallest programmable unit in bytes (NOR page). Program offsets and lengths are multiples of it.
    uint32_t programSize{ 1u };
-   /// Erase unit in bytes. 0 means the device needs no erase.
+   /// Erase unit in bytes. 0 means the medium has no erase unit (RAM-like); erase() then has no effect.
    uint32_t eraseSize{ 0u };
    /// Total usable bytes.
    offset_t size{ 0u };
-   /// true: a range must be erased before it is programmed (NOR). false: it can be overwritten (SD card).
-   bool eraseBeforeProgram{ true };
+   /// true: a range must be erased before it is programmed (NOR). false: it can be overwritten (SD card, RAM).
+   /// Requires eraseSize > 0. The two fields are independent otherwise: an SD card has an erase unit but does not
+   /// require erase before program.
+   bool eraseBeforeProgram{ false };
 };
 
 /**
@@ -101,11 +108,13 @@ class BlockDevice {
    /**
     * @brief Erases a range of the device.
     *
-    * After a successful erase the range reads back in the erased state of the medium (typically 0xFF on NOR).
-    * On a device with Geometry::eraseSize of 0 this call has no effect and succeeds.
+    * After a successful erase on a device with Geometry::eraseSize > 0 the range reads back in the erased
+    * state of the medium (typically 0xFF on NOR). On a device with Geometry::eraseSize of 0 there is no erase
+    * unit: an in-bounds call succeeds without changing the stored data, and the caller must not rely on it to
+    * change what read() returns.
     *
-    * @param offset Byte offset of the range start, a multiple of Geometry::eraseSize.
-    * @param length Length of the range in bytes, a multiple of Geometry::eraseSize.
+    * @param offset Byte offset of the range start, a multiple of Geometry::eraseSize (any offset if it is 0).
+    * @param length Length of the range in bytes, a multiple of Geometry::eraseSize (any length if it is 0).
     * @return Nothing on success, otherwise the error.
     */
    virtual std::expected<void, Error> erase(offset_t offset, offset_t length) = 0;

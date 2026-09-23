@@ -152,7 +152,7 @@ TEST_SUITE("art::storage::BlockDeviceDecorator") {
       CHECK(geometry.programSize == 1u);
       CHECK(geometry.eraseSize == 0u);
       CHECK(geometry.size == 0u);
-      CHECK(geometry.eraseBeforeProgram);
+      CHECK_FALSE(geometry.eraseBeforeProgram); // no erase unit, so erase-before-program cannot apply
    }
 
    TEST_CASE("toString covers every error code") {
