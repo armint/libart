@@ -875,4 +875,32 @@ TEST_SUITE("LittleFsFileSystem") {
       CHECK(keptPrevious > 0u);
       CHECK(gotUpdated > 0u);
    }
+
+   // The two cases below are about the stacks themselves, so they are not templates. They make sure that the
+   // cipher stack really transforms the data, which is what gives the identical results above their meaning.
+   TEST_CASE("the direct stack stores file content in clear on the medium") {
+      DirectStack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      const auto marker = bytes("SENTINODE-PLAINTEXT-MARKER-0123456789");
+      REQUIRE(fileSystem.writeFile("/a", marker).has_value());
+      REQUIRE(fileSystem.unmount().has_value());
+      CHECK(std::ranges::search(stack.backing, marker).begin() != stack.backing.end());
+   }
+
+   TEST_CASE("the cipher stack does not, and its volume is only readable through the same transform") {
+      CipherStack stack;
+      const auto marker = bytes("SENTINODE-PLAINTEXT-MARKER-0123456789");
+      {
+         FileSystemUnderTest fileSystem{ stack.device() };
+         REQUIRE(fileSystem.mount().has_value());
+         REQUIRE(fileSystem.writeFile("/a", marker).has_value());
+      }
+      CHECK(std::ranges::search(stack.backing, marker).begin() == stack.backing.end());
+
+      // Mounted without the transform, the raw bytes are not a valid volume: it is formatted, the file is gone.
+      FileSystemUnderTest raw{ stack.powerCut };
+      REQUIRE(raw.mount().has_value());
+      CHECK(failedWith(raw.stat("/a"), Error::NoEntry));
+   }
 }
