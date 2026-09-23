@@ -12,6 +12,12 @@ namespace art::storage {
  * on a specific driver.
  *
  * Fallible storage operations return `std::expected<T, Error>`.
+ *
+ * Adapters should keep the distinctions a caller can act on: Timeout and Busy are transient and may be
+ * retried or backed off, WriteProtected is permanent until the user intervenes, Io is a hard failure. Native
+ * codes without a dedicated enumerator map to the closest one, for example FatFs FR_LOCKED to Busy,
+ * FR_TIMEOUT to Timeout, FR_WRITE_PROTECTED to WriteProtected and FR_TOO_MANY_OPEN_FILES to NoMemory
+ * (a static pool is exhausted).
  */
 enum class Error : uint8_t {
    Io,              ///< Low-level read, program or erase failure reported by the medium or its bus.
@@ -30,6 +36,9 @@ enum class Error : uint8_t {
    NotMounted,      ///< The operation requires a mounted file system.
    NotInitialised,  ///< The device or file system was used before a successful `init()`.
    Unsupported,     ///< The operation is not supported by this device or backend.
+   Timeout,         ///< The device or a lock did not become ready in time. Retrying may succeed.
+   Busy,            ///< The device or resource is in use or locked by someone else. Retrying later may succeed.
+   WriteProtected,  ///< The medium or device is write protected (SD lock switch, NOR block protection).
 };
 
 /**
@@ -73,6 +82,12 @@ constexpr const char *toString(Error error) {
       return "NotInitialised";
    case Error::Unsupported:
       return "Unsupported";
+   case Error::Timeout:
+      return "Timeout";
+   case Error::Busy:
+      return "Busy";
+   case Error::WriteProtected:
+      return "WriteProtected";
    }
    return "Unknown";
 }
