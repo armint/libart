@@ -47,6 +47,29 @@ class FailingReadDevice final : public BlockDeviceDecorator {
    uint32_t failCount{ UINT32_MAX };
 };
 
+// Fails program() with a chosen error while failWith is set, to test what a file reports after a failed write.
+class FailingProgramDevice final : public BlockDeviceDecorator {
+   public:
+   using BlockDeviceDecorator::BlockDeviceDecorator;
+
+   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+      if(failWith) {
+         return std::unexpected(*failWith);
+      }
+      return BlockDeviceDecorator::program(offset, data);
+   }
+
+   std::optional<Error> failWith;
+};
+
+std::vector<uint8_t> pattern(size_t size, uint8_t seed) {
+   std::vector<uint8_t> data(size);
+   for(size_t i = 0; i < size; ++i) {
+      data[i] = static_cast<uint8_t>(i * 7u + seed);
+   }
+   return data;
+}
+
 struct Fixture {
    Fixture()
       : device(kGeometry, backing) {}
@@ -312,5 +335,63 @@ TEST_SUITE("art::storage::LittleFsFileSystem smoke") {
       REQUIRE(fileSystem.mount().has_value());
       std::array<uint8_t, 8> buffer{};
       CHECK(fileSystem.readFile("/a", buffer).value() == 6u);
+   }
+
+   // littlefs marks a file as errored after a failed write or flush and then reports success from its own sync
+   // and close without committing anything. The binding must report the error instead.
+   TEST_CASE("a failed write is reported by sync and close even after the device recovered") {
+      std::array<uint8_t, 64u * 1024u> backing{};
+      RamBlockDevice ram{ kGeometry, backing };
+      FailingProgramDevice failing{ ram };
+      LittleFsFileSystem<> fileSystem{ failing };
+      REQUIRE(fileSystem.mount().has_value());
+      const auto previous = pattern(4000u, 1u);
+      REQUIRE(fileSystem.writeFile("/a", previous).has_value());
+      // Nothing was committed by the failed file: /a still has its previous content.
+      const auto checkStillPrevious = [&] {
+         std::vector<uint8_t> stored(5000u);
+         const auto count = fileSystem.readFile("/a", stored);
+         REQUIRE(count.has_value());
+         stored.resize(*count);
+         CHECK(stored == previous);
+      };
+
+      SUBCASE("the write fails, the device recovers, sync and close must not report success") {
+         auto file = fileSystem.open("/a", OpenMode::Write);
+         REQUIRE(file.has_value());
+         failing.failWith = Error::Timeout;
+         CHECK(failedWith(file->write(pattern(4000u, 2u)), Error::Timeout)); // fills the cache, programs, fails
+         failing.failWith.reset();                                           // the device is fine again
+
+         CHECK(failedWith(file->sync(), Error::Timeout));
+         CHECK(failedWith(file->close(), Error::Timeout));
+         CHECK_FALSE(file->isOpen()); // the handle is released even though the close failed
+         checkStillPrevious();
+      }
+      SUBCASE("the flush in sync fails, the device recovers, close must not report success") {
+         auto file = fileSystem.open("/a", OpenMode::Write);
+         REQUIRE(file.has_value());
+         REQUIRE(file->write(pattern(100u, 2u)).has_value()); // stays in the file cache
+         failing.failWith = Error::Timeout;
+         CHECK(failedWith(file->sync(), Error::Timeout));
+         failing.failWith.reset();
+
+         CHECK(failedWith(file->sync(), Error::Timeout));
+         CHECK(failedWith(file->close(), Error::Timeout));
+         checkStillPrevious();
+      }
+      SUBCASE("a later successful write clears the error") {
+         auto file = fileSystem.open("/a", OpenMode::Write);
+         REQUIRE(file.has_value());
+         failing.failWith = Error::Timeout;
+         CHECK_FALSE(file->write(pattern(4000u, 2u)).has_value());
+         failing.failWith.reset();
+         REQUIRE(file->seek(0u).has_value());
+         CHECK(file->write(pattern(100u, 3u)).has_value());
+         CHECK(file->sync().has_value());
+         CHECK(file->close().has_value());
+         std::array<uint8_t, 200> buffer{};
+         CHECK(fileSystem.readFile("/a", buffer).value() == 100u);
+      }
    }
 }

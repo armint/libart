@@ -44,6 +44,9 @@ class LittleFsFileSystemBase : public FileSystem {
       lfs_file_config config{};
       uint32_t pathHash{ 0u };
       uint32_t generation{ 0u };
+      /// The error of the last failed call on this file. lfs_file_sync() and lfs_file_close() return success for a
+      /// file that littlefs marked as errored (LFS_F_ERRED), so the binding reports this error in their place.
+      Error lastError{ Error::Io };
       bool used{ false };
       bool readable{ false };
       bool writable{ false };
@@ -80,6 +83,8 @@ class LittleFsFileSystemBase : public FileSystem {
    FileHandle handleOf(size_t index) const;
    uint8_t *cacheOf(size_t index) const;
    std::expected<void, Error> closeSlot(FileSlot &slot);
+   Error noteFailure(FileSlot &slot, int lfsError);
+   static bool isErrored(const FileSlot &slot);
    bool isPathOpen(uint32_t pathHash) const;
    Error toError(int lfsError) const;
 

@@ -335,13 +335,29 @@ uint8_t *LittleFsFileSystemBase::cacheOf(size_t index) const {
    return buffers_.fileCaches.data() + index * buffers_.readCache.size();
 }
 
-// Closes the littlefs file and releases the slot, whatever the outcome of the final flush.
+// Maps a failed call on a file and remembers the error for isErrored() files.
+Error LittleFsFileSystemBase::noteFailure(FileSlot &slot, int lfsError) {
+   slot.lastError = toError(lfsError);
+   return slot.lastError;
+}
+
+// littlefs sets LFS_F_ERRED after a failed write or flush, and clears it with the next successful write.
+bool LittleFsFileSystemBase::isErrored(const FileSlot &slot) {
+   return (slot.file.flags & LFS_F_ERRED) != 0u;
+}
+
+// Closes the littlefs file and releases the slot, whatever the outcome of the final flush. lfs_file_close()
+// reports success for an errored file although it committed nothing, so that state is reported as the error.
 std::expected<void, Error> LittleFsFileSystemBase::closeSlot(FileSlot &slot) {
+   const bool errored = isErrored(slot);
    const int result = lfs_file_close(&lfs_, &slot.file);
    slot.used = false;
    slot.generation = (slot.generation + 1u) & kGenerationMask;
    if(result != LFS_ERR_OK) {
       return failure(toError(result));
+   }
+   if(errored) {
+      return failure(slot.lastError);
    }
    return {};
 }
@@ -391,6 +407,7 @@ std::expected<File, Error> LittleFsFileSystemBase::open(const char *path, OpenMo
    }
    freeSlot->used = true;
    freeSlot->pathHash = *pathHash;
+   freeSlot->lastError = Error::Io;
    freeSlot->readable = isReadable(mode);
    freeSlot->writable = writable;
    return makeFile(handleOf(index));
@@ -535,7 +552,7 @@ std::expected<size_t, Error> LittleFsFileSystemBase::fileRead(FileHandle handle,
    const auto count = static_cast<lfs_size_t>(std::min<size_t>(buffer.size(), std::numeric_limits<int32_t>::max()));
    const lfs_ssize_t result = lfs_file_read(&lfs_, &slot->file, buffer.data(), count);
    if(result < 0) {
-      return failure(toError(result));
+      return failure(noteFailure(*slot, result));
    }
    return static_cast<size_t>(result);
 }
@@ -555,7 +572,7 @@ std::expected<void, Error> LittleFsFileSystemBase::fileWrite(FileHandle handle, 
    deviceError_.reset();
    const lfs_ssize_t result = lfs_file_write(&lfs_, &slot->file, data.data(), static_cast<lfs_size_t>(data.size()));
    if(result < 0) {
-      return failure(toError(result));
+      return failure(noteFailure(*slot, result));
    }
    // littlefs reports NOSPC as an error; a short count is treated the same way, never as success.
    return static_cast<size_t>(result) == data.size() ? std::expected<void, Error>{} : failure(Error::NoSpace);
@@ -572,7 +589,7 @@ std::expected<void, Error> LittleFsFileSystemBase::fileSeek(FileHandle handle, o
    }
    deviceError_.reset();
    const lfs_soff_t result = lfs_file_seek(&lfs_, &slot->file, static_cast<lfs_soff_t>(position), LFS_SEEK_SET);
-   return result < 0 ? std::expected<void, Error>{ failure(toError(result)) } : std::expected<void, Error>{};
+   return result < 0 ? std::expected<void, Error>{ failure(noteFailure(*slot, result)) } : std::expected<void, Error>{};
 }
 
 std::expected<offset_t, Error> LittleFsFileSystemBase::fileTell(FileHandle handle) {
@@ -609,9 +626,13 @@ std::expected<void, Error> LittleFsFileSystemBase::fileSync(FileHandle handle) {
    if(slot == nullptr) {
       return failure(Error::BadHandle);
    }
+   // lfs_file_sync() returns success for an errored file without committing anything.
+   if(isErrored(*slot)) {
+      return failure(slot->lastError);
+   }
    deviceError_.reset();
    const int result = lfs_file_sync(&lfs_, &slot->file);
-   return result < 0 ? std::expected<void, Error>{ failure(toError(result)) } : std::expected<void, Error>{};
+   return result < 0 ? std::expected<void, Error>{ failure(noteFailure(*slot, result)) } : std::expected<void, Error>{};
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::fileClose(FileHandle handle) {
