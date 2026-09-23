@@ -27,7 +27,8 @@ namespace art::storage::test {
  * lifetime of the device and hold at least Geometry::size bytes.
  *
  * @par Fault injection
- * failNthOperation() makes one operation fail with Error::Io without touching the data.
+ * failNthOperation() makes one operation fail with Error::Io without touching the data. It counts the same
+ * operations as the counters below, so erase() on a device without erase unit never consumes the countdown.
  * truncateNextProgram() simulates a power cut in the middle of a program(): only the first bytes are written
  * before the call fails with Error::Io.
  *
@@ -97,7 +98,10 @@ class RamBlockDevice : public BlockDevice {
          if(!initialised_) {
             return std::unexpected(Error::NotInitialised);
          }
-         return geometry_.isValidErase(offset, length) ? std::expected<void, Error>{} : std::unexpected(Error::InvalidArgument);
+         if(!geometry_.isValidErase(offset, length)) {
+            return std::unexpected(Error::InvalidArgument);
+         }
+         return {};
       }
       if(auto admitted = admit(geometry_.isValidErase(offset, length), eraseCount_); !admitted) {
          return admitted;
@@ -113,7 +117,8 @@ class RamBlockDevice : public BlockDevice {
    /**
     * @brief Makes the n-th following read, program or erase fail with Error::Io, leaving the data untouched.
     *
-    * 1 is the next operation. The failure is one-shot: later operations succeed again. 0 disarms.
+    * Only operations that are counted (see the class description) take part: erase() on a device without erase
+    * unit does not. 1 is the next operation. The failure is one-shot: later operations succeed again. 0 disarms.
     */
    void failNthOperation(uint32_t n) {
       operationsUntilFailure_ = n;
