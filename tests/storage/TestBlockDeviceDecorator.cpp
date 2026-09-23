@@ -201,8 +201,8 @@ TEST_SUITE("art::storage::BlockDeviceDecorator") {
    }
 
    TEST_CASE("BlockDevice and BlockDeviceDecorator cannot be copied or moved through the base") {
-      static_assert(!std::is_copy_constructible_v<BlockDevice>);
-      static_assert(!std::is_move_constructible_v<BlockDevice>);
+      // BlockDevice is abstract, so is_*_constructible would be false whatever the access; the concrete
+      // BlockDeviceDecorator pins the constructors, and assignability is sensitive to access on both.
       static_assert(!std::is_copy_assignable_v<BlockDevice>);
       static_assert(!std::is_move_assignable_v<BlockDevice>);
       static_assert(!std::is_copy_constructible_v<BlockDeviceDecorator>);
