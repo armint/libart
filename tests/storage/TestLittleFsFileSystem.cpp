@@ -197,6 +197,14 @@ struct CipherStack {
    MockCipherBlockDevice cipher;
 };
 
+// The save pattern the interface recommends: write a temporary file, then rename it over the target.
+std::expected<void, Error> saveViaTmp(FileSystem &fs, const char *to, const char *tmp, std::span<const uint8_t> data) {
+   if(const auto written = fs.writeFile(tmp, data); !written) {
+      return written;
+   }
+   return fs.rename(tmp, to);
+}
+
 } // namespace
 
 // A test case that runs once per device stack, with the stack type named Stack.
@@ -799,5 +807,72 @@ TEST_SUITE("LittleFsFileSystem") {
          REQUIRE(file->close().has_value());
       }
       CHECK(readAll(fileSystem, "/a", 10000u) == expected);
+   }
+
+   // Simulated power cut during "write /config.tmp, rename it over /config". The cut is placed at every
+   // program and erase operation of the save and torn after several byte counts; from the cut on the medium
+   // rejects every write. After each cut the volume is mounted again from the raw medium, as after a reboot.
+   // /config must then hold the complete old or the complete new content, never a mixture and never nothing.
+   // This is the guarantee the recommended save pattern rests on; the test fails if rename() stops being atomic.
+   STACKED_TEST_CASE("a power cut during temp-then-rename leaves the previous or the new file, never a mixture") {
+      Stack stack;
+      const auto previous = pattern(5000u, 1u); // spans two blocks, so the save touches data and metadata
+      const auto updated = pattern(6000u, 2u);
+      {
+         FileSystemUnderTest fileSystem{ stack.device() };
+         REQUIRE(fileSystem.mount().has_value());
+         REQUIRE(fileSystem.writeFile("/config", previous).has_value());
+         REQUIRE(fileSystem.writeFile("/unrelated", bytes("stays")).has_value());
+      }
+      const std::vector<uint8_t> snapshot = stack.backing;
+
+      // Count the write operations of an uninterrupted save, from mount to unmount.
+      stack.powerCut.resetCount();
+      {
+         FileSystemUnderTest fileSystem{ stack.device() };
+         REQUIRE(fileSystem.mount().has_value());
+         REQUIRE(saveViaTmp(fileSystem, "/config", "/config.tmp", updated).has_value());
+      }
+      const uint32_t saveWrites = stack.powerCut.writeOperations();
+      REQUIRE(saveWrites >= 8u); // otherwise the sweep below proves little
+
+      size_t keptPrevious = 0u;
+      size_t gotUpdated = 0u;
+      for(uint32_t cutAt = 1u; cutAt <= saveWrites; ++cutAt) {
+         for(const size_t tearBytes : { size_t{ 0u }, size_t{ 1u }, size_t{ 16u }, size_t{ 200u } }) {
+            CAPTURE(cutAt);
+            CAPTURE(tearBytes);
+            std::ranges::copy(snapshot, stack.backing.begin());
+            stack.powerCut.restorePower();
+            stack.powerCut.armCut(cutAt, tearBytes);
+            {
+               FileSystemUnderTest fileSystem{ stack.device() };
+               if(fileSystem.mount().has_value()) {
+                  static_cast<void>(saveViaTmp(fileSystem, "/config", "/config.tmp", updated));
+               }
+            }
+            CHECK(stack.powerCut.hasCut()); // the cut really happened inside the save
+            stack.powerCut.restorePower();
+
+            FileSystemUnderTest rebooted{ stack.device() };
+            REQUIRE(rebooted.mount().has_value());
+            std::vector<uint8_t> config(updated.size() + 1u);
+            const auto configSize = rebooted.readFile("/config", config);
+            REQUIRE(configSize.has_value()); // not lost, and not replaced by a freshly formatted volume
+            config.resize(*configSize);
+            if(config == previous) {
+               ++keptPrevious;
+            } else if(config == updated) {
+               ++gotUpdated;
+            } else {
+               FAIL("/config is neither the previous nor the new content");
+            }
+            CHECK(readAll(rebooted, "/unrelated", 16) == bytes("stays"));
+            CHECK(rebooted.writeFile("/after", pattern(3000u)).has_value()); // the volume is still usable
+         }
+      }
+      // Both outcomes occur: cuts before the rename commits keep the old file, later ones give the new file.
+      CHECK(keptPrevious > 0u);
+      CHECK(gotUpdated > 0u);
    }
 }
