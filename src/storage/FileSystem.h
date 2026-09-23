@@ -11,12 +11,21 @@
 
 namespace art::storage {
 
-/// How open() treats an existing or missing file, and which operations the returned File allows.
+/**
+ * @brief How open() treats an existing or missing file, and which operations the returned File allows.
+ *
+ * The set is closed on purpose: implementations switch over it, so a new enumerator would break every backend.
+ * It covers the combinations of read/write access, create, truncate and exclusive create that the known
+ * consumers need and that both LittleFS (LFS_O_*) and FatFs (FA_*) map directly. Combinations without a known
+ * user, such as write-only exclusive create, are left out; use CreateNew and ignore reading.
+ */
 enum class OpenMode : uint8_t {
-   Read,      ///< Read only. The file must exist (Error::NoEntry otherwise). Position 0.
-   Write,     ///< Write only. Creates the file, or truncates it to size 0 if it exists. Position 0.
-   Append,    ///< Write only. Creates the file if missing, keeps its content, every write goes to the end.
-   ReadWrite, ///< Read and write. Creates the file if missing, keeps its content. Position 0.
+   Read,              ///< Read only. The file must exist (Error::NoEntry otherwise). Position 0.
+   Write,             ///< Write only. Creates the file, or truncates it to size 0 if it exists. Position 0.
+   Append,            ///< Write only. Creates the file if missing, keeps its content, every write goes to the end.
+   ReadWrite,         ///< Read and write. Creates the file if missing, keeps its content. Position 0.
+   ReadWriteTruncate, ///< Read and write. Creates the file, or truncates it to size 0 (stage a file, verify it).
+   CreateNew,         ///< Read and write. Creates the file; Error::Exists if it is already there ("claim" pattern).
 };
 
 /// Kind of a directory entry.
@@ -25,17 +34,30 @@ enum class EntryType : uint8_t {
    Directory, ///< A directory.
 };
 
-/// What stat() and visitDirectory() report about an entry.
+/**
+ * @brief What stat() and visitDirectory() report about an entry.
+ *
+ * There is deliberately no timestamp. LittleFS stores none, a node has no reliable wall clock to write one
+ * with, and an optional field that is "unknown" on the main backend would be dead weight in every visitor call.
+ * A consumer that needs "the oldest" or "the newest" encodes it in the file name (a sequence number).
+ */
 struct FileInfo {
    EntryType type{ EntryType::File };
    /// Size in bytes. Always 0 for a directory.
    offset_t size{ 0u };
 };
 
+/// Longest file or directory name in bytes, without terminator, that any implementation accepts. An
+/// implementation may enforce a smaller limit (reporting Error::NameTooLong). A buffer of kMaxNameLength + 1
+/// bytes therefore always holds a name delivered to a DirectoryVisitor, which is how a caller keeps a name
+/// beyond the call to open it afterwards. It matches the default of LittleFS and the FAT long file name limit.
+inline constexpr size_t kMaxNameLength = 255u;
+
 /**
  * @brief Callback of FileSystem::visitDirectory(), called once per entry.
  *
- * The name is the entry's own name without the directory, null-terminated, and only valid during the call. The
+ * The name is the entry's own name without the directory, null-terminated, at most kMaxNameLength bytes, and
+ * only valid during the call. The
  * entries "." and ".." are never reported. Return true to continue with the next entry and false to stop.
  * The callback runs while the file system holds its lock: it must not call back into the FileSystem or any
  * File of it.
@@ -55,8 +77,9 @@ using DirectoryVisitor = etl::delegate<bool(const char *name, const FileInfo &in
  *
  * @par Paths
  * Paths are null-terminated, absolute and use '/' as separator, for example "/fuota/image.bin". "/" is the
- * root directory. A path must not be null. Names and paths that exceed the limit of the implementation
- * fail with Error::NameTooLong. There is no working directory and there are no relative paths.
+ * root directory. A path must not be null. A name (path component) longer than kMaxNameLength, or than the
+ * smaller limit of the implementation, fails with Error::NameTooLong. There is no working directory and
+ * there are no relative paths.
  *
  * @par Errors
  * Every fallible call returns `std::expected<T, Error>` with the codes of StorageError.h; backend specific
@@ -65,11 +88,17 @@ using DirectoryVisitor = etl::delegate<bool(const char *name, const FileInfo &in
  *
  * @par Serialization contract
  * The implementation serializes; callers need not. Unlike BlockDevice, whose users must serialize all calls,
- * a FileSystem is safe to call from several tasks at once: every public method and every file*() hook
- * (that is, every File operation) takes the implementation's lock, so the operations of different tasks are
- * mutually exclusive and each is atomic with respect to the others. A backend that is not re-entrant, such as
- * LittleFS, is thereby hidden from consumers. The consequence is that no callback may run under the
- * lock and call back in: see DirectoryVisitor.
+ * a FileSystem is safe to call from several tasks at once: every virtual method and every file*() hook
+ * (that is, every File operation) takes the implementation's lock, so single calls of different tasks are
+ * mutually exclusive and each such call is atomic with respect to the others. A backend that is not
+ * re-entrant, such as LittleFS, is thereby hidden from consumers. The consequence is that no callback may run
+ * under the lock and call back in: see DirectoryVisitor.
+ *
+ * Atomicity ends at the single call. readFile() and writeFile() are non-virtual helpers made of open(), reads
+ * or writes, and close(), which are separate critical sections: they are safe to call concurrently, but not
+ * atomic as a unit. Two concurrent writeFile() calls to one path interleave, and a readFile() running against a
+ * writeFile() can see the truncated file. A caller that needs atomic replacement writes a temporary file and
+ * rename()s it over the target.
  *
  * @par Lifetime
  * A FileSystem is neither copyable nor movable, because Files point to it. It must outlive all its Files.
@@ -127,8 +156,13 @@ class FileSystem {
    /**
     * @brief Removes a file or an empty directory.
     *
-    * Error::NoEntry if it does not exist, Error::NotEmpty for a directory with entries. Removing a file that
-    * is open is not supported and the outcome is up to the implementation; close it first.
+    * Error::NoEntry if it does not exist, Error::NotEmpty for a directory with entries.
+    *
+    * @par Open files
+    * Removing (or renaming, or replacing through rename()) a file that is open is discouraged; close it first.
+    * The behaviour is bounded, never undefined: the implementation either refuses with Error::Busy, or
+    * succeeds and the open handle keeps working on the orphaned data or fails with an error (typically
+    * Error::BadHandle). It must not leave a handle that crashes on use. A portable caller closes first.
     */
    virtual std::expected<void, Error> remove(const char *path) = 0;
 
@@ -139,7 +173,8 @@ class FileSystem {
     * "write a temporary file, then rename it over the old one" save pattern relies on; whether the
     * replacement is atomic across a power loss is up to the implementation (it is on LittleFS). Otherwise an
     * existing target is an error (Error::Exists, or Error::IsDirectory / Error::NotEmpty / Error::NotDirectory
-    * when a directory is involved). Renaming an open file is not supported; close it first.
+    * when a directory is involved). If both paths name the same entry the call changes nothing and succeeds
+    * (Error::NoEntry if it does not exist), as rename(2) and lfs_rename() do. For open files see remove().
     */
    virtual std::expected<void, Error> rename(const char *oldPath, const char *newPath) = 0;
 
@@ -178,8 +213,9 @@ class FileSystem {
     * @param path Absolute path of the file.
     * @param buffer Destination. It must be at least as large as the file.
     * @return The number of bytes read, which is the file size. If the file is larger than the buffer nothing
-    * is read and the result is Error::NoMemory: a truncated read would be silently wrong. Otherwise the
-    * error of open() or read().
+    * is read and the result is Error::NoMemory: a truncated read would be silently wrong. If the file yields
+    * fewer bytes than its reported size the result is Error::Io, never a short count. Otherwise the error of
+    * open() or read().
     */
    std::expected<size_t, Error> readFile(const char *path, std::span<uint8_t> buffer);
 
@@ -189,9 +225,9 @@ class FileSystem {
     * Written once in terms of open() and the File API. The file is opened with OpenMode::Write, written and
     * closed, and the result of close() is returned, so a failed final flush is not lost.
     *
-    * The replacement is not atomic at this level: a failure or power loss part way can leave the file
-    * truncated or partially written. A caller that must never lose the old content writes a temporary file
-    * and rename()s it over the target.
+    * The replacement is not atomic, neither against a power loss nor against other tasks: a failure part way
+    * can leave the file truncated or partially written, and a concurrent reader can see it in that state. A
+    * caller that must never lose the old content writes a temporary file and rename()s it over the target.
     */
    std::expected<void, Error> writeFile(const char *path, std::span<const uint8_t> data);
 
