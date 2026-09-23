@@ -13,11 +13,19 @@ namespace art::storage {
  *
  * Fallible storage operations return `std::expected<T, Error>`.
  *
- * Adapters should keep the distinctions a caller can act on: Timeout and Busy are transient and may be
- * retried or backed off, WriteProtected is permanent until the user intervenes, Io is a hard failure. Native
- * codes without a dedicated enumerator map to the closest one, for example FatFs FR_LOCKED to Busy,
- * FR_TIMEOUT to Timeout, FR_WRITE_PROTECTED to WriteProtected and FR_TOO_MANY_OPEN_FILES to NoMemory
- * (a static pool is exhausted).
+ * Adapters should keep the distinctions a caller can act on: NotReady, Timeout and Busy are transient and may
+ * be retried or backed off, WriteProtected is permanent until the user intervenes, Io is a hard failure.
+ * Native codes without a dedicated enumerator map to the closest one. The FatFs mapping is:
+ * - FR_DISK_ERR, FR_MKFS_ABORTED: Io (a failed format is a failed medium access; the cause is not observable).
+ * - FR_NOT_READY: NotReady (no card in the slot, or not yet out of its power-up sequence).
+ * - FR_TIMEOUT: Timeout. FR_LOCKED: Busy. FR_WRITE_PROTECTED: WriteProtected.
+ * - FR_INT_ERR, FR_NO_FILESYSTEM: Corrupt (no valid FAT volume on the medium).
+ * - FR_NO_FILE, FR_NO_PATH: NoEntry. FR_EXIST: Exists.
+ * - FR_DENIED: NoSpace (directory or medium full; FatFs also uses it for a read-only attribute, which the
+ *   adapter cannot tell apart, so callers must not act on more than "the write was refused").
+ * - FR_INVALID_NAME, FR_INVALID_DRIVE, FR_INVALID_PARAMETER: InvalidArgument. FR_INVALID_OBJECT: BadHandle.
+ * - FR_NOT_ENABLED: NotMounted.
+ * - FR_NOT_ENOUGH_CORE, FR_TOO_MANY_OPEN_FILES: NoMemory (a static buffer or pool is exhausted).
  */
 enum class Error : uint8_t {
    Io,              ///< Low-level read, program or erase failure reported by the medium or its bus.
@@ -39,6 +47,7 @@ enum class Error : uint8_t {
    Timeout,         ///< The device or a lock did not become ready in time. Retrying may succeed.
    Busy,            ///< The device or resource is in use or locked by someone else. Retrying later may succeed.
    WriteProtected,  ///< The medium or device is write protected (SD lock switch, NOR block protection).
+   NotReady, ///< No medium present or the device is not ready yet (empty SD slot, power-up). Retry or ask the user.
 };
 
 /**
@@ -88,6 +97,8 @@ constexpr const char *toString(Error error) {
       return "Busy";
    case Error::WriteProtected:
       return "WriteProtected";
+   case Error::NotReady:
+      return "NotReady";
    }
    return "Unknown";
 }

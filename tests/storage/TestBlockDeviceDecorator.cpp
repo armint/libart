@@ -285,7 +285,7 @@ TEST_SUITE("art::storage::BlockDeviceDecorator") {
       };
       // One row per enumerator, in declaration order. The loop below fails if an enumerator is added to
       // Error and toString() but not to this table.
-      constexpr std::array<Entry, 19> table{ {
+      constexpr std::array<Entry, 20> table{ {
       { Error::Io, "Io" },
       { Error::Corrupt, "Corrupt" },
       { Error::NoEntry, "NoEntry" },
@@ -305,6 +305,7 @@ TEST_SUITE("art::storage::BlockDeviceDecorator") {
       { Error::Timeout, "Timeout" },
       { Error::Busy, "Busy" },
       { Error::WriteProtected, "WriteProtected" },
+      { Error::NotReady, "NotReady" },
       } };
 
       for(const Entry &entry : table) {
