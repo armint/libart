@@ -22,13 +22,21 @@ namespace art::storage {
  * - FR_INT_ERR, FR_NO_FILESYSTEM: Corrupt (no valid FAT volume on the medium).
  * - FR_NO_FILE, FR_NO_PATH: NoEntry. FR_EXIST: Exists.
  * - FR_DENIED is not one condition; FatFs returns it for unrelated causes, so map it per call site, never as
- *   a blanket code:
- *   - no free cluster or directory entry, too many short-name collisions, f_mkdir or f_expand without room
- *     (dir_next, dir_register, f_mkdir, f_expand): NoSpace. f_expand over the size limit: TooBig.
- *   - f_unlink of a non-empty directory: NotEmpty. f_unlink of the current directory, or f_rename of a
- *     directory in the current path: Busy.
- *   - f_open with FA_WRITE on a read-only file, or write/sync/truncate through a handle opened without
- *     write access: InvalidArgument. f_open creating over a directory: IsDirectory.
+ *   a blanket code (line numbers refer to src/storage/fatfs/ff.c):
+ *   - No free cluster or directory entry, or too many short-name collisions (dir_next, dir_register), no room
+ *     for a new directory cluster (f_mkdir, :5514), no contiguous cluster block (f_expand, :6081, :6117):
+ *     NoSpace.
+ *   - f_expand precondition guard (:6065): size 0, file not empty, or handle without FA_WRITE: InvalidArgument.
+ *     f_expand size limit on a non-exFAT volume (:6068): TooBig.
+ *   - f_unlink: non-empty directory (:5461): NotEmpty. Current directory (:5445): Busy. Read-only object
+ *     (:5424): InvalidArgument.
+ *   - f_rename of a sub-directory in the current directory path (:5611): Busy.
+ *   - Handle used against its access mode: f_read (:4286) and f_forward (:6180) without FA_READ, f_write (:4394)
+ *     and f_truncate (:5363) without FA_WRITE: InvalidArgument. f_open with FA_WRITE on a read-only file
+ *     (:4167): InvalidArgument.
+ *   - f_open creating over an existing object (:4117) tests read-only file OR directory with the same code, so
+ *     the adapter cannot tell them apart from the result. It maps to InvalidArgument (the path cannot be
+ *     opened for create/overwrite); an adapter that must report IsDirectory has to stat the path first.
  * - FR_INVALID_NAME, FR_INVALID_DRIVE, FR_INVALID_PARAMETER: InvalidArgument. FR_INVALID_OBJECT: BadHandle.
  * - FR_NOT_ENABLED: NotMounted.
  * - FR_NOT_ENOUGH_CORE, FR_TOO_MANY_OPEN_FILES: NoMemory (a static buffer or pool is exhausted).
