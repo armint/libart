@@ -13,11 +13,11 @@ namespace {
 constexpr uint64_t kDeviceSize = 1024u;
 
 // NOR-like: byte reads, 4 byte program unit, 256 byte erase unit.
-constexpr Geometry kNorGeometry{ 1u, 4u, 256u, kDeviceSize, true };
+constexpr Geometry kNorGeometry{ .readSize = 1u, .programSize = 4u, .eraseSize = 256u, .size = kDeviceSize, .eraseBeforeProgram = true };
 // SD-like: 8 byte units, no erase, overwritable.
-constexpr Geometry kSdGeometry{ 8u, 8u, 0u, kDeviceSize, false };
+constexpr Geometry kSdGeometry{ .readSize = 8u, .programSize = 8u, .eraseSize = 0u, .size = kDeviceSize, .eraseBeforeProgram = false };
 // NOR with page-sized program unit larger than the cipher sector.
-constexpr Geometry kPageNorGeometry{ 4u, 16u, 512u, 2u * kDeviceSize, true };
+constexpr Geometry kPageNorGeometry{ .readSize = 4u, .programSize = 16u, .eraseSize = 512u, .size = 2u * kDeviceSize, .eraseBeforeProgram = true };
 
 // Owns the backing array on the test host; the device itself does not allocate.
 template <uint64_t Size>
@@ -111,8 +111,21 @@ TEST_SUITE("art::storage::RamBlockDevice") {
       CHECK(failedWith(undersized.init(), Error::InvalidArgument));
 
       std::array<uint8_t, kDeviceSize> backing{};
-      RamBlockDevice zeroGranularity{ Geometry{ 0u, 4u, 256u, kDeviceSize, true }, backing };
+      Geometry invalid = kNorGeometry;
+      invalid.readSize = 0u;
+      RamBlockDevice zeroGranularity{ invalid, backing };
       CHECK(failedWith(zeroGranularity.init(), Error::InvalidArgument));
+
+      // Geometry::isValid() also rejects an empty device and erase-before-program without erase unit.
+      invalid = kNorGeometry;
+      invalid.size = 0u;
+      RamBlockDevice empty{ invalid, backing };
+      CHECK(failedWith(empty.init(), Error::InvalidArgument));
+
+      invalid = kSdGeometry;
+      invalid.eraseBeforeProgram = true;
+      RamBlockDevice noEraseUnit{ invalid, backing };
+      CHECK(failedWith(noEraseUnit.init(), Error::InvalidArgument));
    }
 
    TEST_CASE("program over programmed cells yields the bitwise AND") {
@@ -157,6 +170,22 @@ TEST_SUITE("art::storage::RamBlockDevice") {
       CHECK(result == ones);
       // Erase is a successful no-op and is not counted.
       CHECK(ram.device.erase(0u, 8u).has_value());
+      CHECK(ram.device.eraseCount() == 0u);
+      std::array<uint8_t, 8> after{};
+      REQUIRE(ram.device.read(0u, after).has_value());
+      CHECK(after == ones);
+   }
+
+   TEST_CASE("device without erase accepts any in-bounds erase and rejects out-of-range ones") {
+      RamFixture<kDeviceSize> ram{ kSdGeometry };
+      CHECK(failedWith(ram.device.erase(0u, 8u), Error::NotInitialised));
+      REQUIRE(ram.device.init().has_value());
+      CHECK(ram.device.erase(1u, 3u).has_value());
+      CHECK(ram.device.erase(kDeviceSize, 0u).has_value());
+      CHECK(failedWith(ram.device.erase(kDeviceSize, 1u), Error::InvalidArgument));
+      CHECK(failedWith(ram.device.erase(kDeviceSize - 1u, 2u), Error::InvalidArgument));
+      CHECK(failedWith(ram.device.erase(UINT64_MAX, 1u), Error::InvalidArgument));
+      CHECK(failedWith(ram.device.erase(1u, UINT64_MAX), Error::InvalidArgument));
       CHECK(ram.device.eraseCount() == 0u);
    }
 
@@ -425,7 +454,7 @@ TEST_SUITE("art::storage::MockCipherBlockDevice") {
    }
 
    TEST_CASE("init rejects a device below with incompatible granularity") {
-      constexpr Geometry coarse{ 32u, 32u, 256u, kDeviceSize, true };
+      constexpr Geometry coarse{ .readSize = 32u, .programSize = 32u, .eraseSize = 256u, .size = kDeviceSize, .eraseBeforeProgram = true };
       RamFixture<kDeviceSize> ram{ coarse };
       MockCipherBlockDevice cipher{ ram.device };
       CHECK(failedWith(cipher.init(), Error::Unsupported));
