@@ -58,6 +58,8 @@ file(GLOB TEST_SOURCES
         TestCompensatedThermocoupleSensor.cpp
         TestRingBuffer.cpp
         storage/TestBlockDeviceDecorator.cpp
+        storage/BlockDeviceContract.cpp
+        storage/TestBlockDevice.cpp
         storage/TestFatFile.cpp
         storage/TestFatDir.cpp
         storage/TestFatFileReadable.cpp
@@ -106,6 +108,9 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/IBMCRC16FastDigest.cpp
         ../src/utils/SHA256Digest.cpp
         RamDisk.h
+        storage/RamBlockDevice.h
+        storage/MockCipherBlockDevice.h
+        storage/BlockDeviceContract.h
 )
 
 
