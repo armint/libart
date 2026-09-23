@@ -69,7 +69,7 @@ file(GLOB TEST_SOURCES
 
 # The LittleFS binding runs the real littlefs; its target is defined by the top-level CMakeLists.txt.
 if (_ART_NEED_LITTLEFS)
-    list(APPEND TEST_SOURCES storage/TestLittleFsSmoke.cpp)
+    list(APPEND TEST_SOURCES storage/TestLittleFsSmoke.cpp storage/TestFileStreams.cpp)
 endif ()
 
 file(GLOB TO_TEST_SOURCES
@@ -86,6 +86,8 @@ file(GLOB TO_TEST_SOURCES
         ../src/streams/AsymmetricKeyReadable.cpp
         ../src/streams/FatFileReadable.cpp
         ../src/streams/FatFileWritable.cpp
+        ../src/streams/FileReadable.cpp
+        ../src/streams/FileWritable.cpp
         ../src/modbus/ModbusMaster.cpp
         ../src/modbus/ModbusSlave.cpp
         ../src/logging/LogManager.cpp

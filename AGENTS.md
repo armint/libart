@@ -7,6 +7,7 @@ systems are cortex-m or risc-v microcontrollers running bare-metal or rtos-based
 
 ## Core Components
 - **Streams**: `Readable` and `Writable` interfaces for various data sources/sinks (Array, String, Digest, etc.).
+  `FileReadable` and `FileWritable` (`src/streams/`) adapt an `art::storage::File` of any `FileSystem` to these interfaces, so `DigestReadable`, `BufferedWritable` and the codecs work on a file whatever its file system. `FileReadable` takes a caller-provided read buffer; `FileWritable` is unbuffered (wrap it in `BufferedWritable`) and reports `data.size()` on success because `File::write()` is all-or-error. `art::storage::Error` is mapped onto the existing `Readable::Error`/`Writable::Error` values (see the class comments) and the cause stays available in `lastError()`. `FatFileReadable`/`FatFileWritable` remain for `FatFile`.
 - **Logging**: A flexible logging system (`LogManager`, `Logger`).
 - **Modbus**: Implementations for Modbus Master and Slave.
 - **Settings**: A framework for managing device settings.
