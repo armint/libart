@@ -57,11 +57,11 @@ file(GLOB TEST_SOURCES
         TestSTypeThermocoupleSensor.cpp
         TestCompensatedThermocoupleSensor.cpp
         TestRingBuffer.cpp
+        storage/TestBlockDeviceDecorator.cpp
         storage/TestFatFile.cpp
         storage/TestFatDir.cpp
         storage/TestFatFileReadable.cpp
         storage/TestFatFileWritable.cpp
-        storage/TestBlockDeviceDecorator.cpp
 )
 
 file(GLOB TO_TEST_SOURCES
