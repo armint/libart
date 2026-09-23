@@ -71,6 +71,12 @@ class BlockDeviceDecorator : public BlockDevice {
    }
 
    protected:
+   // Same reasoning as BlockDevice: no public copy or move, to rule out slicing a transform.
+   BlockDeviceDecorator(const BlockDeviceDecorator &) = default;
+   BlockDeviceDecorator(BlockDeviceDecorator &&) = default;
+   BlockDeviceDecorator &operator=(const BlockDeviceDecorator &) = delete; // the lower device is a reference
+   BlockDeviceDecorator &operator=(BlockDeviceDecorator &&) = delete;
+
    /// The device below. Available to derived classes for their own forwarding logic.
    BlockDevice &lower() {
       return lower_;

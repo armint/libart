@@ -2,6 +2,7 @@
 #include <array>
 #include <doctest/doctest.h>
 #include <string_view>
+#include <type_traits>
 
 using namespace art::storage;
 
@@ -144,6 +145,18 @@ TEST_SUITE("art::storage::BlockDeviceDecorator") {
          }
       } device;
       CHECK(device.sync().has_value());
+   }
+
+   TEST_CASE("BlockDevice and BlockDeviceDecorator cannot be copied or moved through the base") {
+      static_assert(!std::is_copy_constructible_v<BlockDevice>);
+      static_assert(!std::is_move_constructible_v<BlockDevice>);
+      static_assert(!std::is_copy_assignable_v<BlockDevice>);
+      static_assert(!std::is_move_assignable_v<BlockDevice>);
+      static_assert(!std::is_copy_constructible_v<BlockDeviceDecorator>);
+      static_assert(!std::is_move_constructible_v<BlockDeviceDecorator>);
+      static_assert(!std::is_copy_assignable_v<BlockDeviceDecorator>);
+      static_assert(!std::is_move_assignable_v<BlockDeviceDecorator>);
+      CHECK(true);
    }
 
    TEST_CASE("Geometry defaults") {

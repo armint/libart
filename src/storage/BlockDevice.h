@@ -119,6 +119,16 @@ class BlockDevice {
    public:
    virtual ~BlockDevice() = default;
 
+   protected:
+   // Polymorphic interface: no public copy or move, so that copying a derived device through a base reference
+   // (or a decorator by value) cannot silently slice it. Derived classes decide whether they are copyable.
+   BlockDevice() = default;
+   BlockDevice(const BlockDevice &) = default;
+   BlockDevice(BlockDevice &&) = default;
+   BlockDevice &operator=(const BlockDevice &) = default;
+   BlockDevice &operator=(BlockDevice &&) = default;
+
+   public:
    /**
     * @brief Prepares the device for use (bus setup, chip identification, ...).
     *
