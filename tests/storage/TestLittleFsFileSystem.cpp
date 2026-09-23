@@ -86,6 +86,21 @@ class FailingReadDevice final : public BlockDeviceDecorator {
    uint32_t failCount{ UINT32_MAX };
 };
 
+// Fails program() with a chosen error while failWith is set, to test what a file reports after a failed write.
+class FailingProgramDevice final : public BlockDeviceDecorator {
+   public:
+   using BlockDeviceDecorator::BlockDeviceDecorator;
+
+   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+      if(failWith) {
+         return std::unexpected(*failWith);
+      }
+      return BlockDeviceDecorator::program(offset, data);
+   }
+
+   std::optional<Error> failWith;
+};
+
 /**
  * Simulates a power cut on the medium. It counts program and erase operations. When the armed operation is
  * reached, that operation is torn (only its first tearBytes bytes take effect) and fails with Error::Io, and
@@ -889,6 +904,70 @@ TEST_SUITE("LittleFsFileSystem") {
       // Both outcomes occur: cuts before the rename commits keep the old file, later ones give the new file.
       CHECK(keptPrevious > 0u);
       CHECK(gotUpdated > 0u);
+   }
+
+   // littlefs marks a file as errored after a failed write or flush and then reports success from its own sync and
+   // close without committing anything. The binding must report the remembered error instead, also after the
+   // device recovered.
+   STACKED_TEST_CASE("a failed write is reported by sync, close and unmount even after the device recovered") {
+      Stack stack;
+      FailingProgramDevice failing{ stack.device() };
+      FileSystemUnderTest fileSystem{ failing };
+      REQUIRE(fileSystem.mount().has_value());
+      const auto previous = pattern(4000u, 1u);
+      REQUIRE(fileSystem.writeFile("/a", previous).has_value());
+      // Nothing was committed by the failed file: /a still has its previous content.
+      const auto checkStillPrevious = [&] { CHECK(readAll(fileSystem, "/a", 5000u) == previous); };
+
+      SUBCASE("the write fails, the device recovers, sync and close must not report success") {
+         auto file = fileSystem.open("/a", OpenMode::Write);
+         REQUIRE(file.has_value());
+         failing.failWith = Error::Timeout;
+         CHECK(failedWith(file->write(pattern(4000u, 2u)), Error::Timeout)); // fills the cache, programs, fails
+         failing.failWith.reset();                                           // the device is fine again
+
+         CHECK(failedWith(file->sync(), Error::Timeout));
+         CHECK(failedWith(file->close(), Error::Timeout));
+         CHECK_FALSE(file->isOpen()); // the handle is released even though the close failed
+         checkStillPrevious();
+      }
+      SUBCASE("the flush in sync fails, the device recovers, close must not report success") {
+         auto file = fileSystem.open("/a", OpenMode::Write);
+         REQUIRE(file.has_value());
+         REQUIRE(file->write(pattern(100u, 2u)).has_value()); // stays in the file cache
+         failing.failWith = Error::Timeout;
+         CHECK(failedWith(file->sync(), Error::Timeout));
+         failing.failWith.reset();
+
+         CHECK(failedWith(file->sync(), Error::Timeout));
+         CHECK(failedWith(file->close(), Error::Timeout));
+         checkStillPrevious();
+      }
+      SUBCASE("unmount reports the error of a file that is still open, and is unmounted nevertheless") {
+         auto file = fileSystem.open("/a", OpenMode::Write);
+         REQUIRE(file.has_value());
+         failing.failWith = Error::Timeout;
+         CHECK_FALSE(file->write(pattern(4000u, 2u)).has_value());
+         failing.failWith.reset();
+
+         CHECK(failedWith(fileSystem.unmount(), Error::Timeout));
+         CHECK_FALSE(fileSystem.isMounted());
+         CHECK_FALSE(file->isOpen()); // unmount released the handle
+         REQUIRE(fileSystem.mount().has_value());
+         checkStillPrevious();
+      }
+      SUBCASE("a later successful write clears the error") {
+         auto file = fileSystem.open("/a", OpenMode::Write);
+         REQUIRE(file.has_value());
+         failing.failWith = Error::Timeout;
+         CHECK_FALSE(file->write(pattern(4000u, 2u)).has_value());
+         failing.failWith.reset();
+         REQUIRE(file->seek(0u).has_value());
+         CHECK(file->write(pattern(100u, 3u)).has_value());
+         CHECK(file->sync().has_value());
+         CHECK(file->close().has_value());
+         CHECK(readAll(fileSystem, "/a", 200u) == pattern(100u, 3u));
+      }
    }
 
    // The two cases below are about the stacks themselves, so they are not templates. They make sure that the
