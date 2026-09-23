@@ -81,11 +81,10 @@ class File {
       closeSilently();
    }
 
-   /// True while the File refers to an open file. It does not detect a handle that the filesystem
-   /// invalidated behind the File's back (unmount()); such a handle reports Error::BadHandle on use.
-   [[nodiscard]] bool isOpen() const {
-      return fileSystem_ != nullptr;
-   }
+   /// True while the File refers to an open file that the file system still knows. It is false for an inert
+   /// File and for one whose handle became stale (unmount()). It asks the file system, so it takes its lock and
+   /// is not free; do not call it in a loop.
+   [[nodiscard]] bool isOpen() const;
 
    /**
     * @brief Reads from the current position and advances it by the number of bytes read.

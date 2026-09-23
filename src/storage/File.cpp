@@ -3,6 +3,15 @@
 
 namespace art::storage {
 
+bool File::isOpen() const {
+   if(fileSystem_ == nullptr) {
+      return false;
+   }
+   // A live handle answers tell(); only a stale one reports BadHandle.
+   const auto position = fileSystem_->fileTell(handle_);
+   return position.has_value() || position.error() != Error::BadHandle;
+}
+
 std::expected<size_t, Error> File::read(std::span<uint8_t> buffer) {
    if(fileSystem_ == nullptr) {
       return std::unexpected(Error::BadHandle);
