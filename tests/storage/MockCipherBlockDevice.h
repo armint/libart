@@ -17,8 +17,8 @@ namespace art::storage::test {
  * itself, even if the device below would tolerate it), passes eraseSize and size through, and needs a scratch
  * buffer because program() takes a const span.
  *
- * The device below must have readSize and programSize dividing kSectorSize and an eraseSize that is a
- * multiple of it; init() returns Error::Unsupported otherwise.
+ * The device below must have readSize and programSize dividing kSectorSize and an eraseSize and size that are
+ * multiples of it; init() returns Error::Unsupported otherwise.
  *
  * @note Erase is forwarded unchanged, so an erased range reads back as the decrypted erased pattern rather
  * than 0xFF, as with any real cipher on top of NOR flash.
@@ -36,7 +36,7 @@ class MockCipherBlockDevice : public BlockDeviceDecorator {
       }
       const Geometry below = lower().geometry();
       if(!below.isValid() || kSectorSize % below.readSize != 0u || kSectorSize % below.programSize != 0u ||
-         below.eraseSize % kSectorSize != 0u) {
+         below.eraseSize % kSectorSize != 0u || below.size % kSectorSize != 0u) {
          return std::unexpected(Error::Unsupported);
       }
       return {};
