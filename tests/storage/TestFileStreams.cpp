@@ -8,6 +8,7 @@
 #include "utils/SHA256Digest.h"
 #include <array>
 #include <doctest/doctest.h>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -226,6 +227,23 @@ TEST_SUITE("FileReadable and FileWritable over LittleFsFileSystem") {
          CHECK(readable.position() == 0u); // a failed refill leaves no buffered bytes behind
       }
 
+      SUBCASE("a failed refill leaves the position at the last byte that was read") {
+         // The file system may still serve a few refills from its own read cache, so read until one fails.
+         // Reading again after the device recovers is not asserted: littlefs v2.9.3 keeps a read cache that a
+         // failed device read leaves marked valid, so the file system itself may return wrong data afterwards.
+         File file = fixture.open("/f", OpenMode::Read);
+         std::array<uint8_t, 16> buffer{};
+         FileReadable readable(file, buffer);
+         fixture.failing.failWith = Error::Timeout;
+         size_t consumed = 0u;
+         while(readable.read().has_value()) {
+            REQUIRE(++consumed < 9000u);
+         }
+         CHECK(readable.lastError() == Error::Timeout);
+         CHECK(readable.position() == consumed);
+         CHECK(readable.bytesLeft() == 9000u - consumed);
+      }
+
       SUBCASE("any other error is Readable::ReadError") {
          File file = fixture.open("/f", OpenMode::Read);
          std::array<uint8_t, 16> buffer{};
@@ -254,6 +272,52 @@ TEST_SUITE("FileReadable and FileWritable over LittleFsFileSystem") {
          CHECK(readable.bytesLeft() == 0u);
          CHECK(readable.position() == 0u);
       }
+   }
+
+   TEST_CASE("FileReadable available and bytesLeft record a failing file, unlike the end of a file") {
+      Fixture fixture;
+      fixture.stage("/f", 4u);
+      File file = fixture.open("/f", OpenMode::Read);
+      std::array<uint8_t, 16> buffer{};
+      FileReadable readable(file, buffer);
+
+      SUBCASE("available") {
+         REQUIRE(file.close().has_value());
+         CHECK_FALSE(readable.available());
+         CHECK(readable.lastError() == Error::BadHandle);
+      }
+
+      SUBCASE("bytesLeft") {
+         REQUIRE(file.close().has_value());
+         CHECK(readable.bytesLeft() == 0u);
+         CHECK(readable.lastError() == Error::BadHandle);
+      }
+
+      SUBCASE("the end of a file records nothing") {
+         file.seek(4u).value();
+         CHECK_FALSE(readable.available());
+         CHECK(readable.bytesLeft() == 0u);
+         CHECK_FALSE(readable.lastError().has_value());
+      }
+   }
+
+   TEST_CASE("FileReadable reset that fails leaves the stream where it was") {
+      Fixture fixture;
+      const auto data = fixture.stage("/f", 20u);
+      File file = fixture.open("/f", OpenMode::Read);
+      std::array<uint8_t, 8> buffer{};
+      FileReadable readable(file, buffer);
+      for(size_t i = 0u; i < 3u; ++i) {
+         REQUIRE(readable.read().has_value()); // three bytes consumed, five still buffered
+      }
+      const size_t positionBefore = readable.position();
+      const size_t bytesLeftBefore = readable.bytesLeft();
+
+      readable.reset(std::numeric_limits<size_t>::max()); // beyond what littlefs can represent
+      CHECK(readable.lastError() == Error::TooBig);
+      CHECK(readable.position() == positionBefore);
+      CHECK(readable.bytesLeft() == bytesLeftBefore);
+      CHECK(static_cast<uint8_t>(*readable.read()) == data[3]); // the buffer was not dropped
    }
 
    TEST_CASE("the error mapping covers every storage error") {
