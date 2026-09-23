@@ -19,7 +19,8 @@ namespace art::storage::test {
  *   over un-erased cells yields the bitwise AND, exactly as the chip does. With eraseBeforeProgram false
  *   (SD-card-like) program() overwrites.
  * - Alignment to readSize, programSize and eraseSize is enforced and violations are rejected with
- *   Error::InvalidArgument, as is any range that leaves the device.
+ *   Error::InvalidArgument, as is any range that leaves the device (Geometry::isValidRead(), isValidProgram()
+ *   and isValidErase() define the rules). On a device without erase unit only the range is checked.
  * - Methods other than geometry() fail with Error::NotInitialised until init() succeeded.
  *
  * The device itself never allocates. The caller supplies the backing storage, which must stay valid for the
@@ -33,7 +34,7 @@ namespace art::storage::test {
  * @par Counters
  * readCount(), programCount() and eraseCount() count operations that reached the medium, that is, calls on an
  * initialised device with valid arguments (including ones that then failed through fault injection). Rejected
- * calls and erase() on a device without erase (Geometry::eraseSize 0) are not counted.
+ * calls and erase() on a device without erase unit (Geometry::eraseSize 0) are not counted.
  */
 class RamBlockDevice : public BlockDevice {
    public:
@@ -43,7 +44,7 @@ class RamBlockDevice : public BlockDevice {
    /**
     * @brief Creates a device and fills the backing storage with the erased pattern.
     *
-    * @param geometry Geometry reported by geometry(). init() rejects zero granularities.
+    * @param geometry Geometry reported by geometry(). init() rejects one that fails Geometry::isValid().
     * @param backing Storage for the device content. Referenced, not copied; init() rejects storage smaller
     * than geometry.size.
     */
@@ -54,7 +55,7 @@ class RamBlockDevice : public BlockDevice {
    }
 
    std::expected<void, Error> init() override {
-      if(geometry_.readSize == 0u || geometry_.programSize == 0u || backing_.size() < geometry_.size) {
+      if(!geometry_.isValid() || backing_.size() < geometry_.size) {
          return std::unexpected(Error::InvalidArgument);
       }
       initialised_ = true;
@@ -62,7 +63,7 @@ class RamBlockDevice : public BlockDevice {
    }
 
    std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
-      if(auto admitted = admit(offset, buffer.size(), geometry_.readSize, readCount_); !admitted) {
+      if(auto admitted = admit(geometry_.isValidRead(offset, buffer.size()), readCount_); !admitted) {
          return admitted;
       }
       std::memcpy(buffer.data(), backing_.data() + offset, buffer.size());
@@ -70,7 +71,7 @@ class RamBlockDevice : public BlockDevice {
    }
 
    std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
-      if(auto admitted = admit(offset, data.size(), geometry_.programSize, programCount_); !admitted) {
+      if(auto admitted = admit(geometry_.isValidProgram(offset, data.size()), programCount_); !admitted) {
          return admitted;
       }
       size_t bytesToWrite = data.size();
@@ -91,13 +92,14 @@ class RamBlockDevice : public BlockDevice {
    }
 
    std::expected<void, Error> erase(offset_t offset, offset_t length) override {
-      if(!initialised_) {
-         return std::unexpected(Error::NotInitialised);
-      }
       if(geometry_.eraseSize == 0u) {
-         return {};
+         // No erase unit: an in-bounds call succeeds without touching the data and is not counted.
+         if(!initialised_) {
+            return std::unexpected(Error::NotInitialised);
+         }
+         return geometry_.isValidErase(offset, length) ? std::expected<void, Error>{} : std::unexpected(Error::InvalidArgument);
       }
-      if(auto admitted = admit(offset, length, geometry_.eraseSize, eraseCount_); !admitted) {
+      if(auto admitted = admit(geometry_.isValidErase(offset, length), eraseCount_); !admitted) {
          return admitted;
       }
       std::fill_n(backing_.begin() + offset, length, kErasedByte);
@@ -162,14 +164,13 @@ class RamBlockDevice : public BlockDevice {
    }
 
    private:
-   // Common front end of read, program and erase: initialisation, argument validation, counting and the
-   // n-th-operation fault.
-   std::expected<void, Error> admit(offset_t offset, offset_t length, uint32_t granularity, uint32_t &counter) {
+   // Common front end of read, program and erase: initialisation, argument validation (the caller passes the
+   // Geometry::isValid*() verdict), counting and the n-th-operation fault.
+   std::expected<void, Error> admit(bool validArguments, uint32_t &counter) {
       if(!initialised_) {
          return std::unexpected(Error::NotInitialised);
       }
-      const bool inRange = offset <= geometry_.size && length <= geometry_.size - offset;
-      if(!inRange || offset % granularity != 0u || length % granularity != 0u) {
+      if(!validArguments) {
          return std::unexpected(Error::InvalidArgument);
       }
       ++counter;
