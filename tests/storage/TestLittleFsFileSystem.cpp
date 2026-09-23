@@ -504,4 +504,300 @@ TEST_SUITE("LittleFsFileSystem") {
       CHECK(failedWith(fileSystem.writeFile("/a", buffer), Error::NotMounted));
       CHECK(fileSystem.unmount().has_value()); // idempotent
    }
+
+   STACKED_TEST_CASE("handles: stale after unmount, a reused slot stays distinct, pool exhaustion recovers") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+
+      auto stale = fileSystem.open("/a", OpenMode::Write);
+      REQUIRE(stale.has_value());
+      REQUIRE(fileSystem.unmount().has_value());
+      REQUIRE(fileSystem.mount().has_value());
+      auto fresh = fileSystem.open("/b", OpenMode::Write); // takes the slot the stale handle pointed to
+      REQUIRE(fresh.has_value());
+      std::array<uint8_t, 4> buffer{};
+      CHECK(failedWith(stale->read(buffer), Error::BadHandle));
+      CHECK(failedWith(stale->write(buffer), Error::BadHandle));
+      CHECK(failedWith(stale->seek(0u), Error::BadHandle));
+      CHECK(failedWith(stale->tell(), Error::BadHandle));
+      CHECK(failedWith(stale->size(), Error::BadHandle));
+      CHECK(failedWith(stale->sync(), Error::BadHandle));
+      CHECK_FALSE(stale->isOpen());
+      CHECK(fresh->isOpen());
+      CHECK(failedWith(stale->close(), Error::BadHandle));
+      CHECK(fresh->isOpen()); // closing the stale handle did not touch the file that reuses its slot
+
+      auto second = fileSystem.open("/c", OpenMode::Write);
+      REQUIRE(second.has_value());
+      CHECK(failedWith(fileSystem.open("/d", OpenMode::Write), Error::NoMemory)); // pool of two
+      CHECK(fileSystem.stat("/c").has_value());                                   // state is intact
+      REQUIRE(second->close().has_value());
+      CHECK(failedWith(second->close(), Error::BadHandle));
+      CHECK(fileSystem.open("/d", OpenMode::Write).has_value());
+   }
+
+   STACKED_TEST_CASE("a moved-from or default File is inert and a File can be moved out of a function") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      const auto openForWriting = [&](const char *path) {
+         auto file = fileSystem.open(path, OpenMode::Write);
+         REQUIRE(file.has_value());
+         return std::move(*file);
+      };
+
+      File moved = openForWriting("/a");
+      CHECK(moved.isOpen());
+      File target{ std::move(moved) };
+      CHECK_FALSE(moved.isOpen()); // NOLINT(bugprone-use-after-move)
+      std::array<uint8_t, 4> buffer{};
+      CHECK(failedWith(moved.read(buffer), Error::BadHandle)); // NOLINT(bugprone-use-after-move)
+      CHECK(failedWith(moved.close(), Error::BadHandle));      // NOLINT(bugprone-use-after-move)
+      CHECK(target.write(bytes("abc")).has_value());
+
+      File empty;
+      CHECK_FALSE(empty.isOpen());
+      CHECK(failedWith(empty.write(buffer), Error::BadHandle));
+
+      // Move assignment closes the file it overwrites: its slot is free again and its data is stored.
+      File other = openForWriting("/b");
+      CHECK(failedWith(fileSystem.open("/c", OpenMode::Write), Error::NoMemory));
+      target = std::move(other);
+      CHECK(fileSystem.open("/c", OpenMode::Write).has_value());
+      CHECK(fileSystem.stat("/a").value().size == 3u);
+   }
+
+   STACKED_TEST_CASE("the destructor closes the file and the final flush is observable through close()") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      {
+         auto file = fileSystem.open("/a", OpenMode::Write);
+         REQUIRE(file.has_value());
+         REQUIRE(file->write(pattern(700u)).has_value());
+      } // closed here
+      CHECK(readAll(fileSystem, "/a", 1024) == pattern(700u));
+
+      auto file = fileSystem.open("/b", OpenMode::Write);
+      REQUIRE(file.has_value());
+      REQUIRE(file->write(pattern(700u)).has_value());
+      stack.powerCut.armCut(1u, 0u); // the flush that close() triggers hits the outage
+      const auto closed = file->close();
+      CHECK_FALSE(closed.has_value());
+      CHECK_FALSE(file->isOpen());   // the handle is released even though the flush failed
+      stack.powerCut.restorePower(); // nothing here may be relied upon after the outage
+   }
+
+   STACKED_TEST_CASE("open modes map to their documented behaviour") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/a", bytes("abc")).has_value());
+
+      CHECK(failedWith(fileSystem.open("/missing", OpenMode::Read), Error::NoEntry));
+      CHECK(failedWith(fileSystem.open("/a", OpenMode::CreateNew), Error::Exists));
+      CHECK(failedWith(fileSystem.open("/", OpenMode::Read), Error::IsDirectory));
+      CHECK(failedWith(fileSystem.open("/nodir/a", OpenMode::Write), Error::NoEntry));
+
+      SUBCASE("Read is read only") {
+         auto file = fileSystem.open("/a", OpenMode::Read);
+         REQUIRE(file.has_value());
+         CHECK(failedWith(file->write(bytes("x")), Error::InvalidArgument));
+      }
+      SUBCASE("Write is write only, creates and truncates") {
+         auto file = fileSystem.open("/a", OpenMode::Write);
+         REQUIRE(file.has_value());
+         std::array<uint8_t, 4> buffer{};
+         CHECK(failedWith(file->read(buffer), Error::InvalidArgument));
+         CHECK(file->size().value() == 0u);
+         REQUIRE(file->close().has_value());
+         CHECK(fileSystem.open("/created", OpenMode::Write).has_value());
+         CHECK(fileSystem.stat("/created").has_value());
+      }
+      SUBCASE("Append keeps the content, starts at the end and always writes there") {
+         auto file = fileSystem.open("/a", OpenMode::Append);
+         REQUIRE(file.has_value());
+         CHECK(file->tell().value() == 3u);
+         REQUIRE(file->seek(0u).has_value());
+         REQUIRE(file->write(bytes("de")).has_value());
+         REQUIRE(file->close().has_value());
+         CHECK(readAll(fileSystem, "/a", 8) == bytes("abcde"));
+      }
+      SUBCASE("ReadWrite keeps the content and creates a missing file") {
+         {
+            auto file = fileSystem.open("/a", OpenMode::ReadWrite);
+            REQUIRE(file.has_value());
+            CHECK(file->size().value() == 3u);
+            CHECK(file->tell().value() == 0u);
+         }
+         CHECK(readAll(fileSystem, "/a", 8) == bytes("abc"));
+         CHECK(fileSystem.open("/new", OpenMode::ReadWrite).has_value());
+         CHECK(fileSystem.stat("/new").has_value());
+      }
+      SUBCASE("ReadWriteTruncate empties the file and reads back what was written") {
+         auto file = fileSystem.open("/a", OpenMode::ReadWriteTruncate);
+         REQUIRE(file.has_value());
+         CHECK(file->size().value() == 0u);
+         REQUIRE(file->write(bytes("xyz!")).has_value());
+         REQUIRE(file->seek(0u).has_value());
+         std::array<uint8_t, 8> buffer{};
+         CHECK(file->read(buffer).value() == 4u);
+      }
+      SUBCASE("CreateNew creates and is read-write") {
+         auto file = fileSystem.open("/lock", OpenMode::CreateNew);
+         REQUIRE(file.has_value());
+         REQUIRE(file->write(bytes("owner")).has_value());
+         REQUIRE(file->seek(0u).has_value());
+         std::array<uint8_t, 8> buffer{};
+         CHECK(file->read(buffer).value() == 5u);
+      }
+   }
+
+   STACKED_TEST_CASE("read stops at the end, seek beyond the end is allowed, sync keeps the file open") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/a", bytes("abcdef")).has_value());
+      auto file = fileSystem.open("/a", OpenMode::ReadWrite);
+      REQUIRE(file.has_value());
+      std::array<uint8_t, 4> buffer{};
+      CHECK(file->read(buffer).value() == 4u);
+      CHECK(file->read(buffer).value() == 2u);
+      CHECK(file->read(buffer).value() == 0u);
+      CHECK(file->tell().value() == 6u);
+      REQUIRE(file->seek(100u).has_value());
+      CHECK(file->read(buffer).value() == 0u);
+      CHECK(file->tell().value() == 100u);
+      CHECK(file->size().value() == 6u); // seeking does not change the size
+      REQUIRE(file->seek(0u).has_value());
+      REQUIRE(file->write(bytes("XY")).has_value());
+      CHECK(file->sync().has_value());
+      CHECK(file->isOpen());
+      CHECK(failedWith(file->seek(offset_t{ 1u } << 40u), Error::TooBig));
+   }
+
+   STACKED_TEST_CASE("remove and rename of an open file are refused, rename onto itself is a no-op") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/a", bytes("old")).has_value());
+      REQUIRE(fileSystem.writeFile("/b", bytes("new")).has_value());
+      {
+         auto file = fileSystem.open("/a", OpenMode::ReadWrite);
+         REQUIRE(file.has_value());
+         CHECK(failedWith(fileSystem.remove("/a"), Error::Busy));
+         CHECK(failedWith(fileSystem.remove("//./a"), Error::Busy)); // another spelling of the same path
+         CHECK(failedWith(fileSystem.rename("/a", "/c"), Error::Busy));
+         CHECK(failedWith(fileSystem.rename("/b", "/a"), Error::Busy)); // would replace the open file
+         CHECK(fileSystem.rename("/a", "/a").has_value());
+         REQUIRE(file->write(bytes("!")).has_value()); // the handle still works and its data is kept
+         REQUIRE(file->close().has_value());
+      }
+      CHECK(readAll(fileSystem, "/a", 8) == bytes("!ld"));
+      REQUIRE(fileSystem.rename("/b", "/a").has_value()); // allowed once it is closed
+      CHECK(readAll(fileSystem, "/a", 8) == bytes("new"));
+      CHECK(failedWith(fileSystem.stat("/b"), Error::NoEntry));
+      CHECK(failedWith(fileSystem.rename("/missing", "/missing"), Error::NoEntry));
+   }
+
+   STACKED_TEST_CASE("two handles on one file are only allowed when both read") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/a", bytes("abc")).has_value());
+      {
+         auto readerOne = fileSystem.open("/a", OpenMode::Read);
+         auto readerTwo = fileSystem.open("/a", OpenMode::Read);
+         CHECK(readerOne.has_value());
+         CHECK(readerTwo.has_value());
+         CHECK(failedWith(fileSystem.open("/a", OpenMode::ReadWrite), Error::Busy));
+         CHECK(failedWith(fileSystem.open("/a", OpenMode::Write), Error::Busy));
+         CHECK(failedWith(fileSystem.open("//a", OpenMode::Append), Error::Busy));
+         CHECK(failedWith(fileSystem.open("/a", OpenMode::CreateNew), Error::Exists));
+      }
+      auto writer = fileSystem.open("/a", OpenMode::ReadWrite);
+      REQUIRE(writer.has_value());
+      CHECK(failedWith(fileSystem.open("/a", OpenMode::Read), Error::Busy));
+   }
+
+   STACKED_TEST_CASE("rename replaces an existing file and moves files between directories") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.mkdir("/d").has_value());
+      REQUIRE(fileSystem.writeFile("/a", bytes("old")).has_value());
+      REQUIRE(fileSystem.writeFile("/a.tmp", bytes("new")).has_value());
+      REQUIRE(fileSystem.rename("/a.tmp", "/a").has_value());
+      CHECK(readAll(fileSystem, "/a", 8) == bytes("new"));
+      CHECK(failedWith(fileSystem.stat("/a.tmp"), Error::NoEntry));
+
+      REQUIRE(fileSystem.rename("/a", "/d/moved").has_value());
+      CHECK(readAll(fileSystem, "/d/moved", 8) == bytes("new"));
+      CHECK(failedWith(fileSystem.rename("/nope", "/x"), Error::NoEntry));
+      CHECK(failedWith(fileSystem.rename("/d/moved", "/d"), Error::IsDirectory));
+      CHECK(failedWith(fileSystem.rename("/d", "/d/moved"), Error::NotDirectory));
+   }
+
+   STACKED_TEST_CASE("seek and write into the middle of a staged image, the FUOTA fragment pattern") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+
+      constexpr size_t kFragmentSize = 200u;
+      constexpr size_t kFragmentCount = 120u; // a 24000 byte image
+      const auto image = pattern(kFragmentSize * kFragmentCount, 7u);
+      // Fragments arrive out of order: 37 and 120 are coprime, so this visits each index exactly once.
+      const auto fragmentAt = [](size_t arrival) { return (arrival * 37u) % kFragmentCount; };
+      const auto writeFragments = [&](File &file, size_t firstArrival, size_t lastArrival) {
+         for(size_t arrival = firstArrival; arrival < lastArrival; ++arrival) {
+            const size_t fragment = fragmentAt(arrival);
+            REQUIRE(file.seek(fragment * kFragmentSize).has_value());
+            REQUIRE(file.write(std::span{ image }.subspan(fragment * kFragmentSize, kFragmentSize)).has_value());
+         }
+      };
+
+      {
+         auto staged = fileSystem.open("/staged.bin", OpenMode::CreateNew);
+         REQUIRE(staged.has_value());
+         writeFragments(*staged, 0u, kFragmentCount / 2u);
+         REQUIRE(staged->close().has_value());
+      }
+      // A reboot in the middle of the transfer, then the transfer resumes on the same file.
+      REQUIRE(fileSystem.unmount().has_value());
+      REQUIRE(fileSystem.mount().has_value());
+      {
+         auto staged = fileSystem.open("/staged.bin", OpenMode::ReadWrite);
+         REQUIRE(staged.has_value());
+         writeFragments(*staged, kFragmentCount / 2u, kFragmentCount);
+         CHECK(staged->size().value() == image.size());
+         // Verify what was staged through the same handle, then through a fresh read.
+         REQUIRE(staged->seek(0u).has_value());
+         std::vector<uint8_t> throughHandle(image.size());
+         CHECK(staged->read(throughHandle).value() == image.size());
+         CHECK(throughHandle == image);
+         REQUIRE(staged->close().has_value());
+      }
+      REQUIRE(fileSystem.unmount().has_value());
+      REQUIRE(fileSystem.mount().has_value());
+      CHECK(readAll(fileSystem, "/staged.bin", image.size() + 1u) == image);
+   }
+
+   STACKED_TEST_CASE("overwriting a byte range in place keeps the rest of a multi-block file") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      auto expected = pattern(10000u);
+      REQUIRE(fileSystem.writeFile("/a", expected).has_value());
+      {
+         auto file = fileSystem.open("/a", OpenMode::ReadWrite);
+         REQUIRE(file.has_value());
+         REQUIRE(file->seek(4090u).has_value()); // across the 4096 byte block boundary
+         const auto patch = pattern(20u, 99u);
+         REQUIRE(file->write(patch).has_value());
+         std::ranges::copy(patch, expected.begin() + 4090);
+         REQUIRE(file->close().has_value());
+      }
+      CHECK(readAll(fileSystem, "/a", 10000u) == expected);
+   }
 }
