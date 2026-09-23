@@ -50,7 +50,11 @@ struct FileInfo {
 /// Longest file or directory name in bytes, without terminator, that any implementation accepts. An
 /// implementation may enforce a smaller limit (reporting Error::NameTooLong). A buffer of kMaxNameLength + 1
 /// bytes therefore always holds a name delivered to a DirectoryVisitor, which is how a caller keeps a name
-/// beyond the call to open it afterwards. It matches the default of LittleFS and the FAT long file name limit.
+/// beyond the call to open it afterwards. It matches the default of LittleFS (LFS_NAME_MAX).
+///
+/// FatFs does not fit this limit by itself: FF_MAX_LFN 255 counts UTF-16 code units, and with FF_LFN_UNICODE 2
+/// names are UTF-8, so a FAT name can be up to 765 bytes (src/storage/fatfs/ffconf.h:117,128,136). A FAT
+/// adapter must enforce the byte limit itself and report Error::NameTooLong for a longer name.
 inline constexpr size_t kMaxNameLength = 255u;
 
 /**
@@ -60,7 +64,7 @@ inline constexpr size_t kMaxNameLength = 255u;
  * only valid during the call. The
  * entries "." and ".." are never reported. Return true to continue with the next entry and false to stop.
  * The callback runs while the file system holds its lock: it must not call back into the FileSystem or any
- * File of it.
+ * File of it (File::isOpen() included, because it asks the file system).
  */
 using DirectoryVisitor = etl::delegate<bool(const char *name, const FileInfo &info)>;
 

@@ -67,6 +67,11 @@ file(GLOB TEST_SOURCES
         storage/TestFatFileWritable.cpp
 )
 
+# The LittleFS binding runs the real littlefs; its target is defined by the top-level CMakeLists.txt.
+if (_ART_NEED_LITTLEFS)
+    list(APPEND TEST_SOURCES storage/TestLittleFsSmoke.cpp)
+endif ()
+
 file(GLOB TO_TEST_SOURCES
         ../src/streams/Readable.cpp
         ../src/streams/PseudoRandomReadable.cpp
@@ -136,6 +141,11 @@ target_include_directories(libArT-tests PRIVATE
 # strlcpy support
 #target_compile_options(libArT-tests PUBLIC -include "bsd/string.h")
 target_link_libraries(libArT-tests PUBLIC bsd)
+
+if (_ART_NEED_LITTLEFS)
+    target_sources(libArT-tests PRIVATE ../src/storage/littlefs/LittleFsFileSystem.cpp)
+    target_link_libraries(libArT-tests PRIVATE littlefs)
+endif ()
 
 # ETL
 target_link_libraries(libArT-tests PRIVATE etl::etl)
