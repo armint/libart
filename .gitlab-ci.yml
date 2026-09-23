@@ -42,3 +42,23 @@ test:
     when: always
     reports:
       junit: build/junit.xml
+
+# Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
+# optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the
+# FreeRTOS host stubs of the unit tests; a cross build of it needs a FreeRTOS target from a superproject
+# (sentinode-ht), which this image does not have, so that is covered there.
+littlefs:
+  stage: build
+  variables:
+    GIT_DEPTH: 0
+  script:
+    # Default (option off): no binding target, no littlefs symbols in art-core.
+    - cmake -B build-default -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
+    - cmake --build build-default --target art-core -j$(nproc)
+    - '! cmake --build build-default --target help | grep -q art-storage-littlefs'
+    - '! nm build-default/libart-core.a | grep -Eq "lfs_|LittleFs"'
+    # Option on: the target builds, and art-core still contains no littlefs code.
+    - cmake -B build-littlefs -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON
+    - cmake --build build-littlefs --target art-storage-littlefs art-core -j$(nproc)
+    - '! nm build-littlefs/libart-core.a | grep -Eq "lfs_|LittleFs"'
+    - nm build-littlefs/libart-storage-littlefs.a | grep -q LittleFsFileSystemBase
