@@ -35,6 +35,9 @@ struct Geometry {
    /// Smallest programmable unit in bytes (NOR page). Program offsets and lengths are multiples of it.
    uint32_t programSize{ 1u };
    /// Erase unit in bytes. 0 means the medium has no erase unit (RAM-like); erase() then has no effect.
+   /// It must divide size (see isValid()), which is what NOR flash and littlefs need. A medium whose native
+   /// erase or allocation unit does not divide its capacity, such as an SD card, reports 0 here: the device
+   /// then exposes no erase (and no discard) through this interface.
    uint32_t eraseSize{ 0u };
    /// Total usable bytes.
    offset_t size{ 0u };
