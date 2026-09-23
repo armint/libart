@@ -144,9 +144,9 @@ Error LittleFsFileSystemBase::toError(int lfsError) const {
 
 // ---- block device callbacks ----
 
-int LittleFsFileSystemBase::lfsGet(const lfs_config *cfg, lfs_block_t blk, lfs_off_t at, void *buf, lfs_size_t n) {
-   auto &self = *static_cast<LittleFsFileSystemBase *>(cfg->context);
-   const offset_t position = static_cast<offset_t>(blk) * cfg->block_size + at;
+int LittleFsFileSystemBase::lfsGet(const lfs_config *c, lfs_block_t blk, lfs_off_t at, void *buf, lfs_size_t n) {
+   auto &self = *static_cast<LittleFsFileSystemBase *>(c->context);
+   const offset_t position = static_cast<offset_t>(blk) * c->block_size + at;
    const auto result = self.device_.read(position, { static_cast<uint8_t *>(buf), n });
    if(!result) {
       self.deviceError_ = result.error();
@@ -155,9 +155,9 @@ int LittleFsFileSystemBase::lfsGet(const lfs_config *cfg, lfs_block_t blk, lfs_o
    return LFS_ERR_OK;
 }
 
-int LittleFsFileSystemBase::lfsPut(const lfs_config *cfg, lfs_block_t blk, lfs_off_t at, const void *buf, lfs_size_t n) {
-   auto &self = *static_cast<LittleFsFileSystemBase *>(cfg->context);
-   const offset_t position = static_cast<offset_t>(blk) * cfg->block_size + at;
+int LittleFsFileSystemBase::lfsPut(const lfs_config *c, lfs_block_t blk, lfs_off_t at, const void *buf, lfs_size_t n) {
+   auto &self = *static_cast<LittleFsFileSystemBase *>(c->context);
+   const offset_t position = static_cast<offset_t>(blk) * c->block_size + at;
    const auto result = self.device_.program(position, { static_cast<const uint8_t *>(buf), n });
    if(!result) {
       self.deviceError_ = result.error();
@@ -166,9 +166,9 @@ int LittleFsFileSystemBase::lfsPut(const lfs_config *cfg, lfs_block_t blk, lfs_o
    return LFS_ERR_OK;
 }
 
-int LittleFsFileSystemBase::lfsErase(const lfs_config *cfg, lfs_block_t blk) {
-   auto &self = *static_cast<LittleFsFileSystemBase *>(cfg->context);
-   const auto result = self.device_.erase(static_cast<offset_t>(blk) * cfg->block_size, cfg->block_size);
+int LittleFsFileSystemBase::lfsErase(const lfs_config *c, lfs_block_t blk) {
+   auto &self = *static_cast<LittleFsFileSystemBase *>(c->context);
+   const auto result = self.device_.erase(static_cast<offset_t>(blk) * c->block_size, c->block_size);
    if(!result) {
       self.deviceError_ = result.error();
       return LFS_ERR_IO;
@@ -176,8 +176,8 @@ int LittleFsFileSystemBase::lfsErase(const lfs_config *cfg, lfs_block_t blk) {
    return LFS_ERR_OK;
 }
 
-int LittleFsFileSystemBase::lfsSync(const lfs_config *cfg) {
-   auto &self = *static_cast<LittleFsFileSystemBase *>(cfg->context);
+int LittleFsFileSystemBase::lfsSync(const lfs_config *c) {
+   auto &self = *static_cast<LittleFsFileSystemBase *>(c->context);
    const auto result = self.device_.sync();
    if(!result) {
       self.deviceError_ = result.error();
