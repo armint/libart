@@ -314,4 +314,194 @@ TEST_SUITE("LittleFsFileSystem") {
       REQUIRE(fileSystem.mount().has_value());
       CHECK(readAll(fileSystem, "/a", 8) == bytes("stored"));
    }
+
+   STACKED_TEST_CASE("whole-file round trip across cache and block boundaries") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      // Around the 256 byte cache, the 4096 byte block and beyond, including the empty file.
+      for(const size_t size : { 0u, 1u, 15u, 16u, 255u, 256u, 257u, 4095u, 4096u, 4097u, 10000u }) {
+         const auto content = pattern(size, static_cast<uint8_t>(size));
+         REQUIRE(fileSystem.writeFile("/data", content).has_value());
+         CHECK(fileSystem.stat("/data").value().size == size);
+         CHECK(readAll(fileSystem, "/data", 16384) == content);
+      }
+   }
+
+   STACKED_TEST_CASE("writeFile replaces a longer file and remove deletes it") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/a", pattern(3000u)).has_value());
+      REQUIRE(fileSystem.writeFile("/a", bytes("short")).has_value());
+      CHECK(readAll(fileSystem, "/a", 4096) == bytes("short"));
+      REQUIRE(fileSystem.remove("/a").has_value());
+      CHECK(failedWith(fileSystem.stat("/a"), Error::NoEntry));
+      CHECK(failedWith(fileSystem.remove("/a"), Error::NoEntry));
+   }
+
+   STACKED_TEST_CASE("readFile refuses a destination smaller than the file instead of returning a short read") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/a", pattern(1000u)).has_value());
+
+      std::vector<uint8_t> tooSmall(999u, 0xAAu);
+      CHECK(failedWith(fileSystem.readFile("/a", tooSmall), Error::NoMemory));
+      CHECK(std::ranges::all_of(tooSmall, [](uint8_t value) { return value == 0xAAu; })); // nothing was copied
+      std::vector<uint8_t> exact(1000u);
+      CHECK(fileSystem.readFile("/a", exact).value() == 1000u);
+      CHECK(exact == pattern(1000u));
+      // The failed read did not leave a file open: the pool of two is still free.
+      auto first = fileSystem.open("/a", OpenMode::Read);
+      auto second = fileSystem.open("/a", OpenMode::Read);
+      CHECK(first.has_value());
+      CHECK(second.has_value());
+   }
+
+   STACKED_TEST_CASE("stat, mkdir, remove and freeSpace") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      const offset_t freeEmpty = fileSystem.freeSpace().value();
+      REQUIRE(fileSystem.mkdir("/dir").has_value());
+      REQUIRE(fileSystem.writeFile("/dir/file", pattern(9000u)).has_value());
+
+      CHECK(fileSystem.stat("/dir").value().type == EntryType::Directory);
+      CHECK(fileSystem.stat("/dir").value().size == 0u);
+      CHECK(fileSystem.stat("/dir/file").value().type == EntryType::File);
+      CHECK(fileSystem.stat("/dir/file").value().size == 9000u);
+      CHECK(fileSystem.stat("/").value().type == EntryType::Directory);
+      CHECK(failedWith(fileSystem.stat("/nope"), Error::NoEntry));
+      CHECK(failedWith(fileSystem.mkdir("/dir"), Error::Exists));
+      CHECK(failedWith(fileSystem.mkdir("/missing/child"), Error::NoEntry));
+      CHECK(failedWith(fileSystem.mkdir("/dir/file/child"), Error::NotDirectory));
+      CHECK(failedWith(fileSystem.remove("/dir"), Error::NotEmpty));
+      CHECK(failedWith(fileSystem.open("/dir", OpenMode::Read), Error::IsDirectory));
+      CHECK(failedWith(fileSystem.open("/dir/file/x", OpenMode::Read), Error::NotDirectory));
+
+      const offset_t freeFull = fileSystem.freeSpace().value();
+      CHECK(freeFull < freeEmpty);
+      REQUIRE(fileSystem.remove("/dir/file").has_value());
+      REQUIRE(fileSystem.remove("/dir").has_value());
+      CHECK(fileSystem.freeSpace().value() > freeFull);
+   }
+
+   STACKED_TEST_CASE("writing until the volume is full reports NoSpace and leaves the volume usable") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/small", bytes("kept")).has_value());
+      const auto huge = pattern(200u * 1024u); // more than the 128 KiB volume
+      CHECK(failedWith(fileSystem.writeFile("/huge", huge), Error::NoSpace));
+      CHECK(readAll(fileSystem, "/small", 8) == bytes("kept"));
+      static_cast<void>(fileSystem.remove("/huge"));
+      CHECK(fileSystem.writeFile("/after", pattern(2000u)).has_value());
+   }
+
+   STACKED_TEST_CASE("directory visiting skips . and .., reports types and sizes, and stops early") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.mkdir("/d").has_value());
+      REQUIRE(fileSystem.writeFile("/d/one", bytes("1")).has_value());
+      REQUIRE(fileSystem.writeFile("/d/two", bytes("22")).has_value());
+      REQUIRE(fileSystem.mkdir("/d/sub").has_value());
+      REQUIRE(fileSystem.writeFile("/other", bytes("x")).has_value());
+
+      struct Collector {
+         std::vector<std::pair<std::string, FileInfo>> entries;
+         size_t stopAfter{ SIZE_MAX };
+
+         bool visit(const char *name, const FileInfo &info) {
+            entries.emplace_back(name, info);
+            return entries.size() < stopAfter;
+         }
+      };
+      const auto visit = [&](const char *path, Collector &collector) {
+         return fileSystem.visitDirectory(path, DirectoryVisitor::create<Collector, &Collector::visit>(collector));
+      };
+
+      Collector all;
+      CHECK(visit("/d", all).value() == 3u);
+      REQUIRE(all.entries.size() == 3u);
+      std::ranges::sort(all.entries, {}, &std::pair<std::string, FileInfo>::first);
+      CHECK(all.entries[0].first == "one");
+      CHECK(all.entries[0].second.type == EntryType::File);
+      CHECK(all.entries[0].second.size == 1u);
+      CHECK(all.entries[1].first == "sub");
+      CHECK(all.entries[1].second.type == EntryType::Directory);
+      CHECK(all.entries[1].second.size == 0u);
+      CHECK(all.entries[2].first == "two");
+      CHECK(all.entries[2].second.size == 2u);
+
+      Collector stopEarly;
+      stopEarly.stopAfter = 1u;
+      CHECK(visit("/d", stopEarly).value() == 1u);
+      CHECK(stopEarly.entries.size() == 1u);
+
+      Collector root;
+      CHECK(visit("/", root).value() == 2u); // "d" and "other"
+      REQUIRE(fileSystem.mkdir("/empty").has_value());
+      Collector empty;
+      CHECK(visit("/empty", empty).value() == 0u);
+
+      CHECK(failedWith(visit("/nope", root), Error::NoEntry));
+      CHECK(failedWith(visit("/other", root), Error::NotDirectory));
+      CHECK(failedWith(fileSystem.visitDirectory("/d", DirectoryVisitor{}), Error::InvalidArgument));
+   }
+
+   STACKED_TEST_CASE("names at the length limit are stored, listed and rejected beyond it") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      const std::string longest(kMaxNameLength, 'n');
+      const std::string tooLong(kMaxNameLength + 1u, 'n');
+      REQUIRE(fileSystem.writeFile(("/" + longest).c_str(), bytes("limit")).has_value());
+      CHECK(readAll(fileSystem, ("/" + longest).c_str(), 8) == bytes("limit"));
+
+      struct Names {
+         std::vector<std::string> names;
+         bool visit(const char *name, const FileInfo &) {
+            names.emplace_back(name);
+            return true;
+         }
+      } listed;
+      REQUIRE(fileSystem.visitDirectory("/", DirectoryVisitor::create<Names, &Names::visit>(listed)).has_value());
+      REQUIRE(listed.names.size() == 1u);
+      CHECK(listed.names[0] == longest);
+
+      const std::string tooLongPath = "/" + tooLong;
+      CHECK(failedWith(fileSystem.open(tooLongPath.c_str(), OpenMode::Write), Error::NameTooLong));
+      CHECK(failedWith(fileSystem.open(tooLongPath.c_str(), OpenMode::Read), Error::NameTooLong));
+      CHECK(failedWith(fileSystem.mkdir(tooLongPath.c_str()), Error::NameTooLong));
+      CHECK(failedWith(fileSystem.rename(("/" + longest).c_str(), tooLongPath.c_str()), Error::NameTooLong));
+   }
+
+   STACKED_TEST_CASE("paths the interface does not define are rejected") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      CHECK(failedWith(fileSystem.open("relative", OpenMode::Write), Error::InvalidArgument));
+      CHECK(failedWith(fileSystem.open("", OpenMode::Write), Error::InvalidArgument));
+      CHECK(failedWith(fileSystem.open("/a/../b", OpenMode::Write), Error::InvalidArgument));
+      CHECK(failedWith(fileSystem.open(nullptr, OpenMode::Write), Error::InvalidArgument));
+      CHECK(failedWith(fileSystem.remove(nullptr), Error::InvalidArgument));
+      CHECK(failedWith(fileSystem.rename("/a", "b"), Error::InvalidArgument));
+   }
+
+   STACKED_TEST_CASE("every call on an unmounted file system fails with NotMounted") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      std::array<uint8_t, 4> buffer{};
+      CHECK(failedWith(fileSystem.open("/a", OpenMode::Write), Error::NotMounted));
+      CHECK(failedWith(fileSystem.remove("/a"), Error::NotMounted));
+      CHECK(failedWith(fileSystem.rename("/a", "/b"), Error::NotMounted));
+      CHECK(failedWith(fileSystem.mkdir("/a"), Error::NotMounted));
+      CHECK(failedWith(fileSystem.stat("/a"), Error::NotMounted));
+      CHECK(failedWith(fileSystem.freeSpace(), Error::NotMounted));
+      CHECK(failedWith(fileSystem.readFile("/a", buffer), Error::NotMounted));
+      CHECK(failedWith(fileSystem.writeFile("/a", buffer), Error::NotMounted));
+      CHECK(fileSystem.unmount().has_value()); // idempotent
+   }
 }
