@@ -426,8 +426,9 @@ std::expected<void, Error> LittleFsFileSystemBase::rename(const char *oldPath, c
    if(!newHash) {
       return failure(newHash.error());
    }
-   // Renaming an entry onto itself is a no-op in littlefs and safe for an open file.
-   if(*oldHash != *newHash && (isPathOpen(*oldHash) || isPathOpen(*newHash))) {
+   // Renaming an entry onto itself is a no-op in littlefs and safe for an open file. Compare the strings, not
+   // the hashes: a collision between two different paths must still get the open-file check.
+   if(std::strcmp(oldPath, newPath) != 0 && (isPathOpen(*oldHash) || isPathOpen(*newHash))) {
       return failure(Error::Busy);
    }
    deviceError_.reset();
