@@ -64,15 +64,24 @@ FetchContent_Declare(ArduinoJson
 
 FetchContent_MakeAvailable(ArduinoJson)
 
-# The LittleFS binding (art-storage-littlefs) is optional, so that art-core stays free of a littlefs
-# dependency. A native build (host tests) enables it by default; a cross build opts in explicitly.
+# The LittleFS binding (art-storage-littlefs) is optional and off by default, so that art-core and every
+# existing consumer stay free of a littlefs dependency (and of its fetch). The native unit tests compile the
+# binding and littlefs themselves, so they do not depend on this option, but they still need the littlefs
+# sources: _ART_NEED_LITTLEFS makes the littlefs target exist for them.
+option(ART_STORAGE_LITTLEFS "Build the LittleFS FileSystem binding (art-storage-littlefs)" OFF)
+# littlefs asserts on misuse of its API. That is what a host test wants; firmware must not abort a boot on a
+# file system error (the binding validates its inputs instead), so a cross build defaults to no asserts.
 if (CMAKE_CROSSCOMPILING)
-    set(_ART_STORAGE_LITTLEFS_DEFAULT OFF)
+    set(_ART_LITTLEFS_NO_ASSERT_DEFAULT ON)
 else ()
-    set(_ART_STORAGE_LITTLEFS_DEFAULT ON)
+    set(_ART_LITTLEFS_NO_ASSERT_DEFAULT OFF)
 endif ()
-option(ART_STORAGE_LITTLEFS "Build the LittleFS FileSystem binding (art-storage-littlefs)"
-        ${_ART_STORAGE_LITTLEFS_DEFAULT})
+option(ART_LITTLEFS_NO_ASSERT "Build littlefs with LFS_NO_ASSERT" ${_ART_LITTLEFS_NO_ASSERT_DEFAULT})
+if (ART_STORAGE_LITTLEFS OR NOT CMAKE_CROSSCOMPILING)
+    set(_ART_NEED_LITTLEFS ON)
+else ()
+    set(_ART_NEED_LITTLEFS OFF)
+endif ()
 
 # Detect if we are crosscompiling, or compiling for our native system.
 if (CMAKE_CROSSCOMPILING)
@@ -143,7 +152,7 @@ if (TARGET art-build-config)
 endif()
 
 # ---------- LittleFS binding ----------
-if (ART_STORAGE_LITTLEFS)
+if (_ART_NEED_LITTLEFS)
     # littlefs ships no usable CMakeLists.txt, so the target is defined here from lfs.c and lfs_util.c. A
     # superproject that already defines a "littlefs" target wins, and then owns the version pin.
     if (NOT TARGET littlefs)
@@ -164,21 +173,26 @@ if (ART_STORAGE_LITTLEFS)
         )
         target_include_directories(littlefs PUBLIC $<BUILD_INTERFACE:${littlefs_SOURCE_DIR}>)
         # LFS_NO_MALLOC:  the binding supplies every buffer statically.
-        # LFS_NO_ASSERT:  a file system error must never abort a boot; the binding validates instead.
+        # LFS_NO_ASSERT:  a file system error must never abort a boot; the binding validates instead. Only
+        #                 set when ART_LITTLEFS_NO_ASSERT is on, which is the default for cross builds.
         # LFS_NO_DEBUG/WARN/ERROR: littlefs traces go to printf, which these projects forbid; the binding logs
         #                 through logging::Logger.
         target_compile_definitions(littlefs PUBLIC
                 LFS_NO_MALLOC
-                LFS_NO_ASSERT
                 LFS_NO_DEBUG
                 LFS_NO_WARN
                 LFS_NO_ERROR
         )
+        if (ART_LITTLEFS_NO_ASSERT)
+            target_compile_definitions(littlefs PUBLIC LFS_NO_ASSERT)
+        endif ()
         if (TARGET art-build-config)
             target_link_libraries(littlefs PRIVATE $<BUILD_INTERFACE:art-build-config>)
         endif ()
     endif ()
+endif ()
 
+if (ART_STORAGE_LITTLEFS)
     add_library(art-storage-littlefs STATIC src/storage/littlefs/LittleFsFileSystem.cpp)
     add_library(art::storage-littlefs ALIAS art-storage-littlefs)
     target_compile_features(art-storage-littlefs PUBLIC cxx_std_23)
@@ -186,6 +200,12 @@ if (ART_STORAGE_LITTLEFS)
     # because the template header includes lfs.h.
     target_link_libraries(art-storage-littlefs PUBLIC art-core art-rtos littlefs)
     target_link_libraries(art-storage-littlefs PRIVATE etl::etl)
+    # A native build has no FreeRTOS target. Compile against the host stubs of the unit tests so that the
+    # target builds there (CI does); a cross build gets FreeRTOS from the superproject through art-rtos.
+    if (NOT CMAKE_CROSSCOMPILING AND NOT TARGET freertos AND NOT TARGET freertos_kernel)
+        target_include_directories(art-storage-littlefs PRIVATE
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests/stubs/freertos>)
+    endif ()
     if (TARGET art-build-config)
         target_link_libraries(art-storage-littlefs PRIVATE $<BUILD_INTERFACE:art-build-config>)
     endif ()

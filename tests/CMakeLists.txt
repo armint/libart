@@ -68,7 +68,7 @@ file(GLOB TEST_SOURCES
 )
 
 # The LittleFS binding runs the real littlefs; its target is defined by the top-level CMakeLists.txt.
-if (ART_STORAGE_LITTLEFS)
+if (_ART_NEED_LITTLEFS)
     list(APPEND TEST_SOURCES storage/TestLittleFsSmoke.cpp)
 endif ()
 
@@ -142,7 +142,7 @@ target_include_directories(libArT-tests PRIVATE
 #target_compile_options(libArT-tests PUBLIC -include "bsd/string.h")
 target_link_libraries(libArT-tests PUBLIC bsd)
 
-if (ART_STORAGE_LITTLEFS)
+if (_ART_NEED_LITTLEFS)
     target_sources(libArT-tests PRIVATE ../src/storage/littlefs/LittleFsFileSystem.cpp)
     target_link_libraries(libArT-tests PRIVATE littlefs)
 endif ()

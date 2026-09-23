@@ -10,7 +10,7 @@ systems are cortex-m or risc-v microcontrollers running bare-metal or rtos-based
 - **Logging**: A flexible logging system (`LogManager`, `Logger`).
 - **Modbus**: Implementations for Modbus Master and Slave.
 - **Settings**: A framework for managing device settings.
-- **Storage**: `art::storage` block device (`BlockDevice`) and file system (`FileSystem`, move-only `File` handle) interfaces; the FileSystem serializes its own calls, a BlockDevice does not. `LittleFsFileSystem` (`src/storage/littlefs/`) is the LittleFS implementation. It is built by the optional `art-storage-littlefs` target (`ART_STORAGE_LITTLEFS`, on for native builds, off for cross builds) and is excluded from `art-core`, so `art-core` needs no littlefs. littlefs is pinned to v2.9.3 there unless the superproject already defines a `littlefs` target.
+- **Storage**: `art::storage` block device (`BlockDevice`) and file system (`FileSystem`, move-only `File` handle) interfaces; the FileSystem serializes its own calls, a BlockDevice does not. `LittleFsFileSystem` (`src/storage/littlefs/`) is the LittleFS implementation. It is built by the optional `art-storage-littlefs` target (`ART_STORAGE_LITTLEFS`, off by default) and is excluded from `art-core`, so `art-core` needs no littlefs. littlefs is pinned to v2.9.3 there unless the superproject already defines a `littlefs` target.
 - **Utils**: JSON reading/writing, CRC (Digest), string utilities, and more.
 
 ## Guidelines
