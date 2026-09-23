@@ -10,7 +10,7 @@
  * DigestWritable, the protobuf codecs, ...) can write to a file of any FileSystem implementation.
  *
  * The adapter holds no buffer of its own; every write() is one File::write(). To batch small writes into
- * larger ones wrap it in a BufferedWritable. The stream writes at the current position of the file (at the end
+ * larger ones wrap it in a BufferedWritable, but see "Flushing" below. The stream writes at the current position of the file (at the end
  * for OpenMode::Append) and tracks nothing else, so the file may be seeked and closed through its File.
  *
  * @par All or nothing
@@ -24,9 +24,17 @@
  * art::storage::Error::TooBig become Writable::Overflow (nothing more fits), every other error becomes
  * Writable::CouldNotWrite. The cause is kept in lastError().
  *
+ * @par Flushing
+ * Neither FileWritable nor BufferedWritable flushes in its destructor, so data still held in a BufferedWritable
+ * is dropped without an error when it goes out of scope. The caller must call flush() on the outermost writable
+ * explicitly. This differs from FatFileWritable, whose destructor flushes its buffer. FileWritable does not
+ * buffer, so it has nothing to flush there, and a destructor could not report a failure anyway.
+ *
  * @par Durability
- * Written data may be buffered by the file system. flush() calls File::sync() and is what makes it durable;
- * the destructor does not flush, and the File closes itself when it is destroyed.
+ * Written data may be buffered by the file system. flush() calls File::sync() to store it, and close() does
+ * the same and reports the result. This holds only while every write() succeeded: after a failed write() the
+ * content from the position onwards is unspecified, and a later successful flush() does not make it valid.
+ * Treat a failed write as a failed file.
  */
 class FileWritable : public BoundedWritable {
    art::storage::File &file_;
@@ -38,7 +46,8 @@ class FileWritable : public BoundedWritable {
       : BoundedWritable(std::numeric_limits<size_t>::max())
       , file_(file) {}
 
-   FileWritable(FileWritable &&) = default;
+   // Not movable, like FileReadable.
+   FileWritable(FileWritable &&) = delete;
    FileWritable &operator=(FileWritable &&) = delete;
    FileWritable(const FileWritable &) = delete;
    FileWritable &operator=(const FileWritable &) = delete;
