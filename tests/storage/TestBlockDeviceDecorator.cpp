@@ -228,7 +228,8 @@ TEST_SUITE("art::storage::BlockDeviceDecorator") {
 
       const Geometry ram{ .size = 1024u };
       CHECK(ram.isValid());
-      CHECK(Geometry{}.isValid()); // the default is an empty but consistent device
+      CHECK_FALSE(Geometry{}.isValid()); // size 0: no useful device, and what failed capacity detection yields
+      CHECK_FALSE(Geometry{ .readSize = 512u, .programSize = 512u, .eraseSize = 4096u, .eraseBeforeProgram = true }.isValid());
 
       Geometry broken = nor;
       broken.eraseSize = 0u; // erase-before-program without an erase unit

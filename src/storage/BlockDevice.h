@@ -46,12 +46,14 @@ struct Geometry {
    /**
     * @brief Checks that the geometry is self-consistent.
     *
-    * True if readSize and programSize are non-zero, the eraseBeforeProgram invariant holds, size is a multiple
-    * of readSize and programSize, and, if there is an erase unit, eraseSize is a multiple of both and divides
-    * size. A file system should reject a device whose geometry fails this check.
+    * True if size, readSize and programSize are non-zero, the eraseBeforeProgram invariant holds, size is a
+    * multiple of readSize and programSize, and, if there is an erase unit, eraseSize is a multiple of both and
+    * divides size. A device with size 0 is never valid: it is what a failed capacity detection (unparsable SD
+    * CSD, unreadable NOR JEDEC ID) looks like, and no useful device is empty. A file system should reject a
+    * device whose geometry fails this check.
     */
    constexpr bool isValid() const {
-      if(readSize == 0u || programSize == 0u || size % readSize != 0u || size % programSize != 0u) {
+      if(size == 0u || readSize == 0u || programSize == 0u || size % readSize != 0u || size % programSize != 0u) {
          return false;
       }
       if(eraseSize == 0u) {
