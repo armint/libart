@@ -1,17 +1,22 @@
 #include "BlockDeviceContract.h"
 #include <algorithm>
-#include <array>
 #include <doctest/doctest.h>
 #include <limits>
 #include <numeric>
 #include <span>
+#include <vector>
 
 namespace art::storage::test {
 
 namespace {
 
+// The checked window is at least this many bytes, and at least two units of the geometry.
 constexpr uint64_t kPreferredWindowBytes = 512u;
-constexpr uint64_t kMaxWindowBytes = 16384u;
+// Sanity limit for the window: it is what the buffers below are sized for.
+constexpr uint64_t kMaxWindowBytes = 4u * 1024u * 1024u;
+// Round trips are dense (every alignment) near the start and the end of each erase unit and skip the middle of
+// large units, which keeps the run time bounded for 64 KiB NOR blocks.
+constexpr uint64_t kDenseEdgeBytes = 512u;
 
 constexpr uint64_t alignDown(uint64_t value, uint64_t granularity) {
    return value / granularity * granularity;
@@ -58,7 +63,13 @@ class ContractChecker {
       const uint64_t commonUnit = std::lcm<uint64_t>(readProgramUnit, granule_);
       window_ = alignDown(std::min(geometry_.size, std::max(kPreferredWindowBytes, 2u * commonUnit)), commonUnit);
       REQUIRE(window_ > 0u);
-      REQUIRE(window_ <= kMaxWindowBytes);
+      REQUIRE_MESSAGE(window_ <= kMaxWindowBytes,
+                      "geometry granularity too coarse for the contract suite: window of " << window_ << " bytes");
+      // The test host allocates the working buffers; the devices under test need not.
+      snapshot_.resize(window_);
+      readback_.resize(window_);
+      nextRead_.resize(window_);
+      pattern_.resize(window_);
    }
 
    // A device without erase (eraseSize 0) has nothing to erase, so this does nothing there.
@@ -97,6 +108,12 @@ class ContractChecker {
    void checkProgramReadRoundTrip() {
       const uint64_t programSize = geometry_.programSize;
       for(uint64_t offset = 0u; offset < window_; offset += programSize) {
+         const uint64_t inGranule = offset % granule_;
+         const uint64_t untilGranuleEnd = granule_ - inGranule;
+         const bool nearEdge = inGranule < kDenseEdgeBytes || untilGranuleEnd <= kDenseEdgeBytes + 3u * programSize;
+         if(!nearEdge) {
+            continue;
+         }
          for(uint64_t units = 1u; units <= 3u && offset + units * programSize <= window_; ++units) {
             checkRoundTripAt(offset, units * programSize);
          }
@@ -240,8 +257,10 @@ class ContractChecker {
    }
 
    static bool sameGeometry(const Geometry &first, const Geometry &second) {
-      return first.readSize == second.readSize && first.programSize == second.programSize && first.eraseSize == second.eraseSize &&
-             first.size == second.size && first.eraseBeforeProgram == second.eraseBeforeProgram;
+      const bool sameGranularity = first.readSize == second.readSize && first.programSize == second.programSize;
+      const bool sameErase = first.eraseSize == second.eraseSize;
+      const bool sameMode = first.eraseBeforeProgram == second.eraseBeforeProgram;
+      return sameGranularity && sameErase && sameMode && first.size == second.size;
    }
 
    bool readFails(uint64_t offset, uint64_t length) {
@@ -259,7 +278,42 @@ class ContractChecker {
       return failedWith(device_.erase(offset, length), Error::InvalidArgument);
    }
 
+   // Puts known data at the start of the device, so a rejected erase or program has something to damage.
+   void writeKnownData() {
+      eraseRange(0u, window_);
+      programRange(0u, pattern(geometry_.programSize, 0u, 9u));
+   }
+
+   // A rejected program or erase must leave the medium as it was, also when the rejected range starts inside the
+   // device: a device that works in chunks must validate the whole range before it writes the first chunk.
+   void checkLongRejectedRangeChangesNothing() {
+      const uint64_t span = alignDown(std::min(geometry_.size / 2u, window_ / 2u), granule_);
+      if(span == 0u) {
+         return;
+      }
+      const uint64_t start = geometry_.size - span;
+      const std::span<uint8_t> before{ snapshot_.data(), span };
+      const std::span<uint8_t> after{ nextRead_.data(), span };
+      readRange(start, before);
+
+      CHECK(programFails(start, span + geometry_.programSize));
+      readRange(start, after);
+      CHECK(sameBytes(before, after));
+
+      CHECK(eraseFails(start, span + std::max<uint64_t>(geometry_.eraseSize, 1u)));
+      readRange(start, after);
+      CHECK(sameBytes(before, after));
+   }
+
    void checkRangeRejection() {
+      checkLongRejectedRangeChangesNothing();
+
+      writeKnownData();
+      const uint64_t regionSize = std::min(2u * granule_, window_);
+      const std::span<uint8_t> before{ snapshot_.data(), regionSize };
+      const std::span<uint8_t> after{ readback_.data(), regionSize };
+      readRange(0u, before);
+
       constexpr uint64_t kMax = std::numeric_limits<uint64_t>::max();
       const uint64_t size = geometry_.size;
       const uint64_t readSize = geometry_.readSize;
@@ -289,15 +343,17 @@ class ContractChecker {
          CHECK(eraseFails(0u, size + eraseSize));
          CHECK(eraseFails(alignDown(kMax, eraseSize), eraseSize));
       }
+
+      readRange(0u, after);
+      CHECK(sameBytes(before, after));
    }
 
    void checkAlignmentRejection() {
-      // Rejected calls must also leave the medium as it was: put known data at the start and compare.
+      // Rejected calls must also leave the medium as it was. The data is not rewritten first: whatever the
+      // range rejections above left behind is part of what is compared.
       const uint64_t regionSize = std::min(2u * granule_, window_);
       const std::span<uint8_t> before{ snapshot_.data(), regionSize };
       const std::span<uint8_t> after{ readback_.data(), regionSize };
-      eraseRange(0u, window_);
-      programRange(0u, pattern(geometry_.programSize, 0u, 9u));
       readRange(0u, before);
 
       const uint64_t readSize = geometry_.readSize;
@@ -328,10 +384,11 @@ class ContractChecker {
    Geometry geometry_{};
    uint64_t granule_{ 1u };
    uint64_t window_{ 0u };
-   std::array<uint8_t, kMaxWindowBytes> snapshot_{};
-   std::array<uint8_t, kMaxWindowBytes> readback_{};
-   std::array<uint8_t, kMaxWindowBytes> nextRead_{};
-   std::array<uint8_t, kMaxWindowBytes> pattern_{};
+   // Working buffers, each window_ bytes long.
+   std::vector<uint8_t> snapshot_;
+   std::vector<uint8_t> readback_;
+   std::vector<uint8_t> nextRead_;
+   std::vector<uint8_t> pattern_;
 };
 
 } // namespace
