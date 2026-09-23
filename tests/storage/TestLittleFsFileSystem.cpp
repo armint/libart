@@ -20,6 +20,12 @@
 // erased range no longer reads back as 0xFF, and littlefs must still tell it from valid metadata by its own
 // checksums. The PowerCutDevice sits directly on the RAM medium, so a simulated power cut hits the ciphertext
 // like real hardware would. Cases that are specific to one stack are outside the templates and say so.
+//
+// The templated bodies are identical for both stacks on purpose: nothing in them may branch on the stack type
+// (no `if constexpr`, no `is_same`), so the stacked run cannot be weakened unnoticed.
+//
+// Limit: MockCipherBlockDevice preserves size and eraseSize and only raises readSize and programSize. A transform
+// that changes them, such as an authenticated cipher with per-sector tags, is not covered and needs its own run.
 
 using namespace art::storage;
 using namespace art::storage::test;
@@ -162,8 +168,6 @@ class PowerCutDevice final : public BlockDeviceDecorator {
 
 // The two device stacks. The members are declared in the order they are built.
 struct DirectStack {
-   static constexpr bool kTransformed = false;
-
    explicit DirectStack(const Geometry &geometry = kGeometry)
       : backing(geometry.size)
       , ram(geometry, backing)
@@ -179,8 +183,6 @@ struct DirectStack {
 };
 
 struct CipherStack {
-   static constexpr bool kTransformed = true;
-
    explicit CipherStack(const Geometry &geometry = kGeometry)
       : backing(geometry.size)
       , ram(geometry, backing)
@@ -813,7 +815,18 @@ TEST_SUITE("LittleFsFileSystem") {
    // program and erase operation of the save and torn after several byte counts; from the cut on the medium
    // rejects every write. After each cut the volume is mounted again from the raw medium, as after a reboot.
    // /config must then hold the complete old or the complete new content, never a mixture and never nothing.
-   // This is the guarantee the recommended save pattern rests on; the test fails if rename() stops being atomic.
+   //
+   // What this pins: rename() of a file over an existing one is atomic across a power cut, no cut leaves a mixture
+   // of old and new content, an unrelated file survives, and the volume stays mountable and writable.
+   //
+   // What it does not pin: that the temporary file and the rename are necessary. On littlefs a plain writeFile() of
+   // the target is atomic too (data goes to fresh blocks and one metadata commit at close() switches to it), so
+   // replacing saveViaTmp() by writeFile() leaves this test green. The pattern matters on backends whose in-place
+   // write is not atomic, such as a FAT adapter; the same sweep is what would show the difference there.
+   //
+   // Tears: the cipher stack splits every littlefs program into 64 byte chunks, so there a tear of 200 bytes covers
+   // whole chunks. That case is a complete write whose acknowledgement was lost (it produces the "new file"
+   // outcomes), not a partial one. 0, 1, 16 and 40 bytes are partial on both stacks.
    STACKED_TEST_CASE("a power cut during temp-then-rename leaves the previous or the new file, never a mixture") {
       Stack stack;
       const auto previous = pattern(5000u, 1u); // spans two blocks, so the save touches data and metadata
@@ -832,6 +845,8 @@ TEST_SUITE("LittleFsFileSystem") {
          FileSystemUnderTest fileSystem{ stack.device() };
          REQUIRE(fileSystem.mount().has_value());
          REQUIRE(saveViaTmp(fileSystem, "/config", "/config.tmp", updated).has_value());
+         CHECK(readAll(fileSystem, "/config", updated.size() + 1u) == updated); // the baseline of the sweep
+         CHECK(failedWith(fileSystem.stat("/config.tmp"), Error::NoEntry));
       }
       const uint32_t saveWrites = stack.powerCut.writeOperations();
       REQUIRE(saveWrites >= 8u); // otherwise the sweep below proves little
@@ -839,7 +854,7 @@ TEST_SUITE("LittleFsFileSystem") {
       size_t keptPrevious = 0u;
       size_t gotUpdated = 0u;
       for(uint32_t cutAt = 1u; cutAt <= saveWrites; ++cutAt) {
-         for(const size_t tearBytes : { size_t{ 0u }, size_t{ 1u }, size_t{ 16u }, size_t{ 200u } }) {
+         for(const size_t tearBytes : { size_t{ 0u }, size_t{ 1u }, size_t{ 16u }, size_t{ 40u }, size_t{ 200u } }) {
             CAPTURE(cutAt);
             CAPTURE(tearBytes);
             std::ranges::copy(snapshot, stack.backing.begin());
