@@ -12,13 +12,15 @@ namespace art::storage {
  * geometry(). It can then be placed between a file system and a chip driver without either side knowing.
  *
  * @code
- * class XorDevice : public art::storage::BlockDeviceDecorator {
+ * using namespace art::storage;
+ *
+ * class XorDevice : public BlockDeviceDecorator {
  *    public:
  *    using BlockDeviceDecorator::BlockDeviceDecorator;
  *
- *    std::expected<void, art::storage::Error> read(art::storage::offset_t offset, std::span<uint8_t> buffer) override;
- *    std::expected<void, art::storage::Error> program(art::storage::offset_t offset, std::span<const uint8_t> data)
- * override; art::storage::Geometry geometry() const override;
+ *    std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override;
+ *    std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override;
+ *    Geometry geometry() const override;
  * };
  * @endcode
  *
