@@ -110,9 +110,10 @@ struct Geometry {
  * distinction visible at every call site.
  *
  * @par Alignment
- * Unless a concrete device documents otherwise, callers pass offsets and lengths that are multiples of
- * the matching Geometry granularity (readSize, programSize, eraseSize) and lie within Geometry::size. A device
- * rejects violations with Error::InvalidArgument.
+ * Callers pass offsets and lengths that are multiples of the matching Geometry granularity (readSize,
+ * programSize, eraseSize) and lie within Geometry::size. The requirement is unconditional: no device
+ * relaxes it, so generic code above the seam can rely on it. Every device rejects violations with
+ * Error::InvalidArgument, using Geometry::isValidRead(), isValidProgram() and isValidErase().
  */
 class BlockDevice {
    public:
