@@ -29,19 +29,22 @@ std::vector<uint8_t> bytes(std::string_view text) {
    return { text.begin(), text.end() };
 }
 
-// Fails reads with a chosen error, to check that a transient device error is not flattened into Io.
+// Fails the next failCount reads with a chosen error, then behaves like the device below. That lets a test
+// fail the mount's first read and still let a (wrongly) following format succeed.
 class FailingReadDevice final : public BlockDeviceDecorator {
    public:
    using BlockDeviceDecorator::BlockDeviceDecorator;
 
    std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
-      if(failWith) {
+      if(failWith && failCount > 0u) {
+         --failCount;
          return std::unexpected(*failWith);
       }
       return BlockDeviceDecorator::read(offset, buffer);
    }
 
    std::optional<Error> failWith;
+   uint32_t failCount{ UINT32_MAX };
 };
 
 struct Fixture {
@@ -77,7 +80,7 @@ TEST_SUITE("art::storage::LittleFsFileSystem smoke") {
       CHECK(fixture.fileSystem.writeFile("/a", bytes("x")).has_value());
    }
 
-   TEST_CASE("a read error during mount is reported and does not format the volume") {
+   TEST_CASE("mount formats only a corrupt volume, never after another error") {
       std::array<uint8_t, 64u * 1024u> backing{};
       RamBlockDevice ram{ kGeometry, backing };
       {
@@ -88,8 +91,11 @@ TEST_SUITE("art::storage::LittleFsFileSystem smoke") {
       FailingReadDevice failing{ ram };
       LittleFsFileSystem<> fileSystem{ failing };
       failing.failWith = Error::Timeout;
+      failing.failCount = 1u; // only the first read fails, so a format after it would succeed
+      const uint32_t erasesBefore = ram.eraseCount();
       CHECK(failedWith(fileSystem.mount(), Error::Timeout)); // the device error, not a flat Io
       CHECK_FALSE(fileSystem.isMounted());
+      CHECK(ram.eraseCount() == erasesBefore); // nothing was formatted
 
       failing.failWith.reset();
       REQUIRE(fileSystem.mount().has_value());
