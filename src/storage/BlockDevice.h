@@ -122,8 +122,9 @@ class BlockDevice {
    /**
     * @brief Prepares the device for use (bus setup, chip identification, ...).
     *
-    * Must be called, and must succeed, before any other method except geometry(). Calling it again on an
-    * initialised device is allowed and must leave the stored data untouched.
+    * Must be called, and must succeed, before any other method, geometry() included: a device may learn its
+    * capacity only during init() (SD card CSD, NOR JEDEC ID), so geometry() has no defined value before
+    * that. Calling init() again on an initialised device is allowed and must leave the stored data untouched.
     *
     * @return Nothing on success, otherwise the reason for the failure (for example Error::Io).
     */
@@ -181,6 +182,9 @@ class BlockDevice {
     *
     * The result is authoritative. A transform device may rewrite it, for example a cipher raises readSize
     * and programSize to its sector size and passes eraseSize and size through.
+    *
+    * Only valid after a successful init(); calling it earlier is a contract violation and the result is
+    * unspecified. Consumers therefore never have to tell "unknown" from "empty".
     *
     * @return The device geometry. It must not change after a successful init().
     */
