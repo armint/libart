@@ -42,8 +42,6 @@ struct Geometry {
    /// Total usable bytes.
    offset_t size{ 0u };
    /// true: a range must be erased before it is programmed (NOR). false: it can be overwritten (SD card, RAM).
-   /// Requires eraseSize > 0. The two fields are independent otherwise: an SD card has an erase unit but does not
-   /// require erase before program.
    bool eraseBeforeProgram{ false };
 
    /**
@@ -55,7 +53,7 @@ struct Geometry {
     * CSD, unreadable NOR JEDEC ID) looks like, and no useful device is empty. A file system should reject a
     * device whose geometry fails this check.
     */
-   constexpr bool isValid() const {
+   [[nodiscard]] constexpr bool isValid() const {
       if(size == 0u || readSize == 0u || programSize == 0u || size % readSize != 0u || size % programSize != 0u) {
          return false;
       }
@@ -66,18 +64,18 @@ struct Geometry {
    }
 
    /// True if a read of `length` bytes at `offset` is aligned to readSize and lies within size.
-   constexpr bool isValidRead(offset_t offset, offset_t length) const {
+   [[nodiscard]] constexpr bool isValidRead(offset_t offset, offset_t length) const {
       return isValidRange(offset, length, readSize);
    }
 
    /// True if a program of `length` bytes at `offset` is aligned to programSize and lies within size.
-   constexpr bool isValidProgram(offset_t offset, offset_t length) const {
+   [[nodiscard]] constexpr bool isValidProgram(offset_t offset, offset_t length) const {
       return isValidRange(offset, length, programSize);
    }
 
    /// True if an erase of `length` bytes at `offset` is aligned to eraseSize and lies within size. Without an
    /// erase unit (eraseSize 0) any range within size is valid.
-   constexpr bool isValidErase(offset_t offset, offset_t length) const {
+   [[nodiscard]] constexpr bool isValidErase(offset_t offset, offset_t length) const {
       return isValidRange(offset, length, eraseSize == 0u ? 1u : eraseSize);
    }
 

@@ -313,10 +313,10 @@ TEST_SUITE("art::storage::BlockDeviceDecorator") {
       }
 
       size_t named = 0u;
-      while(std::string_view{ toString(static_cast<Error>(named)) } != "Unknown") {
+      while(named < 256u && std::string_view{ toString(static_cast<Error>(named)) } != "Unknown") {
          ++named;
       }
-      CHECK(named == table.size());
+      CHECK(named == table.size()); // also fails if toString() has no "Unknown" fallback
 
       CHECK(std::string_view{ toString(static_cast<Error>(200u)) } == "Unknown");
    }
