@@ -15,7 +15,7 @@ inline constexpr uint8_t kNorErasedByte = 0xFFu;
  *
  * Call it from a doctest test case. It initialises the device, overwrites its first part (the checked window,
  * a few hundred bytes to a few erase units) and checks:
- * - the geometry is self-consistent and does not change across init();
+ * - the geometry passes Geometry::isValid() and does not change when init() is called again;
  * - program/read round trip at every programSize-aligned offset and length up to three units, with the
  *   neighbouring bytes untouched;
  * - erase removes programmed data, is deterministic, is confined to the requested range, and (if

@@ -33,9 +33,8 @@ class ContractChecker {
       , erasedByte_(erasedByte) {}
 
    void run() {
-      const Geometry beforeInit = device_.geometry();
       REQUIRE(device_.init().has_value());
-      setUpGeometry(beforeInit);
+      setUpGeometry();
       checkProgramReadRoundTrip();
       checkErase();
       checkOverwrite();
@@ -46,27 +45,11 @@ class ContractChecker {
    }
 
    private:
-   // Everything below relies on these relations, so a violation ends the contract run.
-   void setUpGeometry(const Geometry &beforeInit) {
+   // Everything below relies on the geometry being valid, so a violation ends the contract run. geometry() is
+   // only defined after init(), hence it is read here and not earlier.
+   void setUpGeometry() {
       geometry_ = device_.geometry();
-      CHECK(geometry_.readSize == beforeInit.readSize);
-      CHECK(geometry_.programSize == beforeInit.programSize);
-      CHECK(geometry_.eraseSize == beforeInit.eraseSize);
-      CHECK(geometry_.size == beforeInit.size);
-      CHECK(geometry_.eraseBeforeProgram == beforeInit.eraseBeforeProgram);
-
-      REQUIRE(geometry_.readSize > 0u);
-      REQUIRE(geometry_.programSize > 0u);
-      REQUIRE(geometry_.size > 0u);
-      REQUIRE(geometry_.size % geometry_.readSize == 0u);
-      REQUIRE(geometry_.size % geometry_.programSize == 0u);
-      if(geometry_.eraseSize != 0u) {
-         REQUIRE(geometry_.eraseSize % geometry_.readSize == 0u);
-         REQUIRE(geometry_.eraseSize % geometry_.programSize == 0u);
-         REQUIRE(geometry_.size % geometry_.eraseSize == 0u);
-      }
-      // A device that must be erased before programming needs an erase operation.
-      REQUIRE((!geometry_.eraseBeforeProgram || geometry_.eraseSize != 0u));
+      REQUIRE(geometry_.isValid());
 
       // granule_ is the unit in which the checks erase and read back: whole erase units, or on a device
       // without erase the smallest range that is both read and program aligned.
@@ -162,11 +145,13 @@ class ContractChecker {
 
    void checkErase() {
       if(geometry_.eraseSize == 0u) {
-         // No erase: the call must succeed and change nothing.
+         // No erase unit: an in-bounds call of any alignment must succeed and change nothing.
          const uint64_t length = probeLength();
          const std::span<const uint8_t> data = pattern(length, 0u, 2u);
          programRange(0u, data);
          CHECK(device_.erase(0u, granule_).has_value());
+         CHECK(device_.erase(1u, 3u).has_value());
+         CHECK(device_.erase(0u, 0u).has_value());
          const std::span<uint8_t> after{ readback_.data(), alignUp(length, granule_) };
          readRange(0u, after);
          CHECK(sameBytes(after.first(length), data));
@@ -290,7 +275,15 @@ class ContractChecker {
       CHECK(programFails(size - programSize, 2u * programSize));
       CHECK(programFails(alignDown(kMax, programSize), programSize));
 
-      if(const uint64_t eraseSize = geometry_.eraseSize; eraseSize != 0u) {
+      if(const uint64_t eraseSize = geometry_.eraseSize; eraseSize == 0u) {
+         // No erase unit: only the range is checked.
+         CHECK(eraseFails(size, 1u));
+         CHECK(eraseFails(size + 1u, 1u));
+         CHECK(eraseFails(size - 1u, 2u));
+         CHECK(eraseFails(0u, size + 1u));
+         CHECK(eraseFails(kMax, 1u));
+         CHECK(eraseFails(1u, kMax)); // offset + length wraps around
+      } else {
          CHECK(eraseFails(size, eraseSize));
          CHECK(eraseFails(size - eraseSize, 2u * eraseSize));
          CHECK(eraseFails(0u, size + eraseSize));
