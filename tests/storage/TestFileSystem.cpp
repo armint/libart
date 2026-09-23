@@ -187,6 +187,18 @@ TEST_SUITE("art::storage::File") {
       CHECK(fixture.fileSystem.openFileCount() == 1u);
    }
 
+   TEST_CASE("isOpen is false once unmount invalidated the handle") {
+      MountedFileSystem fixture;
+      File file = openForWriting(fixture.fileSystem, "/a");
+      CHECK(file.isOpen());
+      REQUIRE(fixture.fileSystem.unmount().has_value());
+      CHECK_FALSE(file.isOpen());
+      REQUIRE(fixture.fileSystem.mount().has_value());
+      File closed = openForWriting(fixture.fileSystem, "/b");
+      CHECK(closed.close().has_value());
+      CHECK_FALSE(closed.isOpen());
+   }
+
    TEST_CASE("read returns fewer bytes at the end of the file and 0 beyond it") {
       MountedFileSystem fixture;
       REQUIRE(fixture.fileSystem.writeFile("/a", bytes("abcdef")).has_value());
@@ -256,6 +268,34 @@ TEST_SUITE("art::storage::File") {
          std::array<uint8_t, 1> buffer{};
          CHECK(failedWith(writeOnly->read(buffer), Error::InvalidArgument));
       }
+   }
+
+   TEST_CASE("ReadWriteTruncate empties an existing file and allows reading it back") {
+      MountedFileSystem fixture;
+      REQUIRE(fixture.fileSystem.writeFile("/image", bytes("old content")).has_value());
+      auto file = fixture.fileSystem.open("/image", OpenMode::ReadWriteTruncate);
+      REQUIRE(file.has_value());
+      CHECK(file->size().value() == 0u);
+      CHECK(file->write(bytes("new")).has_value());
+      CHECK(file->seek(0u).has_value());
+      std::array<uint8_t, 8> buffer{};
+      CHECK(file->read(buffer).value() == 3u);
+      auto created = fixture.fileSystem.open("/fresh", OpenMode::ReadWriteTruncate);
+      CHECK(created.has_value());
+   }
+
+   TEST_CASE("CreateNew creates a file and refuses an existing one") {
+      MountedFileSystem fixture;
+      {
+         auto file = fixture.fileSystem.open("/lock", OpenMode::CreateNew);
+         REQUIRE(file.has_value());
+         CHECK(file->write(bytes("owner")).has_value());
+         CHECK(file->seek(0u).has_value());
+         std::array<uint8_t, 8> buffer{};
+         CHECK(file->read(buffer).value() == 5u);
+      }
+      CHECK(failedWith(fixture.fileSystem.open("/lock", OpenMode::CreateNew), Error::Exists));
+      CHECK(fixture.fileSystem.content("/lock") == bytes("owner"));
    }
 
    TEST_CASE("open fails when the slot pool is exhausted and recovers after a close") {
@@ -335,6 +375,14 @@ TEST_SUITE("art::storage::FileSystem whole-file helpers") {
       CHECK(failedWith(fixture.fileSystem.writeFile("/a", bytes("x")), Error::NotMounted));
    }
 
+   TEST_CASE("readFile fails instead of returning a short count when the file ends early") {
+      MountedFileSystem fixture;
+      REQUIRE(fixture.fileSystem.writeFile("/a", bytes("12345")).has_value());
+      fixture.fileSystem.inflateReportedSize(3u);
+      std::array<uint8_t, 16> buffer{};
+      CHECK(failedWith(fixture.fileSystem.readFile("/a", buffer), Error::Io));
+   }
+
    TEST_CASE("writeFile reports a failed write and a failed final flush") {
       MountedFileSystem fixture;
       SUBCASE("write error") {
@@ -397,8 +445,13 @@ TEST_SUITE("art::storage::FileSystem interface") {
          }
       };
 
+      const auto visit = [&](const char *path, Collector &collector) {
+         const auto visitor = DirectoryVisitor::create<Collector, &Collector::visit>(collector);
+         return fixture.fileSystem.visitDirectory(path, visitor);
+      };
+
       Collector all;
-      const auto visited = fixture.fileSystem.visitDirectory("/d", DirectoryVisitor::create<Collector, &Collector::visit>(all));
+      const auto visited = visit("/d", all);
       REQUIRE(visited.has_value());
       CHECK(visited.value() == 3u);
       CHECK(all.names.size() == 3u);
@@ -406,12 +459,10 @@ TEST_SUITE("art::storage::FileSystem interface") {
 
       Collector stopEarly;
       stopEarly.stopAfter = 1u;
-      CHECK(fixture.fileSystem.visitDirectory("/d", DirectoryVisitor::create<Collector, &Collector::visit>(stopEarly)).value() == 1u);
+      CHECK(visit("/d", stopEarly).value() == 1u);
 
-      CHECK(failedWith(fixture.fileSystem.visitDirectory("/nope", DirectoryVisitor::create<Collector, &Collector::visit>(all)),
-                       Error::NoEntry));
-      CHECK(failedWith(fixture.fileSystem.visitDirectory("/other", DirectoryVisitor::create<Collector, &Collector::visit>(all)),
-                       Error::NotDirectory));
+      CHECK(failedWith(visit("/nope", all), Error::NoEntry));
+      CHECK(failedWith(visit("/other", all), Error::NotDirectory));
    }
 
    TEST_CASE("rename replaces an existing file, which the temp-then-rename save pattern relies on") {
@@ -433,5 +484,38 @@ TEST_SUITE("art::storage::FileSystem interface") {
       CHECK(failedWith(fixture.fileSystem.remove("/d"), Error::NoEntry));
       CHECK(fixture.fileSystem.mkdir("/x").has_value());
       CHECK(failedWith(fixture.fileSystem.mkdir("/x"), Error::Exists));
+   }
+
+   TEST_CASE("rename to the same path succeeds and keeps the file") {
+      MountedFileSystem fixture;
+      REQUIRE(fixture.fileSystem.writeFile("/a", bytes("abc")).has_value());
+      CHECK(fixture.fileSystem.rename("/a", "/a").has_value());
+      CHECK(fixture.fileSystem.content("/a") == bytes("abc"));
+      CHECK(failedWith(fixture.fileSystem.rename("/missing", "/missing"), Error::NoEntry));
+   }
+
+   TEST_CASE("remove and rename of an open file are refused, never undefined") {
+      MountedFileSystem fixture;
+      REQUIRE(fixture.fileSystem.writeFile("/a", bytes("abc")).has_value());
+      REQUIRE(fixture.fileSystem.writeFile("/b", bytes("def")).has_value());
+      File file = openForWriting(fixture.fileSystem, "/a");
+      CHECK(failedWith(fixture.fileSystem.remove("/a"), Error::Busy));
+      CHECK(failedWith(fixture.fileSystem.rename("/a", "/c"), Error::Busy));
+      CHECK(failedWith(fixture.fileSystem.rename("/b", "/a"), Error::Busy));
+      CHECK(file.write(bytes("x")).has_value());
+      CHECK(file.close().has_value());
+      CHECK(fixture.fileSystem.remove("/a").has_value());
+   }
+
+   TEST_CASE("names longer than kMaxNameLength are rejected") {
+      MountedFileSystem fixture;
+      const std::string longest(kMaxNameLength, 'n');
+      const std::string tooLong(kMaxNameLength + 1u, 'n');
+      CHECK(fixture.fileSystem.writeFile(("/" + longest).c_str(), bytes("x")).has_value());
+      CHECK(failedWith(fixture.fileSystem.writeFile(("/" + tooLong).c_str(), bytes("x")), Error::NameTooLong));
+      CHECK(failedWith(fixture.fileSystem.mkdir(("/" + tooLong).c_str()), Error::NameTooLong));
+      const std::string longestPath = "/" + longest;
+      const std::string tooLongPath = "/" + tooLong;
+      CHECK(failedWith(fixture.fileSystem.rename(longestPath.c_str(), tooLongPath.c_str()), Error::NameTooLong));
    }
 }

@@ -21,6 +21,10 @@ namespace art::storage::test {
  * FileSystem.h, including a small handle pool whose handles carry a generation counter, so a slot that was
  * closed and reopened is not mistaken for the old handle.
  *
+ * remove() and rename() refuse with Error::Busy while the file involved (source or replaced target) is open,
+ * which is one of the two behaviours FileSystem.h allows. Names longer than kMaxNameLength are rejected with
+ * Error::NameTooLong.
+ *
  * Fault injection: failNextWrite(), failNextClose() and failNextSync() make the next such call fail once.
  * The counters report how often each entry point was reached.
  */
@@ -60,6 +64,9 @@ class InMemoryFileSystem final : public FileSystem {
          return std::unexpected(Error::NotMounted);
       }
       const std::string name{ path };
+      if(hasTooLongName(name)) {
+         return std::unexpected(Error::NameTooLong);
+      }
       if(directories_.contains(name) || name == "/") {
          return std::unexpected(Error::IsDirectory);
       }
@@ -71,12 +78,15 @@ class InMemoryFileSystem final : public FileSystem {
       if(!exists && mode == OpenMode::Read) {
          return std::unexpected(Error::NoEntry);
       }
+      if(exists && mode == OpenMode::CreateNew) {
+         return std::unexpected(Error::Exists);
+      }
       const auto free = std::ranges::find_if(slots_, [](const Slot &slot) { return !slot.used; });
       if(free == slots_.end()) {
          return std::unexpected(Error::NoMemory);
       }
       auto &content = files_[name];
-      if(mode == OpenMode::Write) {
+      if(mode == OpenMode::Write || mode == OpenMode::ReadWriteTruncate) {
          content.clear();
       }
       free->used = true;
@@ -91,6 +101,9 @@ class InMemoryFileSystem final : public FileSystem {
          return std::unexpected(Error::NotMounted);
       }
       const std::string name{ path };
+      if(isOpenPath(name)) {
+         return std::unexpected(Error::Busy);
+      }
       if(files_.erase(name) != 0u) {
          return {};
       }
@@ -110,9 +123,18 @@ class InMemoryFileSystem final : public FileSystem {
       }
       const std::string from{ oldPath };
       const std::string to{ newPath };
+      if(hasTooLongName(to)) {
+         return std::unexpected(Error::NameTooLong);
+      }
       const auto source = files_.find(from);
       if(source == files_.end()) {
          return std::unexpected(directories_.contains(from) ? Error::Unsupported : Error::NoEntry);
+      }
+      if(from == to) {
+         return {};
+      }
+      if(isOpenPath(from) || isOpenPath(to)) {
+         return std::unexpected(Error::Busy);
       }
       if(directories_.contains(to)) {
          return std::unexpected(Error::IsDirectory);
@@ -130,6 +152,9 @@ class InMemoryFileSystem final : public FileSystem {
          return std::unexpected(Error::NotMounted);
       }
       const std::string name{ path };
+      if(hasTooLongName(name)) {
+         return std::unexpected(Error::NameTooLong);
+      }
       if(files_.contains(name) || directories_.contains(name)) {
          return std::unexpected(Error::Exists);
       }
@@ -206,6 +231,10 @@ class InMemoryFileSystem final : public FileSystem {
    void failNextClose(Error error) {
       nextCloseError_ = error;
    }
+   /// Makes File::size() report more than the content holds, so a read hits the end early.
+   void inflateReportedSize(offset_t extraBytes) {
+      reportedSizeExtra_ = extraBytes;
+   }
 
    [[nodiscard]] size_t openCalls() const {
       return openCalls_;
@@ -220,10 +249,14 @@ class InMemoryFileSystem final : public FileSystem {
       if(slot == nullptr) {
          return std::unexpected(Error::BadHandle);
       }
-      if(slot->mode == OpenMode::Write || slot->mode == OpenMode::Append) {
+      if(!canRead(slot->mode)) {
          return std::unexpected(Error::InvalidArgument);
       }
-      const auto &data = files_.at(slot->path);
+      const auto *file = dataOf(*slot);
+      if(file == nullptr) {
+         return std::unexpected(Error::BadHandle);
+      }
+      const auto &data = *file;
       if(slot->position >= data.size()) {
          return size_t{ 0u };
       }
@@ -238,13 +271,17 @@ class InMemoryFileSystem final : public FileSystem {
       if(slot == nullptr) {
          return std::unexpected(Error::BadHandle);
       }
-      if(slot->mode == OpenMode::Read) {
+      if(!canWrite(slot->mode)) {
          return std::unexpected(Error::InvalidArgument);
       }
       if(nextWriteError_) {
          return std::unexpected(std::exchange(nextWriteError_, std::nullopt).value());
       }
-      auto &content = files_.at(slot->path);
+      auto *file = dataOf(*slot);
+      if(file == nullptr) {
+         return std::unexpected(Error::BadHandle);
+      }
+      auto &content = *file;
       if(slot->mode == OpenMode::Append) {
          slot->position = content.size();
       }
@@ -278,7 +315,11 @@ class InMemoryFileSystem final : public FileSystem {
       if(slot == nullptr) {
          return std::unexpected(Error::BadHandle);
       }
-      return files_.at(slot->path).size();
+      const auto *file = dataOf(*slot);
+      if(file == nullptr) {
+         return std::unexpected(Error::BadHandle);
+      }
+      return file->size() + reportedSizeExtra_;
    }
 
    std::expected<void, Error> fileSync(FileHandle handle) override {
@@ -318,6 +359,46 @@ class InMemoryFileSystem final : public FileSystem {
       return (slot.generation << 8u) | static_cast<FileHandle>(index);
    }
 
+   static bool canRead(OpenMode mode) {
+      switch(mode) {
+      case OpenMode::Read:
+      case OpenMode::ReadWrite:
+      case OpenMode::ReadWriteTruncate:
+      case OpenMode::CreateNew:
+         return true;
+      case OpenMode::Write:
+      case OpenMode::Append:
+         return false;
+      }
+      return false;
+   }
+
+   static bool canWrite(OpenMode mode) {
+      return mode != OpenMode::Read;
+   }
+
+   static bool hasTooLongName(const std::string &path) {
+      size_t start = 0u;
+      while(start < path.size()) {
+         const auto end = std::min(path.find('/', start), path.size());
+         if(end - start > kMaxNameLength) {
+            return true;
+         }
+         start = end + 1u;
+      }
+      return false;
+   }
+
+   [[nodiscard]] bool isOpenPath(const std::string &path) const {
+      return std::ranges::any_of(slots_, [&](const Slot &slot) { return slot.used && slot.path == path; });
+   }
+
+   // Content of the file a slot refers to, or nullptr if the file is gone. Never throws.
+   std::vector<uint8_t> *dataOf(const Slot &slot) {
+      const auto file = files_.find(slot.path);
+      return file == files_.end() ? nullptr : &file->second;
+   }
+
    Slot *lookup(FileHandle handle) {
       const size_t index = handle & 0xFFu;
       if(index >= slots_.size() || !slots_[index].used || slots_[index].generation != (handle >> 8u)) {
@@ -354,6 +435,7 @@ class InMemoryFileSystem final : public FileSystem {
    std::optional<Error> nextWriteError_;
    std::optional<Error> nextSyncError_;
    std::optional<Error> nextCloseError_;
+   offset_t reportedSizeExtra_{ 0u };
    size_t openCalls_{ 0u };
    size_t closeCalls_{ 0u };
 };
