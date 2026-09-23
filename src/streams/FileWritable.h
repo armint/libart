@@ -10,8 +10,9 @@
  * DigestWritable, the protobuf codecs, ...) can write to a file of any FileSystem implementation.
  *
  * The adapter holds no buffer of its own; every write() is one File::write(). To batch small writes into
- * larger ones wrap it in a BufferedWritable, but see "Flushing" below. The stream writes at the current position of the file (at the end
- * for OpenMode::Append) and tracks nothing else, so the file may be seeked and closed through its File.
+ * larger ones wrap it in a BufferedWritable, but see "Flushing" below. The stream writes at the current
+ * position of the file (at the end for OpenMode::Append) and tracks nothing else, so the file may be seeked and
+ * closed through its File.
  *
  * @par All or nothing
  * Writable::write() reports the number of bytes written, but File::write() is all-or-error: it returns
