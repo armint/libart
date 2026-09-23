@@ -64,7 +64,7 @@ inline constexpr size_t kMaxNameLength = 255u;
  * only valid during the call. The
  * entries "." and ".." are never reported. Return true to continue with the next entry and false to stop.
  * The callback runs while the file system holds its lock: it must not call back into the FileSystem or any
- * File of it.
+ * File of it (File::isOpen() included, because it asks the file system).
  */
 using DirectoryVisitor = etl::delegate<bool(const char *name, const FileInfo &info)>;
 
