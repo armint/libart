@@ -64,6 +64,16 @@ FetchContent_Declare(ArduinoJson
 
 FetchContent_MakeAvailable(ArduinoJson)
 
+# The LittleFS binding (art-storage-littlefs) is optional, so that art-core stays free of a littlefs
+# dependency. A native build (host tests) enables it by default; a cross build opts in explicitly.
+if (CMAKE_CROSSCOMPILING)
+    set(_ART_STORAGE_LITTLEFS_DEFAULT OFF)
+else ()
+    set(_ART_STORAGE_LITTLEFS_DEFAULT ON)
+endif ()
+option(ART_STORAGE_LITTLEFS "Build the LittleFS FileSystem binding (art-storage-littlefs)"
+        ${_ART_STORAGE_LITTLEFS_DEFAULT})
+
 # Detect if we are crosscompiling, or compiling for our native system.
 if (CMAKE_CROSSCOMPILING)
 else ()
@@ -74,6 +84,8 @@ file(GLOB_RECURSE PROJECT_SOURCES
         "${PROJECT_SOURCE_DIR}/src/*.c"
         "${PROJECT_SOURCE_DIR}/src/*.cpp"
 )
+# The LittleFS binding needs littlefs, so it must not be swept into art-core; art-storage-littlefs builds it.
+list(FILTER PROJECT_SOURCES EXCLUDE REGEX "/src/storage/littlefs/")
 
 file(GLOB_RECURSE PROJECT_HEADERS
         "src/*.h"
@@ -129,6 +141,56 @@ endif()
 if (TARGET art-build-config)
     target_link_libraries(art-rtos INTERFACE $<BUILD_INTERFACE:art-build-config>)
 endif()
+
+# ---------- LittleFS binding ----------
+if (ART_STORAGE_LITTLEFS)
+    # littlefs ships no usable CMakeLists.txt, so the target is defined here from lfs.c and lfs_util.c. A
+    # superproject that already defines a "littlefs" target wins, and then owns the version pin.
+    if (NOT TARGET littlefs)
+        # The pin is firmware visible: a bump changes the on-flash format of every node that uses it. Bump it
+        # in its own change, with a mount test against a volume written by the previous version.
+        FetchContent_Declare(
+                littlefs
+                GIT_REPOSITORY https://github.com/littlefs-project/littlefs.git
+                GIT_TAG v2.9.3
+                # Populate only: do not add_subdirectory() whatever CMakeLists.txt upstream ships.
+                SOURCE_SUBDIR art-no-cmake
+        )
+        FetchContent_MakeAvailable(littlefs)
+
+        add_library(littlefs STATIC
+                ${littlefs_SOURCE_DIR}/lfs.c
+                ${littlefs_SOURCE_DIR}/lfs_util.c
+        )
+        target_include_directories(littlefs PUBLIC $<BUILD_INTERFACE:${littlefs_SOURCE_DIR}>)
+        # LFS_NO_MALLOC:  the binding supplies every buffer statically.
+        # LFS_NO_ASSERT:  a file system error must never abort a boot; the binding validates instead.
+        # LFS_NO_DEBUG/WARN/ERROR: littlefs traces go to printf, which these projects forbid; the binding logs
+        #                 through logging::Logger.
+        target_compile_definitions(littlefs PUBLIC
+                LFS_NO_MALLOC
+                LFS_NO_ASSERT
+                LFS_NO_DEBUG
+                LFS_NO_WARN
+                LFS_NO_ERROR
+        )
+        if (TARGET art-build-config)
+            target_link_libraries(littlefs PRIVATE $<BUILD_INTERFACE:art-build-config>)
+        endif ()
+    endif ()
+
+    add_library(art-storage-littlefs STATIC src/storage/littlefs/LittleFsFileSystem.cpp)
+    add_library(art::storage-littlefs ALIAS art-storage-littlefs)
+    target_compile_features(art-storage-littlefs PUBLIC cxx_std_23)
+    # art-core provides FileSystem, File and the logger; art-rtos the mutex; littlefs is exported PUBLIC
+    # because the template header includes lfs.h.
+    target_link_libraries(art-storage-littlefs PUBLIC art-core art-rtos littlefs)
+    target_link_libraries(art-storage-littlefs PRIVATE etl::etl)
+    if (TARGET art-build-config)
+        target_link_libraries(art-storage-littlefs PRIVATE $<BUILD_INTERFACE:art-build-config>)
+    endif ()
+    # Not part of install(EXPORT): it links littlefs, which is not exported. Consumers use add_subdirectory().
+endif ()
 
 # Ensure the exported interface does not pull non-exported targets.
 set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
