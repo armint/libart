@@ -125,11 +125,13 @@ void writeElsewhere(FileSystem &fileSystem) {
 // Runs `attempt` with a read failing at read #k for k = 0, 1, ... on a fresh copy of the baseline volume, and
 // `recover` on the same mount afterwards. `attempt` returns true if it passed completely, which ends the sweep
 // because later steps would pass too. `recover` gets the outcome, so that it can skip what already happened.
-// `stride` skips positions for a scenario that reads the device thousands of times.
+// `stride` skips positions for a scenario that reads the device thousands of times. `probe` makes the sweep write to
+// other directories before `recover` runs (see writeElsewhere()); a scenario that must remount first turns it off.
 void sweep(Fixture &fixture,
            const std::function<bool(FileSystem &)> &attempt,
            const std::function<void(FileSystem &, bool)> &recover,
-           uint32_t stride = 1u) {
+           uint32_t stride = 1u,
+           bool probe = true) {
    uint32_t failedSteps = 0u;
    bool completed = false;
    for(uint32_t failAfter = 0u; failAfter < kMaxReads && !completed; failAfter += stride) {
@@ -139,7 +141,9 @@ void sweep(Fixture &fixture,
       completed = attempt(fixture.fileSystem);
       fixture.flaky.disarm();
       failedSteps += completed ? 0u : 1u;
-      writeElsewhere(fixture.fileSystem);
+      if(probe) {
+         writeElsewhere(fixture.fileSystem);
+      }
       recover(fixture.fileSystem, completed);
    }
    CHECK(completed);
@@ -275,10 +279,6 @@ TEST_SUITE("LittleFsFileSystem program cache after a failed device read") {
       }
    }
 
-   // Not swept: a rename into another directory. It commits twice, and a read that fails between the two leaves the
-   // global state of littlefs (its pending move) out of step with the medium. The retry reports success, but
-   // later commits on the same mount lose files at the next mount. That does not depend on the program cache and
-   // is not fixed by resetting it.
    TEST_CASE("rename within a directory can be retried after a failed read at any point") {
       Fixture fixture;
       // A new name, one that replaces a file, and the same in a subdirectory.
@@ -300,6 +300,28 @@ TEST_SUITE("LittleFsFileSystem program cache after a failed device read") {
             expectWritesWork(fs, "/after", pattern(3000u, 13u), true, { from, to });
          });
       }
+   }
+
+   // A rename into another directory commits twice. A read that fails in between leaves the pending move of littlefs
+   // out of step with the medium, and any call on the same mount is then undefined (the repeat can even abort). That
+   // does not depend on the program cache. The mount has to be remounted before anything else; littlefs then
+   // completes or undoes the move like after a power cut, which is what this test requires at every position.
+   TEST_CASE("a rename into another directory leaves a consistent volume after a failed read and a remount") {
+      Fixture fixture;
+      const auto content = pattern(3000u, 1u);
+      sweep(
+      fixture, [](FileSystem &fs) { return fs.rename("/old", "/dir/moved").has_value(); },
+      [&](FileSystem &fs, bool completed) {
+         REQUIRE(fs.unmount().has_value());
+         REQUIRE(fs.mount().has_value());
+         const bool atOld = fs.stat("/old").has_value();
+         const bool atNew = fs.stat("/dir/moved").has_value();
+         CHECK(atOld != atNew); // exactly one of them; the rename is atomic
+         CHECK((completed ? atNew : true));
+         CHECK(readBack(fs, atNew ? "/dir/moved" : "/old") == content);
+         expectWritesWork(fs, "/after", pattern(3000u, 26u), true, { "/old", "/dir/moved" });
+      },
+      1u, false);
    }
 
    TEST_CASE("remove can be retried after a failed read at any point") {
