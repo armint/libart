@@ -413,7 +413,9 @@ std::expected<void, Error> LittleFsFileSystemBase::unmountLocked() {
          continue;
       }
       // A poisoned mount must not commit: closing a writer would sync it through the state that cannot be trusted.
-      // What a writer has not synced is dropped; the caller has been refused since the failure.
+      // What a writer has not synced is dropped; the caller has been refused since the failure. poisoned_ is read
+      // for every slot on purpose: a close that fails here can poison the mount, and the writers after it are then
+      // dropped like on any poisoned mount. unmount() reports that first error.
       if(poisoned_) {
          LOG_WARN(logger(), "dropping a file that was open on a poisoned mount, its unsynced data is lost");
          releaseSlot(slot);
@@ -737,7 +739,10 @@ std::expected<void, Error> LittleFsFileSystemBase::fileWrite(FileHandle handle, 
       return failure(noteFailure(*slot, result, true));
    }
    // littlefs reports NOSPC as an error; a short count is treated the same way, never as success.
-   return static_cast<size_t>(result) == data.size() ? std::expected<void, Error>{} : failure(Error::NoSpace);
+   if(static_cast<size_t>(result) != data.size()) {
+      return failure(noteFailure(*slot, LFS_ERR_NOSPC, true));
+   }
+   return {};
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::fileSeek(FileHandle handle, offset_t position) {
