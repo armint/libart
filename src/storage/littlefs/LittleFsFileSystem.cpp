@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <type_traits>
 
 namespace art::storage {
 
@@ -142,6 +143,39 @@ Error LittleFsFileSystemBase::toError(int lfsError) const {
    }
 }
 
+// ---- read cache invalidation ----
+
+// lfs_block_t is unsigned, so the cast below yields the same all-ones value as LFS_BLOCK_NULL in lfs.c. That macro is
+// private to lfs.c and the binding needs it, hence this copy. A new major version may change the cache layout or
+// the sentinel, so it must be reviewed together with the read-cache regression tests (TestLittleFsReadCache.cpp).
+static_assert(LFS_VERSION_MAJOR == 2, "review dropReadCaches() against lfs_cache_drop() of this littlefs version");
+static_assert(std::is_unsigned_v<lfs_block_t>, "LFS_BLOCK_NULL is (lfs_block_t)-1");
+constexpr lfs_block_t kNoCachedBlock = static_cast<lfs_block_t>(-1);
+
+// lfs_bd_read() (lfs.c) writes the block, offset and size it is about to load into the read cache before it calls
+// the read hook, and does not undo that when the hook fails. The cache then claims a range that its buffer never
+// received: the next read of that range succeeds and returns stale bytes (0xFF from a fresh cache, or another
+// block's data), and a directory traversal can report an empty directory. The affected caches are lfs_.rcache
+// (metadata and directories, shared by every operation) and the cache of an open file (its data blocks).
+//
+// Called from the read hook itself, so it covers every operation and also a failure that littlefs swallows. The
+// hook fails right after the cache was set, and every caller returns the error at once, so nothing is using the
+// cache. A file that is being written keeps its pending data in that cache and is left alone; it is not read from
+// it. A dropped cache only costs a re-read.
+//
+// One cache is out of reach: lfs_file_flush() reads through a stack-local lfs_file_t whose cache is a copy of
+// lfs_.rcache (lfs.c, lfs_file_flush). It is safe because a failed read returns at once and that copy dies with the
+// frame; if littlefs ever retried internally, it would need handling here. The exact littlefs tag pinned in the
+// top-level CMakeLists.txt is the first defence against such a change, the regression tests the second.
+void LittleFsFileSystemBase::dropReadCaches() {
+   lfs_.rcache.block = kNoCachedBlock;
+   for(auto &slot : buffers_.slots) {
+      if(slot.used && (slot.file.flags & LFS_F_WRITING) == 0u) {
+         slot.file.cache.block = kNoCachedBlock;
+      }
+   }
+}
+
 // ---- block device callbacks ----
 
 int LittleFsFileSystemBase::lfsGet(const lfs_config *c, lfs_block_t blk, lfs_off_t at, void *buf, lfs_size_t n) {
@@ -150,6 +184,7 @@ int LittleFsFileSystemBase::lfsGet(const lfs_config *c, lfs_block_t blk, lfs_off
    const auto result = self.device_.read(position, { static_cast<uint8_t *>(buf), n });
    if(!result) {
       self.deviceError_ = result.error();
+      self.dropReadCaches();
       return LFS_ERR_IO;
    }
    return LFS_ERR_OK;
