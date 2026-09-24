@@ -18,10 +18,11 @@
 // another directory, deleted entries in a metadata log and a directory whose log was compacted.
 namespace art::storage::test::compat {
 
-// 24 blocks of 512 bytes. The default LittleFsFileSystem cache (256 bytes) divides the erase unit.
+// 32 blocks of 512 bytes. The default LittleFsFileSystem cache (256 bytes) divides the erase unit. The volume uses
+// 14 blocks and the compatibility test writes about 5 more, so the volume never gets close to full.
 // clang-format off
 inline constexpr Geometry kGeometry{
-   .readSize = 16u, .programSize = 16u, .eraseSize = 512u, .size = 24u * 512u, .eraseBeforeProgram = true
+   .readSize = 16u, .programSize = 16u, .eraseSize = 512u, .size = 32u * 512u, .eraseBeforeProgram = true
 };
 // clang-format on
 
@@ -94,7 +95,7 @@ inline void verifyCompatVolume(FileSystem &fileSystem) {
    CHECK(list(fileSystem, "/notes") == std::vector<std::string>{ "empty.txt", "inline.bin" });
    CHECK(list(fileSystem, "/data") == std::vector<std::string>{ "blob.bin", "moved.bin" });
    for(const auto &entry : files()) {
-      CAPTURE(entry.path);
+      CAPTURE(std::string(entry.path));
       CHECK(readAll(fileSystem, entry.path) == entry.content);
       const auto info = fileSystem.stat(entry.path);
       REQUIRE(info.has_value());

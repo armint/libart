@@ -53,6 +53,9 @@ TEST_SUITE("LittleFsFileSystem on-disk compatibility") {
       REQUIRE(fileSystem.mount().has_value());
       CHECK(ram.eraseCount() == 0u); // mounted as it is; a format would erase
       verifyCompatVolume(fileSystem);
+      // The writes below need about 5 blocks. Keep several times that free (the image has 18 of 32), so that a
+      // change in block allocation shows up as a wrong result and not as NoSpace.
+      CHECK(fileSystem.freeSpace().value_or(0u) >= 16u * kGeometry.eraseSize);
       CHECK(ram.programCount() == 0u); // reading changes nothing on the medium
       CHECK(backing == original);
 
@@ -73,9 +76,11 @@ TEST_SUITE("LittleFsFileSystem on-disk compatibility") {
       CHECK(list(fileSystem, "/") == std::vector<std::string>{ "added/", "data/", "notes/" });
    }
 
-   TEST_CASE("the volume of the compatibility fixture is what the generator writes") {
-      // Guards the generator and the checker against each other on the pinned version; the image itself is proven
-      // by the test above.
+   TEST_CASE("the pinned littlefs writes the volume of the compatibility fixture byte for byte") {
+      // The image is what v2.9.3 wrote. Everything the binding does on the medium has to stay the same across a bump,
+      // or a node that rolls back to older firmware may not read what the new one wrote. The day this fails is the
+      // day to look at the on-disk format again, not to regenerate the image.
+      const auto image = loadImage("littlefs-v2.9.3.img");
       std::array<uint8_t, kGeometry.size> backing{};
       RamBlockDevice ram(kGeometry, backing);
       LittleFsFileSystem<> fileSystem(ram);
@@ -83,6 +88,8 @@ TEST_SUITE("LittleFsFileSystem on-disk compatibility") {
       populateCompatVolume(fileSystem);
       verifyCompatVolume(fileSystem);
       REQUIRE(fileSystem.unmount().has_value());
+      REQUIRE(image.size() == backing.size());
+      CHECK(std::equal(image.begin(), image.end(), backing.begin()));
       REQUIRE(fileSystem.mount().has_value());
       verifyCompatVolume(fileSystem);
    }
