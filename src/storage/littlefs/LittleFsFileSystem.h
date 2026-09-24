@@ -152,10 +152,13 @@ class LittleFsFileSystemBase : public FileSystem {
  *   with ".." components are rejected with Error::InvalidArgument.
  *
  * @par Failed device reads
- * A read that fails on the device is reported as its own error (Timeout, Io, ...) and the operation can be
- * repeated once the device works again. littlefs alone does not allow that: it keeps a range marked as cached
- * after the read that should have filled it failed, so the repeat could return stale bytes. The binding drops the
- * read caches whenever the device fails a read; see dropReadCaches() in LittleFsFileSystem.cpp.
+ * A read that fails on the device is reported as its own error (Timeout, Io, ...). A read operation (File::read(),
+ * stat(), visitDirectory(), freeSpace()) can be repeated once the device works again. littlefs alone does not
+ * allow that: it keeps a range marked as cached after the read that should have filled it failed, so the repeat
+ * could return stale bytes. The binding drops the read caches whenever the device fails a read; see
+ * dropReadCaches() in LittleFsFileSystem.cpp. This does not extend to a write that failed on an internal read:
+ * littlefs also leaves its program cache dirty then, and a repeat can trip one of its own assertions unless
+ * they are compiled out (ART_LITTLEFS_NO_ASSERT).
  *
  * @par Stack use
  * visitDirectory() and stat() keep an lfs_info (about 260 bytes) and an lfs_dir_t on the stack.

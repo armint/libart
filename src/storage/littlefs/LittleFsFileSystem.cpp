@@ -162,6 +162,11 @@ constexpr lfs_block_t kNoCachedBlock = static_cast<lfs_block_t>(-1);
 // hook fails right after the cache was set, and every caller returns the error at once, so nothing is using the
 // cache. A file that is being written keeps its pending data in that cache and is left alone; it is not read from
 // it. A dropped cache only costs a re-read.
+//
+// One cache is out of reach: lfs_file_flush() reads through a stack-local lfs_file_t whose cache is a copy of
+// lfs_.rcache (lfs.c, lfs_file_flush). It is safe because a failed read returns at once and that copy dies with the
+// frame; if littlefs ever retried internally, it would need handling here. The exact littlefs tag pinned in the
+// top-level CMakeLists.txt is the first defence against such a change, the regression tests the second.
 void LittleFsFileSystemBase::dropReadCaches() {
    lfs_.rcache.block = kNoCachedBlock;
    for(auto &slot : buffers_.slots) {
