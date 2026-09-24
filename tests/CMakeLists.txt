@@ -117,7 +117,7 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/IBMCRC16Digest.cpp
         ../src/utils/IBMCRC16FastDigest.cpp
         ../src/utils/SHA256Digest.cpp
-        RamDisk.h
+        storage/FatTestDisk.h
         storage/RamBlockDevice.h
         storage/InMemoryFileSystem.h
         storage/MockCipherBlockDevice.h
