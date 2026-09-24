@@ -326,7 +326,7 @@ TEST_SUITE("FileReadable and FileWritable over LittleFsFileSystem") {
    }
 
    TEST_CASE("the error mapping covers every storage error") {
-      for(uint8_t code = 0u; code <= static_cast<uint8_t>(Error::NotReady); ++code) {
+      for(uint8_t code = 0u; code <= static_cast<uint8_t>(Error::NeedsRemount); ++code) {
          const auto error = static_cast<Error>(code);
          CAPTURE(toString(error));
          const bool timeout = error == Error::Timeout;
