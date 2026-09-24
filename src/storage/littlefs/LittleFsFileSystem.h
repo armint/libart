@@ -87,6 +87,8 @@ class LittleFsFileSystemBase : public FileSystem {
    static bool isErrored(const FileSlot &slot);
    bool isPathOpen(uint32_t pathHash) const;
    void dropReadCaches();
+   void resetProgramCache();
+   Error failed(int lfsError);
    Error toError(int lfsError) const;
 
    static int lfsGet(const lfs_config *c, lfs_block_t blk, lfs_off_t at, void *buf, lfs_size_t n);
@@ -151,14 +153,39 @@ class LittleFsFileSystemBase : public FileSystem {
  *   different spellings of one path match. A hash collision can make an unrelated path report Busy. Paths
  *   with ".." components are rejected with Error::InvalidArgument.
  *
- * @par Failed device reads
- * A read that fails on the device is reported as its own error (Timeout, Io, ...). A read operation (File::read(),
- * stat(), visitDirectory(), freeSpace()) can be repeated once the device works again. littlefs alone does not
- * allow that: it keeps a range marked as cached after the read that should have filled it failed, so the repeat
- * could return stale bytes. The binding drops the read caches whenever the device fails a read; see
- * dropReadCaches() in LittleFsFileSystem.cpp. This does not extend to a write that failed on an internal read:
- * littlefs also leaves its program cache dirty then, and a repeat can trip one of its own assertions unless
- * they are compiled out (ART_LITTLEFS_NO_ASSERT).
+ * @par Failed device operations
+ * A call that fails on the device is reported as its own error (Timeout, Io, ...), and the mount stays usable: once
+ * the device works again, the next call runs and the failed call can be repeated. That covers the read operations
+ * (File::read(), readFile(), open(), stat(), visitDirectory(), freeSpace()) and the write operations (writeFile(),
+ * File::write(), File::sync(), File::close(), rename(), remove(), mkdir()). mount() and format() always start
+ * with empty caches. littlefs alone does not allow this, for two reasons that the binding handles:
+ * - After a failed read it keeps a range marked as cached that the read never filled, so a repeat could return
+ *   stale bytes. The binding drops the read caches whenever the device fails a read (dropReadCaches() in
+ *   LittleFsFileSystem.cpp).
+ * - A call that fails part way through a write leaves the program cache filled. The next write then trips an
+ *   assertion of littlefs, or, with the assertions compiled out (ART_LITTLEFS_NO_ASSERT), can program stale data.
+ *   The binding clears the program cache at the end of every failed call that can write (resetProgramCache()). The
+ *   cache of an open file is not touched, because it holds that file's unwritten data.
+ *
+ * A failed write call may have taken effect nevertheless, because littlefs commits first and can still fail on a
+ * read that follows. Repeating it then reports Error::NoEntry (rename(), remove()) or Error::Exists (mkdir())
+ * instead of success. A File whose write failed keeps reporting the error from sync() and close() until a later
+ * write on it succeeds.
+ *
+ * Limits of the guarantee. The tests behind it (TestLittleFsReadCache.cpp, TestLittleFsProgramCache.cpp) fail a
+ * device read at every position of one call at a time, with no other file open for writing, and rename() only
+ * within one directory. Two situations are outside of it, and the binding cannot repair them, because they
+ * concern state that littlefs keeps in memory:
+ * - A failed rename() into another directory. It commits twice, and a read that fails in between leaves littlefs
+ *   with a pending move that no longer matches the medium. The state is then undefined: a repeat of the rename can
+ *   report success and later commits lose entries at the next mount, or the repeat itself trips an assertion of
+ *   littlefs (`dir->count > 0` in lfs_dir_relocatingcommit()), which continues with a wrong count when assertions
+ *   are compiled out. After a failed rename() into another directory, call unmount() and mount() before any other call,
+ *   including a repeat of the rename. Remounting first was tested at every read position and always left a
+ *   consistent volume (the rename either took place or did not).
+ * - A failed commit while another file is open for writing. One read position was observed to lose that file's
+ *   data at its close(), although the close reports success (issue #15). Avoid it: do not keep a file open for
+ *   writing across a call that can fail. A remount after the failure was not tested for this case.
  *
  * @par Stack use
  * visitDirectory() and stat() keep an lfs_info (about 260 bytes) and an lfs_dir_t on the stack.
