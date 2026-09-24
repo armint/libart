@@ -710,11 +710,12 @@ TEST_SUITE("LittleFsFileSystem") {
          CHECK(failedWith(fileSystem.open(path, OpenMode::CreateNew), Error::Exists));
          CHECK(failedWith(fileSystem.open(path, OpenMode::Read), Error::Busy)); // the open handle writes
       }
-      // A spelling with a trailing slash is not a path of the file for littlefs, and it must not get around the check
-      // by being unknown to the binding either.
-      CHECK_FALSE(fileSystem.remove("/d/x/").has_value());
-      CHECK_FALSE(fileSystem.rename("/d/x/", "/moved").has_value());
-      CHECK_FALSE(fileSystem.rename("/moved", "/d/x/").has_value());
+      // The trailing slash spelling counts as the open path as well: the binding compares the canonical path before
+      // littlefs sees it, so the answer is Busy, not the NotDirectory that littlefs gives for a closed file. It must
+      // not get around the check by being unknown to the binding.
+      CHECK(failedWith(fileSystem.remove("/d/x/"), Error::Busy));
+      CHECK(failedWith(fileSystem.rename("/d/x/", "/moved"), Error::Busy));
+      CHECK(failedWith(fileSystem.rename("/moved", "/d/x/"), Error::Busy));
       REQUIRE(file->write(bytes("!")).has_value());
       REQUIRE(file->close().has_value());
       CHECK(snapshot(fileSystem) == "/d/ /d/x ");
