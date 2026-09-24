@@ -7,6 +7,7 @@
 #include <doctest/doctest.h>
 #include <functional>
 #include <initializer_list>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -300,9 +301,10 @@ void expectOneOf(FileSystem &fileSystem, const char *path, std::initializer_list
 
 // Runs `attempt` once on a healthy device to count its device operations, then again with the fault at every one of
 // them. `setup` opens what the step needs, before the fault is armed. `verify` looks at the step afterwards, on the
-// mount that saw the failure; `attempt` returned true if it passed completely. Returns the number of failed steps.
+// mount that saw the failure; `attempt` returned true if it passed completely. At least `least` steps must fail,
+// so that a sweep that shrinks (a call that reads less, a fixture that no longer reaches the device) is noticed.
 template <typename Setup, typename Attempt, typename Verify>
-uint32_t sweep(Volume &volume, Fault fault, Setup &&setup, Attempt &&attempt, Verify &&verify) {
+uint32_t sweep(Volume &volume, Fault fault, Setup &&setup, Attempt &&attempt, Verify &&verify, uint32_t least = 1u) {
    uint32_t positions = 0u;
    {
       volume.restore();
@@ -326,6 +328,7 @@ uint32_t sweep(Volume &volume, Fault fault, Setup &&setup, Attempt &&attempt, Ve
       failedSteps += completed ? 0u : 1u;
       verify(volume, session, completed);
    }
+   CHECK(failedSteps >= least);
    return failedSteps;
 }
 
@@ -341,6 +344,8 @@ struct Scenario {
    std::function<void(FileSystem &)> atomic;
    // The baseline files the call changes.
    Paths touches;
+   // The fewest failing positions of any run of the sweep (about 90% of what was measured on littlefs v2.11.3).
+   uint32_t minFailed;
 };
 
 const Scenario kScenarios[] = {
@@ -348,7 +353,8 @@ const Scenario kScenarios[] = {
      [](FileSystem &, Session &) {},
      [](FileSystem &fs, Session &) { return fs.writeFile("/new", pattern(3000u, 18u)).has_value(); },
      [](FileSystem &fs) { expectOneOf(fs, "/new", { Bytes{}, pattern(3000u, 18u) }, true); },
-     {} },
+     {},
+     17u },
    { "open for write that creates the file",
      [](FileSystem &, Session &) {},
      [](FileSystem &fs, Session &) {
@@ -356,7 +362,8 @@ const Scenario kScenarios[] = {
         return file.has_value() && file->close().has_value();
      },
      [](FileSystem &fs) { expectOneOf(fs, "/created", { Bytes{} }, true); },
-     {} },
+     {},
+     4u },
    { "open for create-new",
      [](FileSystem &, Session &) {},
      [](FileSystem &fs, Session &) {
@@ -364,7 +371,8 @@ const Scenario kScenarios[] = {
         return file.has_value() && file->close().has_value();
      },
      [](FileSystem &fs) { expectOneOf(fs, "/created", { Bytes{} }, true); },
-     {} },
+     {},
+     4u },
    { "open for append of an existing file", // 3000 bytes: the seek to the end reads the blocks of the file
      [](FileSystem &, Session &) {},
      [](FileSystem &fs, Session &) {
@@ -372,7 +380,8 @@ const Scenario kScenarios[] = {
         return file.has_value() && file->close().has_value();
      },
      [](FileSystem &fs) { expectOneOf(fs, "/old", { pattern(3000u, 1u) }, false); },
-     { "/old" } },
+     { "/old" },
+     4u },
    { "File::write on a second writer",
      [](FileSystem &fs, Session &session) {
         auto file = fs.open("/second", OpenMode::Write);
@@ -381,7 +390,8 @@ const Scenario kScenarios[] = {
      },
      [](FileSystem &, Session &session) { return session.second->write(pattern(3000u, 18u)).has_value(); },
      [](FileSystem &fs) { expectOneOf(fs, "/second", { Bytes{} }, false); },
-     {} },
+     {},
+     9u },
    { "File::sync on a second writer",
      [](FileSystem &fs, Session &session) {
         auto file = fs.open("/second", OpenMode::Write);
@@ -391,7 +401,8 @@ const Scenario kScenarios[] = {
      },
      [](FileSystem &, Session &session) { return session.second->sync().has_value(); },
      [](FileSystem &fs) { expectOneOf(fs, "/second", { Bytes{}, pattern(700u, 18u) }, false); },
-     {} },
+     {},
+     2u },
    { "File::close on a second writer",
      [](FileSystem &fs, Session &session) {
         auto file = fs.open("/second", OpenMode::Write);
@@ -401,7 +412,8 @@ const Scenario kScenarios[] = {
      },
      [](FileSystem &, Session &session) { return session.second->close().has_value(); },
      [](FileSystem &fs) { expectOneOf(fs, "/second", { Bytes{}, pattern(700u, 18u) }, false); },
-     {} },
+     {},
+     2u },
    { "rename within a directory",
      [](FileSystem &, Session &) {},
      [](FileSystem &fs, Session &) { return fs.rename("/small", "/renamed").has_value(); },
@@ -411,7 +423,8 @@ const Scenario kScenarios[] = {
         CHECK(atOld != atNew);
         expectOneOf(fs, atNew ? "/renamed" : "/small", { pattern(20u, 2u) }, false);
      },
-     { "/small" } },
+     { "/small" },
+     118u },
    { "rename into another directory",
      [](FileSystem &, Session &) {},
      [](FileSystem &fs, Session &) { return fs.rename("/old", "/dir/moved").has_value(); },
@@ -421,17 +434,69 @@ const Scenario kScenarios[] = {
         CHECK(atOld != atNew);
         expectOneOf(fs, atNew ? "/dir/moved" : "/old", { pattern(3000u, 1u) }, false);
      },
-     { "/old" } },
+     { "/old" },
+     161u },
    { "remove",
      [](FileSystem &, Session &) {},
      [](FileSystem &fs, Session &) { return fs.remove("/small").has_value(); },
      [](FileSystem &fs) { expectOneOf(fs, "/small", { pattern(20u, 2u) }, true); },
-     { "/small" } },
+     { "/small" },
+     4u },
    { "mkdir",
      [](FileSystem &, Session &) {},
      [](FileSystem &fs, Session &) { return fs.mkdir("/made").has_value(); },
      [](FileSystem &fs) { CHECK((!fs.stat("/made").has_value() || isDirectory(fs, "/made"))); },
-     {} },
+     {},
+     8u },
+};
+
+// A directory that has grown over several metadata pairs, on the geometry of the firmware (4 KiB blocks). littlefs
+// decides whether a rename commits twice by the pair the entries are in, not by the directory they belong to.
+// clang-format off
+constexpr Geometry kLargeGeometry{
+   .readSize = 16u, .programSize = 16u, .eraseSize = 4096u, .size = 512u * 1024u, .eraseBeforeProgram = true
+};
+// clang-format on
+constexpr uint32_t kSplitEntries = 80u;
+
+std::string splitPath(uint32_t index) {
+   std::string path = "/d/f000";
+   path[4] = static_cast<char>('0' + index / 100u);
+   path[5] = static_cast<char>('0' + index / 10u % 10u);
+   path[6] = static_cast<char>('0' + index % 10u);
+   return path;
+}
+
+struct SplitVolume {
+   SplitVolume()
+      : ram(kLargeGeometry, backing)
+      , flaky(ram)
+      , fileSystem(flaky) {
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.mkdir("/d").has_value());
+      for(uint32_t index = 0u; index < kSplitEntries; ++index) {
+         REQUIRE(fileSystem.writeFile(splitPath(index).c_str(), pattern(40u, static_cast<uint8_t>(index))).has_value());
+      }
+      REQUIRE(fileSystem.writeFile("/root-file", pattern(100u, 99u)).has_value());
+      REQUIRE(fileSystem.unmount().has_value());
+      baseline = backing;
+   }
+
+   void restore() {
+      flaky.disarm();
+      if(fileSystem.isMounted()) {
+         static_cast<void>(fileSystem.unmount());
+      }
+      backing = baseline;
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(content(fileSystem, splitPath(0u).c_str()).has_value());
+   }
+
+   std::array<uint8_t, 512u * 1024u> backing{};
+   std::array<uint8_t, 512u * 1024u> baseline{};
+   RamBlockDevice ram;
+   FlakyReadDevice flaky;
+   LittleFsFileSystem<2u, 256u, 128u> fileSystem;
 };
 
 const char *describe(Fault fault) {
@@ -451,7 +516,7 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
                CAPTURE(std::string(scenario.name));
                Volume volume;
                FileSystem &fs = volume.fileSystem;
-               const uint32_t failedSteps = sweep(
+               sweep(
                volume, fault,
                [&](FileSystem &system, Session &session) {
                   writer.open(system, session);
@@ -476,8 +541,8 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
                   touched.push_back(writer.path);
                   expectBaseIntact(fs, touched);
                   expectUsable(fs);
-               });
-               CHECK(failedSteps > 0u);
+               },
+               scenario.minFailed);
             }
          }
       }
@@ -506,7 +571,7 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
       expectUsable(fs);
    }
 
-   TEST_CASE("a failed rename into another directory poisons the mount at every position, and a remount recovers") {
+   TEST_CASE("a failed rename poisons the mount at every position, and a remount recovers") {
       struct Move {
          const char *from; // as the caller spells it
          const char *to;
@@ -514,15 +579,20 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
          const char *target;
          Bytes expected;
          bool directory;
+         uint32_t minFailed; // about 90% of the fewest failing positions measured on littlefs v2.11.3
       };
       // A file into a subdirectory, a file out of a subdirectory (the shape that trips a littlefs assertion when it is
-      // retried), a directory into a subdirectory, and spellings of these that reach the same directories.
+      // retried), a directory into a subdirectory, renames within one directory (whether one commits twice depends on
+      // the metadata pair the entries are in, see the split directory test), and other spellings of these.
       const Move moves[] = {
-         { "/old", "/dir/moved", "/old", "/dir/moved", pattern(3000u, 1u), false },
-         { "/dir/x", "/xx", "/dir/x", "/xx", pattern(500u, 3u), false },
-         { "/empty", "/dir/empty", "/empty", "/dir/empty", {}, true },
-         { "/./dir/x", "//xx", "/dir/x", "/xx", pattern(500u, 3u), false },
-         { "/old", "/dir/./moved", "/old", "/dir/moved", pattern(3000u, 1u), false },
+         { "/old", "/dir/moved", "/old", "/dir/moved", pattern(3000u, 1u), false, 161u },
+         { "/dir/x", "/xx", "/dir/x", "/xx", pattern(500u, 3u), false, 66u },
+         { "/empty", "/dir/empty", "/empty", "/dir/empty", {}, true, 161u },
+         { "/small", "/renamed", "/small", "/renamed", pattern(20u, 2u), false, 118u },
+         { "/old", "/small", "/old", "/small", pattern(3000u, 1u), false, 118u },
+         { "/dir/x", "/dir/y", "/dir/x", "/dir/y", pattern(500u, 3u), false, 33u },
+         { "/./dir/x", "//xx", "/dir/x", "/xx", pattern(500u, 3u), false, 66u },
+         { "/./dir//x", "/dir/./y", "/dir/x", "/dir/y", pattern(500u, 3u), false, 33u },
       };
       for(const Fault fault : { Fault::ReadTimeout, Fault::AnyDeviceOperation }) {
          for(const Move &move : moves) {
@@ -531,11 +601,11 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
             CAPTURE(std::string(move.to));
             Volume volume;
             FileSystem &fs = volume.fileSystem;
-            const uint32_t failedSteps = sweep(
+            sweep(
             volume, fault,
             [&](FileSystem &system, Session &session) {
                // A reader is open: it is no writer, so only the rename decides.
-               auto reader = system.open("/small", OpenMode::Read);
+               auto reader = system.open("/existing", OpenMode::Read);
                REQUIRE(reader.has_value());
                session.reader = std::move(*reader);
             },
@@ -550,17 +620,25 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
                REQUIRE(fs.mount().has_value());
                expectNotPoisoned(fs);
                settle(fs);
-               // The move took place or did not, never both and never neither.
-               const bool atOld = fs.stat(move.source).has_value();
-               const bool atNew = fs.stat(move.target).has_value();
-               CHECK(atOld != atNew);
+               // The move took place or did not, never both and never neither. A target that is a baseline file
+               // (the rename replaces it) is either replaced or as it was.
+               const bool moved = !fs.stat(move.source).has_value();
+               const bool targetIsBaseline = std::string(move.target) == "/small";
                if(!move.directory) {
-                  CHECK(content(fs, atNew ? move.target : move.source) == move.expected);
+                  CHECK(content(fs, moved ? move.target : move.source) == move.expected);
+               } else {
+                  CHECK(isDirectory(fs, moved ? move.target : move.source));
                }
-               expectBaseIntact(fs, { move.source });
+               if(!moved && !targetIsBaseline) {
+                  CHECK_FALSE(fs.stat(move.target).has_value());
+               }
+               if(!moved && targetIsBaseline) {
+                  CHECK(content(fs, move.target) == pattern(20u, 2u));
+               }
+               expectBaseIntact(fs, { move.source, move.target });
                expectUsable(fs);
-            });
-            CHECK(failedSteps > 0u);
+            },
+            move.minFailed);
          }
       }
    }
@@ -588,10 +666,6 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
            [](FileSystem &, Session &session) { return session.second->sync().has_value(); } },
          { "File::close of the only writer", openWriter,
            [](FileSystem &, Session &session) { return session.second->close().has_value(); } },
-         { "rename within a directory", [](FileSystem &, Session &) {},
-           [](FileSystem &fs, Session &) { return fs.rename("/small", "/renamed").has_value(); } },
-         { "rename within a directory, other spellings", [](FileSystem &, Session &) {},
-           [](FileSystem &fs, Session &) { return fs.rename("/./dir//x", "/dir/./y").has_value(); } },
          { "remove", [](FileSystem &, Session &) {},
            [](FileSystem &fs, Session &) { return fs.remove("/small").has_value(); } },
          { "mkdir", [](FileSystem &, Session &) {},
@@ -610,13 +684,12 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
             CAPTURE(std::string(item.name));
             Volume volume;
             FileSystem &fs = volume.fileSystem;
-            const uint32_t failedSteps = sweep(volume, fault, item.setup, item.attempt, [&](Volume &, Session &, bool) {
+            sweep(volume, fault, item.setup, item.attempt, [&](Volume &, Session &, bool) {
                // Not refused, and it takes the next writes as a healthy mount would.
                expectNotPoisoned(fs);
                CHECK_FALSE(refused(fs.mkdir("/after")));
                CHECK_FALSE(refused(fs.writeFile("/after-too", pattern(300u, 20u))));
             });
-            CHECK(failedSteps > 0u);
          }
       }
    }
@@ -673,7 +746,7 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
                CAPTURE(std::string(item.name));
                Volume volume;
                FileSystem &fs = volume.fileSystem;
-               const uint32_t failedSteps = sweep(
+               sweep(
                volume, fault,
                [&](FileSystem &system, Session &session) {
                   writer.open(system, session);
@@ -690,7 +763,6 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
                   REQUIRE(fs.mount().has_value());
                   CHECK(content(fs, writer.path) == writer.afterClose());
                });
-               CHECK(failedSteps > 0u);
             }
          }
       }
@@ -739,6 +811,10 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
            [&](FileSystem &fs) { return errorOf(fs.rename("/small", "/dir")); }, Error::IsDirectory },
          { "rename onto a directory that is not empty",
            [&](FileSystem &fs) { return errorOf(fs.rename("/empty", "/dir")); }, Error::NotEmpty },
+         { "rename of the root",
+           [&](FileSystem &fs) { return errorOf(fs.rename("/", "/moved")); }, Error::InvalidArgument },
+         { "rename onto the root",
+           [&](FileSystem &fs) { return errorOf(fs.rename("/small", "/")); }, Error::InvalidArgument },
       };
       // clang-format on
       for(const PendingWriter &writer : kWriters) {
@@ -845,5 +921,101 @@ TEST_SUITE("LittleFsFileSystem poisoned mount") {
          REQUIRE(fs.mount().has_value());
          expectNotPoisoned(fs);
       }
+   }
+
+   TEST_CASE("a failed rename inside a directory that spans several metadata pairs poisons the mount") {
+      // The two-commit path of lfs_rename() is taken when the old and the new entry are in different metadata pairs.
+      // Both names have the same parent here, and it is a rename of the root-level kind that a path comparison would
+      // have exempted: without the poison, 2 of 820 failing positions lost unrelated files when the caller went on.
+      struct Rename {
+         const char *from;
+         const char *to;
+         uint32_t minFailed; // about 90% of the fewest failing positions measured on littlefs v2.11.3
+      };
+      const Rename renames[] = { { "/d/f000", "/d/zz", 730u }, { "/d/f079", "/d/aa", 650u } };
+      for(const Rename &rename : renames) {
+         CAPTURE(std::string(rename.from));
+         const auto volume = std::make_unique<SplitVolume>();
+         FileSystem &fs = volume->fileSystem;
+         uint32_t positions = 0u;
+         {
+            volume->restore();
+            const uint32_t before = volume->ram.readCount();
+            REQUIRE(fs.rename(rename.from, rename.to).has_value());
+            positions = volume->ram.readCount() - before;
+         }
+         CHECK(positions > 500u); // a rename in a small directory reads about 70 times: this one commits twice
+
+         uint32_t failedSteps = 0u;
+         for(uint32_t position = 0u; position < positions; ++position) {
+            CAPTURE(position);
+            volume->restore();
+            volume->flaky.armAfter(position);
+            const bool completed = fs.rename(rename.from, rename.to).has_value();
+            volume->flaky.disarm();
+            if(completed) {
+               continue;
+            }
+            ++failedSteps;
+            CHECK(refused(fs.stat("/root-file")));
+            REQUIRE(fs.unmount().has_value());
+            REQUIRE(fs.mount().has_value());
+            REQUIRE(fs.writeFile("/settled", pattern(30u, 7u)).has_value());
+            // Everything but the renamed entry is there, and the renamed entry is in exactly one place.
+            for(uint32_t index = 0u; index < kSplitEntries; ++index) {
+               const std::string path = splitPath(index);
+               if(path != rename.from) {
+                  CHECK(content(fs, path.c_str()) == pattern(40u, static_cast<uint8_t>(index)));
+               }
+            }
+            CHECK(content(fs, "/root-file") == pattern(100u, 99u));
+            const uint32_t renamed = std::string(rename.from) == "/d/f000" ? 0u : 79u;
+            const bool moved = !content(fs, rename.from).has_value();
+            CHECK(content(fs, moved ? rename.to : rename.from) == pattern(40u, static_cast<uint8_t>(renamed)));
+            CHECK((moved || !content(fs, rename.to).has_value()));
+         }
+         CHECK(failedSteps >= rename.minFailed);
+      }
+   }
+
+   TEST_CASE("a close that fails during unmount drops the writers behind it without a commit") {
+      // unmount() closes the writers in turn. A close that fails poisons the mount (the other writer is still open),
+      // and the writers after it are then dropped like on any poisoned mount: unmount() reports the error, and what
+      // they had not synced is lost.
+      // One failing operation, so that a close through the poisoned state would succeed and be noticed.
+      Volume volume;
+      FileSystem &fs = volume.fileSystem;
+      uint32_t failedUnmounts = 0u;
+      sweep(
+      volume, Fault::AnyDeviceOperation,
+      [&](FileSystem &system, Session &session) {
+         kWriters[0].open(system, session);
+         auto second = system.open("/second", OpenMode::Write);
+         REQUIRE(second.has_value());
+         REQUIRE(second->write(pattern(700u, 18u)).has_value());
+         session.second = std::move(*second);
+      },
+      [&](FileSystem &system, Session &) { return system.unmount().has_value(); },
+      [&](Volume &, Session &, bool completed) {
+         CHECK_FALSE(fs.isMounted());
+         REQUIRE(fs.mount().has_value());
+         REQUIRE(fs.writeFile("/settled", pattern(30u, 7u)).has_value());
+         if(completed) {
+            CHECK(content(fs, "/pending") == kWriters[0].written());
+            CHECK(content(fs, "/second") == pattern(700u, 18u));
+            return;
+         }
+         ++failedUnmounts;
+         // The first writer's close failed before it committed, or later: then it has all of its data or none. In the
+         // first case the mount was poisoned with the second writer still open, and that one was never closed through
+         // the poisoned state. In the second case the failing close was the last one, and it cannot be told from here.
+         expectOneOf(fs, "/pending", { Bytes{}, kWriters[0].written() }, false);
+         expectOneOf(fs, "/second", { Bytes{}, pattern(700u, 18u) }, false);
+         if(content(fs, "/pending") == Bytes{}) {
+            CHECK(content(fs, "/second") == Bytes{});
+         }
+         expectUsable(fs);
+      });
+      CHECK(failedUnmounts >= 9u);
    }
 }

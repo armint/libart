@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
-#include <string_view>
 #include <type_traits>
 
 namespace art::storage {
@@ -94,47 +93,10 @@ bool isWritable(OpenMode mode) {
    return mode != OpenMode::Read;
 }
 
-// The next canonical component of a path (empty and "." components skipped), empty at the end.
-std::string_view nextComponent(const char *&cursor) {
-   while(true) {
-      while(*cursor == '/') {
-         ++cursor;
-      }
-      const char *const start = cursor;
-      while(*cursor != '\0' && *cursor != '/') {
-         ++cursor;
-      }
-      const std::string_view component(start, static_cast<size_t>(cursor - start));
-      if(component != ".") {
-         return component;
-      }
-   }
-}
-
-/// True if both paths name their entry in the same directory, comparing the canonical components of the parent
-/// (exact, not through the hash of hashPath(), so that a collision cannot hide a cross-directory rename). Paths
-/// that hashPath() accepts only.
-bool inSameDirectory(const char *first, const char *second) {
-   std::string_view firstComponent = nextComponent(first);
-   std::string_view secondComponent = nextComponent(second);
-   while(true) {
-      const std::string_view firstNext = nextComponent(first);
-      const std::string_view secondNext = nextComponent(second);
-      if(firstNext.empty() || secondNext.empty()) {
-         return firstNext.empty() && secondNext.empty();
-      }
-      if(firstComponent != secondComponent) {
-         return false;
-      }
-      firstComponent = firstNext;
-      secondComponent = secondNext;
-   }
-}
-
 // littlefs returns these while it looks a path up, before it has changed anything: the call did not start, so it cannot
 // leave state behind. Any other error (a failed device call, or NOSPC in the middle of a commit) can come from part
-// way through. Errors that the binding rules out before it calls littlefs (name length, invalid arguments) are not
-// listed: they never reach failedMutation().
+// way through. INVAL is what a rename of the root or onto the root gets. Errors that the binding rules out before it
+// calls littlefs (name length, other invalid arguments) are not listed: they never reach failedMutation().
 constexpr bool failsBeforeAnyChange(int lfsError) {
    switch(lfsError) {
    case LFS_ERR_NOENT:
@@ -142,6 +104,7 @@ constexpr bool failsBeforeAnyChange(int lfsError) {
    case LFS_ERR_NOTDIR:
    case LFS_ERR_ISDIR:
    case LFS_ERR_NOTEMPTY:
+   case LFS_ERR_INVAL:
       return true;
    default:
       return false;
@@ -274,8 +237,9 @@ Error LittleFsFileSystemBase::failed(int lfsError) {
 
 // littlefs keeps state in memory that a failed call can leave out of step with the medium, and the binding cannot
 // repair it (see "Poisoned mount" in LittleFsFileSystem.h). Two situations are known to do that:
-// - a failed rename into another directory: it commits twice, and littlefs holds a pending move (gstate) in
-//   between;
+// - a failed rename(): when the entry moves to another metadata pair it commits twice, and littlefs holds a pending
+//   move (gstate) in between. The pair is not the directory (a directory that has grown holds entries in several
+//   pairs) and the binding cannot ask which one a path lands in, so every rename counts;
 // - a failed mutating call while another file is open for writing (issue #15): the data of that writer was lost.
 // The mount is then refused until unmount() and mount(), which start from the medium like after a power cut.
 // A failure that littlefs reports before it changed anything (failsBeforeAnyChange()) is not one of them; the
@@ -286,13 +250,12 @@ bool LittleFsFileSystemBase::hasOtherWriter(const FileSlot *self) const {
 }
 
 // Like failed(), for a call that mutates: poisons the mount if the failure can have left littlefs undefined.
-// `self` is the slot of the file the call works on, if any. `leavesPendingMove` is true for the rename that
-// crosses directories.
-Error LittleFsFileSystemBase::failedMutation(int lfsError, const FileSlot *self, bool leavesPendingMove) {
-   if(!failsBeforeAnyChange(lfsError) && !poisoned_ && (leavesPendingMove || hasOtherWriter(self))) {
+// `self` is the slot of the file the call works on, if any. `isRename` is true for rename().
+Error LittleFsFileSystemBase::failedMutation(int lfsError, const FileSlot *self, bool isRename) {
+   if(!failsBeforeAnyChange(lfsError) && !poisoned_ && (isRename || hasOtherWriter(self))) {
       poisoned_ = true;
       LOG_ERROR(logger(), "%s failed (%d), the mount is refused until unmount() and mount()",
-                leavesPendingMove ? "rename into another directory" : "change with a file open for writing", lfsError);
+                isRename ? "rename" : "change with a file open for writing", lfsError);
    }
    return failed(lfsError);
 }
@@ -638,7 +601,7 @@ std::expected<void, Error> LittleFsFileSystemBase::rename(const char *oldPath, c
    deviceError_.reset();
    const int result = lfs_rename(&lfs_, oldPath, newPath);
    if(result < 0) {
-      return failure(failedMutation(result, nullptr, !inSameDirectory(oldPath, newPath)));
+      return failure(failedMutation(result, nullptr, true));
    }
    return {};
 }
