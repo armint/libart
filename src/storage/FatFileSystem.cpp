@@ -55,13 +55,8 @@ std::expected<uint64_t, FRESULT> FatFileSystem::free() {
    if(res != FR_OK) {
       return std::unexpected(res);
    }
-   // FF_MIN_SS/ssize is the FAT sector size FatFs itself works with (see diskio.cpp).
-#if FF_MAX_SS != FF_MIN_SS
-   const uint32_t sectorSize = fs->ssize;
-#else
-   const uint32_t sectorSize = FF_MIN_SS;
-#endif
-   freeBytes = static_cast<uint64_t>(freeCluster) * fs->csize * sectorSize;
+   // FF_MIN_SS is the FAT sector size; diskio.cpp refuses a build with a variable one.
+   freeBytes = static_cast<uint64_t>(freeCluster) * fs->csize * FF_MIN_SS;
 
    return freeBytes;
 }
