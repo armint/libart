@@ -165,7 +165,8 @@ if (_ART_NEED_LITTLEFS)
         FetchContent_Declare(
                 littlefs
                 GIT_REPOSITORY https://github.com/littlefs-project/littlefs.git
-                GIT_TAG v2.11.3
+                # Tag v2.11.3. The commit is pinned because a tag can be moved.
+                GIT_TAG 6cb4e86540eca0d9ba62500a298385c9d863c8be
                 # Populate only: do not add_subdirectory() whatever CMakeLists.txt upstream ships.
                 SOURCE_SUBDIR art-no-cmake
         )
