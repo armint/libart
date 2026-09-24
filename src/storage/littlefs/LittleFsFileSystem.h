@@ -175,10 +175,17 @@ class LittleFsFileSystemBase : public FileSystem {
  * Limits of the guarantee. The tests behind it (TestLittleFsReadCache.cpp, TestLittleFsProgramCache.cpp) fail a
  * device read at every position of one call at a time, with no other file open for writing, and rename() only
  * within one directory. Two situations are outside of it, and the binding cannot repair them, because they
- * concern state that littlefs keeps in memory: a failed rename() into another directory, and a failed commit while
- * another file is open for writing. Both were observed to leave that state different from the medium: the repeat
- * reports success, but later calls on the same mount can lose entries or the open file's data at the next mount.
- * After such a failure, call unmount() and mount() before anything else.
+ * concern state that littlefs keeps in memory:
+ * - A failed rename() into another directory. It commits twice, and a read that fails in between leaves littlefs
+ *   with a pending move that no longer matches the medium. The state is then undefined: a repeat of the rename can
+ *   report success and later commits lose entries at the next mount, or the repeat itself trips an assertion of
+ *   littlefs (`dir->count > 0` in lfs_dir_relocatingcommit()), which continues with a wrong count when assertions
+ *   are compiled out. After a failed rename() into another directory, call unmount() and mount() before any other call,
+ *   including a repeat of the rename. Remounting first was tested at every read position and always left a
+ *   consistent volume (the rename either took place or did not).
+ * - A failed commit while another file is open for writing. One read position was observed to lose that file's
+ *   data at its close(), although the close reports success (issue #15). Avoid it: do not keep a file open for
+ *   writing across a call that can fail. A remount after the failure was not tested for this case.
  *
  * @par Stack use
  * visitDirectory() and stat() keep an lfs_info (about 260 bytes) and an lfs_dir_t on the stack.
