@@ -1,99 +1,151 @@
-#include <array>
+#include <limits>
+#include <span>
 
 #include "FatFileSystem.h"
 
+using art::storage::Error;
+using art::storage::Geometry;
+using art::storage::offset_t;
+
+// The one place that knows the FAT sector size: FatFs addresses the medium in sectors, a BlockDevice in bytes.
+// GET_SECTOR_SIZE is not implemented, so the sector size must be fixed.
+static_assert(FF_MIN_SS == FF_MAX_SS, "diskio.cpp supports a fixed FAT sector size only");
+
+namespace {
+
+constexpr uint32_t kSectorSize = FF_MIN_SS;
+
+// Maps a device error onto the closest DRESULT. FatFs derives FR_NOT_READY from RES_NOTRDY, FR_WRITE_PROTECTED
+// from RES_WRPRT, FR_INVALID_PARAMETER from RES_PARERR and FR_DISK_ERR from RES_ERROR. Timeout and Busy have no
+// DRESULT of their own and count as a failed access, like FR_DISK_ERR.
+DRESULT toDresult(Error error) {
+   if(error == Error::NotReady || error == Error::NotInitialised) {
+      return RES_NOTRDY;
+   }
+   if(error == Error::WriteProtected) {
+      return RES_WRPRT;
+   }
+   if(error == Error::InvalidArgument) {
+      return RES_PARERR;
+   }
+   return RES_ERROR;
+}
+
+// Maps the outcome of a device call and, for a device that says it is gone (no medium, not initialised),
+// clears `initialised`. FatFs then runs disk_initialize() again on the next f_mount(), the way it does for a
+// removable medium.
+DRESULT finish(const std::expected<void, Error> &result, bool &initialised) {
+   if(result) {
+      return RES_OK;
+   }
+   const DRESULT dresult = toDresult(result.error());
+   if(dresult == RES_NOTRDY) {
+      initialised = false;
+   }
+   return dresult;
+}
+
+// The device can serve FAT sectors if a sector is a whole number of its read and program units, and if FatFs can
+// address its capacity (LBA_t is 32 bits wide, FF_LBA64 is off).
+bool supportsFatSectors(const Geometry &geometry) {
+   return geometry.isValid() && kSectorSize % geometry.readSize == 0u && kSectorSize % geometry.programSize == 0u &&
+          geometry.size >= kSectorSize && geometry.size / kSectorSize <= std::numeric_limits<LBA_t>::max();
+}
+
+// Byte length of `count` sectors, or 0 if it does not fit a size_t.
+size_t sectorBytes(UINT count) {
+   const uint64_t bytes = static_cast<uint64_t>(count) * kSectorSize;
+   return bytes <= std::numeric_limits<size_t>::max() ? static_cast<size_t>(bytes) : 0u;
+}
+
+offset_t sectorOffset(LBA_t sector) {
+   return static_cast<offset_t>(sector) * kSectorSize;
+}
+
+} // namespace
 
 DSTATUS disk_initialize(BYTE pdrv) {
-   if(pdrv >= std::size(FatFileSystem::devices)) {
+   auto *drive = FatFileSystem::drive(pdrv);
+   if(!drive) {
       return STA_NOINIT;
    }
-   if(!FatFileSystem::devices[pdrv]) {
-      return STA_NOINIT;
-   }
-   return (*FatFileSystem::devices[pdrv])->initialize();
+   drive->initialised = drive->device->init().has_value() && supportsFatSectors(drive->device->geometry());
+   return drive->initialised ? 0 : STA_NOINIT;
 }
 
 DSTATUS disk_status(BYTE pdrv) {
-   if(pdrv >= std::size(FatFileSystem::devices) || !FatFileSystem::devices[pdrv]) {
-      return STA_NOINIT;
-   }
-   return (*FatFileSystem::devices[pdrv])->getStatus();
+   const auto *drive = FatFileSystem::drive(pdrv);
+   return drive && drive->initialised ? 0 : STA_NOINIT;
 }
 
 DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
-   if(pdrv >= std::size(FatFileSystem::devices) || !FatFileSystem::devices[pdrv] || !count) {
+   auto *drive = FatFileSystem::drive(pdrv);
+   const size_t bytes = sectorBytes(count);
+   if(!drive || !buff || !count || !bytes) {
       return RES_PARERR;
    }
-   // StorageDevice::read() returns the number of sectors actually read (0 on
-   // error), not a DRESULT code — a previous direct cast happened to work
-   // out to RES_OK only when the device itself returned 0, i.e. on error,
-   // misreporting every successful single-sector read as RES_ERROR
-   // (RES_ERROR == 1 == what a successful 1-sector read returns).
-   return (*FatFileSystem::devices[pdrv])->read(buff, sector, count) == count ? RES_OK : RES_ERROR;
+   if(!drive->initialised) {
+      return RES_NOTRDY;
+   }
+   const std::span<uint8_t> data(buff, bytes);
+   return finish(drive->device->read(sectorOffset(sector), data), drive->initialised);
 }
 
 DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
-   if(pdrv >= std::size(FatFileSystem::devices) || !FatFileSystem::devices[pdrv] || !count) {
+   auto *drive = FatFileSystem::drive(pdrv);
+   const size_t bytes = sectorBytes(count);
+   if(!drive || !buff || !count || !bytes) {
       return RES_PARERR;
    }
-   // See disk_read() above: write() returns a sector count, not a DRESULT.
-   return (*FatFileSystem::devices[pdrv])->write(buff, sector, count) == count ? RES_OK : RES_ERROR;
+   if(!drive->initialised) {
+      return RES_NOTRDY;
+   }
+   const std::span<const uint8_t> data(buff, bytes);
+   return finish(drive->device->program(sectorOffset(sector), data), drive->initialised);
 }
 
 DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void *buff) {
-   DRESULT res;
-
-   if(pdrv >= std::size(FatFileSystem::devices) || !FatFileSystem::devices[pdrv].has_value()) {
+   auto *drive = FatFileSystem::drive(pdrv);
+   if(!drive) {
       return RES_PARERR;
    }
-   if(disk_status(pdrv) == STA_NOINIT)
+   if(!drive->initialised) {
       return RES_NOTRDY; /* Check if drive is ready */
-
-   res = RES_ERROR;
+   }
+   const Geometry geometry = drive->device->geometry();
 
    switch(cmd) {
    case CTRL_SYNC: /* Wait for end of internal write process of the drive */
-      /* SPI writes are synchronous — disk_write already waits for the card to
-         accept each block before returning, so there is nothing left to flush. */
-      res = RES_OK;
-      break;
+      return finish(drive->device->sync(), drive->initialised);
 
-   case GET_SECTOR_COUNT: /* Get drive capacity in unit of sector (DWORD) */ {
-      LBA_t count = (*FatFileSystem::devices[pdrv])->getSectorCount();
-      if(count != 0) {
-         *reinterpret_cast<LBA_t *>(buff) = count;
-         res = RES_OK;
+   case GET_SECTOR_COUNT: /* Get drive capacity in unit of sector (DWORD) */
+      *static_cast<LBA_t *>(buff) = static_cast<LBA_t>(geometry.size / kSectorSize);
+      return RES_OK;
+
+   case GET_BLOCK_SIZE: /* Get erase block size in unit of sector (DWORD) */
+      // ff.c wants sectors (it aligns the data area to this many sectors, ignoring a value that is 0, not a
+      // power of two or above 0x8000). A device without erase unit reports 0, which ff.c treats as unknown.
+      *static_cast<DWORD *>(buff) = geometry.eraseSize / kSectorSize;
+      return RES_OK;
+
+   case CTRL_TRIM: /* Inform the device that a range of sectors is no longer used (FF_USE_TRIM == 1) */ {
+      // args[0]/args[1] are the inclusive start/end sector of the range (see ff.c's callers). The hint may only
+      // erase whole erase units, so the range shrinks to the units inside it. A device without an erase unit has
+      // nothing to trim.
+      const auto *args = static_cast<const LBA_t *>(buff);
+      const offset_t unit = geometry.eraseSize;
+      if(unit == 0u) {
+         return RES_OK;
       }
-      break;
-   }
-
-   case GET_BLOCK_SIZE: /* Get erase block size in unit of sector (DWORD) */ {
-      // StorageDevice::getEraseSize() is documented in bytes; ff.c wants
-      // sectors (it aligns the data area to this many *sectors*, clamped
-      // to <= 0x8000). Passing raw bytes here (e.g. 4096) made f_mkfs
-      // align to 4096 sectors = 2 MB, aborting with FR_MKFS_ABORTED on
-      // any smaller volume.
-      const bd_size_t eraseSize = (*FatFileSystem::devices[pdrv])->getEraseSize();
-      const bd_size_t blockSize = (*FatFileSystem::devices[pdrv])->getBlockSize();
-      *reinterpret_cast<DWORD *>(buff) = blockSize != 0 ? eraseSize / blockSize : 0;
-      res = RES_OK;
-   } break;
-
-   case CTRL_TRIM: /* Erase a block of sectors (used when _USE_ERASE == 1) */ {
-      // args[0]/args[1] are the inclusive start/end sector of the range
-      // (see ff.c's callers), not a start/count pair; and erase() returns
-      // the number of sectors erased (0 on error), like read()/write()
-      // above — not itself a success/failure flag.
-      LBA_t *args = reinterpret_cast<LBA_t *>(buff);
-      const LBA_t count = args[1] - args[0] + 1;
-      if((*FatFileSystem::devices[pdrv])->erase(args[0], count) == count) {
-         res = RES_OK;
+      const offset_t first = (sectorOffset(args[0]) + unit - 1u) / unit * unit;
+      const offset_t end = (sectorOffset(args[1]) + kSectorSize) / unit * unit;
+      if(first >= end) {
+         return RES_OK;
       }
-      break;
+      return finish(drive->device->erase(first, end - first), drive->initialised);
    }
 
    default:
-      res = RES_PARERR;
+      return RES_PARERR;
    }
-   return res;
 }

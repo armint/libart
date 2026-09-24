@@ -19,6 +19,9 @@ namespace art::storage {
  * - FR_DISK_ERR, FR_MKFS_ABORTED: Io (a failed format is a failed medium access; the cause is not observable).
  * - FR_NOT_READY: NotReady (no card in the slot, or not yet out of its power-up sequence).
  * - FR_TIMEOUT: Timeout. FR_LOCKED: Busy. FR_WRITE_PROTECTED: WriteProtected.
+ *   The reverse direction is lossy: FatFs has no transient disk result, so the FAT disk layer (diskio.cpp) reports
+ *   a device Timeout or Busy as RES_ERROR, and it comes back as FR_DISK_ERR, that is Io. Unlike LittleFsFileSystem,
+ *   a FAT adapter therefore cannot preserve Timeout or Busy of the device below it.
  * - FR_INT_ERR, FR_NO_FILESYSTEM: Corrupt (no valid FAT volume on the medium).
  * - FR_NO_FILE, FR_NO_PATH: NoEntry. FR_EXIST: Exists.
  * - FR_DENIED is not one condition; FatFs returns it for unrelated causes, so map it per call site, never as

@@ -1,4 +1,4 @@
-#include "RamDisk.h"
+#include "FatTestDisk.h"
 #include "storage/FatDir.h"
 #include "storage/FatFileSystem.h"
 #include "storage/fatfs/ff.h"
@@ -9,15 +9,15 @@
 // Fixture: formats and mounts a fresh FAT volume before each test case.
 // ---------------------------------------------------------------------------
 struct DirFsFixture {
-   // Registers RamDisk::instance() as drive 0 in FatFileSystem::devices[],
-   // which diskio.cpp's disk_*() calls route through; without this,
-   // f_mkfs()/f_mount() below fail with FR_NOT_READY.
-   FatFileSystem fatFileSystem{ RamDisk::instance() };
+   // Declared before the FatFileSystem, which keeps a reference to it. A fresh device starts erased.
+   art::storage::test::FatTestDisk disk;
+   // Registers the disk as drive 0 in FatFileSystem::devices[], which diskio.cpp's disk_*() calls route
+   // through; without this, f_mkfs()/f_mount() below fail with FR_NOT_READY.
+   FatFileSystem fatFileSystem{ disk };
    FATFS fatfs{};
    uint8_t workBuf[512]{};
 
    DirFsFixture() {
-      RamDisk::instance().reset();
       MKFS_PARM opt{};
       opt.fmt = FM_ANY;
       REQUIRE(f_mkfs("0:", &opt, workBuf, sizeof(workBuf)) == FR_OK);

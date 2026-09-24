@@ -3,10 +3,16 @@
 #include <cassert>
 #include <cstring>
 
-std::optional<StorageDevice *> FatFileSystem::devices[FF_VOLUMES];
+std::optional<FatFileSystem::Drive> FatFileSystem::devices[FF_VOLUMES];
 
-FatFileSystem::FatFileSystem(StorageDevice &sdDevice)
-   : _sdDevice(&sdDevice) {
+FatFileSystem::Drive *FatFileSystem::drive(BYTE pdrv) {
+   if(pdrv >= std::size(devices) || !devices[pdrv]) {
+      return nullptr;
+   }
+   return &*devices[pdrv];
+}
+
+FatFileSystem::FatFileSystem(art::storage::BlockDevice &blockDevice) {
    _driveNumber = 0;
    for(auto &device : devices) {
       if(!device) {
@@ -15,7 +21,7 @@ FatFileSystem::FatFileSystem(StorageDevice &sdDevice)
       _driveNumber++;
    }
    assert(_driveNumber < 10 && _driveNumber < std::size(devices));
-   devices[_driveNumber].emplace(_sdDevice);
+   devices[_driveNumber].emplace(Drive{ &blockDevice, false });
 }
 
 
@@ -49,7 +55,8 @@ std::expected<uint64_t, FRESULT> FatFileSystem::free() {
    if(res != FR_OK) {
       return std::unexpected(res);
    }
-   freeBytes = static_cast<uint64_t>(freeCluster) * fs->csize * _sdDevice->getBlockSize();
+   // FF_MIN_SS is the FAT sector size; diskio.cpp refuses a build with a variable one.
+   freeBytes = static_cast<uint64_t>(freeCluster) * fs->csize * FF_MIN_SS;
 
    return freeBytes;
 }
