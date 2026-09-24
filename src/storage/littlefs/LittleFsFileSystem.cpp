@@ -463,8 +463,10 @@ std::expected<File, Error> LittleFsFileSystemBase::open(const char *path, OpenMo
    if(mode == OpenMode::Append) {
       result = lfs_file_seek(&lfs_, &freeSlot->file, 0, LFS_SEEK_END);
       if(result < 0) {
-         const Error error = toError(result);
-         static_cast<void>(lfs_file_close(&lfs_, &freeSlot->file));
+         const Error error = failed(result);
+         if(const int closed = lfs_file_close(&lfs_, &freeSlot->file); closed < 0) {
+            static_cast<void>(failed(closed));
+         }
          return failure(error);
       }
    }
