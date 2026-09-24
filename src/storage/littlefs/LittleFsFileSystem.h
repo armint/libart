@@ -156,6 +156,11 @@ class LittleFsFileSystemBase : public FileSystem {
  *   Error::NotDirectory (and creates nothing), so "/dir/" and "/dir" are the same directory and "/file/" is not
  *   the file. littlefs before v2.10.0 took a slash after a file and stored it in a new name.
  *
+ * @par Supported littlefs versions
+ * v2.11.3 (the pin of libArT) and v2.9.3, which a superproject may still pin. The binding depends on littlefs
+ * internals and on its path parser, and only these two versions were reviewed; any other minor version is a compile
+ * error (static_assert in LittleFsFileSystem.cpp). With v2.9.x the trailing-slash rule above does not hold.
+ *
  * @par Failed device operations
  * A call that fails on the device is reported as its own error (Timeout, Io, ...), and the mount stays usable: once
  * the device works again, the next call runs and the failed call can be repeated. That covers the read operations

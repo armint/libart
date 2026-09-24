@@ -160,8 +160,9 @@ if (_ART_NEED_LITTLEFS)
         # in its own change, with a mount test against a volume written by the previous version
         # (tests/storage/TestLittleFsCompat.cpp). The binding reads littlefs internals (see
         # LittleFsFileSystem.cpp, dropReadCaches()), so a tag is used instead of a branch and every bump is
-        # reviewed against lfs.c. Re-evaluate when a new 2.x release appears; v3 changes the on-disk format
-        # and is out of scope.
+        # reviewed against lfs.c. LittleFsFileSystem.cpp refuses versions other than the reviewed v2.9 and
+        # v2.11, which also covers a superproject that defines its own target. Re-evaluate when a new 2.x
+        # release appears; v3 changes the on-disk format and is out of scope.
         FetchContent_Declare(
                 littlefs
                 GIT_REPOSITORY https://github.com/littlefs-project/littlefs.git

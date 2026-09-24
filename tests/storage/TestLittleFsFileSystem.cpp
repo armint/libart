@@ -553,7 +553,9 @@ TEST_SUITE("LittleFsFileSystem") {
    // littlefs v2.10.0 rewrote its path parsing. Before, a trailing slash after a file was accepted by stat(), open()
    // and remove(), and rename() stored the slash as part of the new name (rename("/a", "/d/x/") even left a directory
    // that could not be listed). From v2.10.0 it is Error::NotDirectory everywhere. The binding hands the path to
-   // littlefs as it is, so these tests pin the behaviour of the version in use.
+   // littlefs as it is, so these two tests pin the behaviour of v2.10.0 and later and are left out for v2.9, which the
+   // binding still accepts (see the static_assert on LFS_VERSION in LittleFsFileSystem.cpp) and which fails them.
+#if LFS_VERSION >= 0x0002000a
    STACKED_TEST_CASE("a trailing slash after a file is refused and changes nothing") {
       Stack stack;
       FileSystemUnderTest fileSystem{ stack.device() };
@@ -628,6 +630,8 @@ TEST_SUITE("LittleFsFileSystem") {
       CHECK(fileSystem.stat(("/" + longest).c_str()).has_value());
       CHECK(failedWith(fileSystem.mkdir(("/" + longest + "n/").c_str()), Error::NameTooLong));
    }
+
+#endif // LFS_VERSION >= 0x0002000a
 
    STACKED_TEST_CASE("the root is reachable as / and its spellings, and cannot be removed or renamed") {
       Stack stack;
