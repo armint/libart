@@ -96,6 +96,9 @@ class LittleFsFileSystemBase : public FileSystem {
    static int lfsErase(const lfs_config *c, lfs_block_t blk);
    static int lfsSync(const lfs_config *c);
 
+   /// Lets a test look at the state of littlefs behind the binding (the program cache after a failed call).
+   friend struct LittleFsFileSystemTestAccess;
+
    BlockDevice &device_;
    Buffers buffers_;
    mutable art::rtos::Mutex mutex_;
