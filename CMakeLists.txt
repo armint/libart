@@ -156,12 +156,18 @@ if (_ART_NEED_LITTLEFS)
     # littlefs ships no usable CMakeLists.txt, so the target is defined here from lfs.c and lfs_util.c. A
     # superproject that already defines a "littlefs" target wins, and then owns the version pin.
     if (NOT TARGET littlefs)
-        # The pin is firmware visible: a bump changes the on-flash format of every node that uses it. Bump it
-        # in its own change, with a mount test against a volume written by the previous version.
+        # The pin is firmware visible: a bump changes the code that runs on every node that uses it. Bump it
+        # in its own change, with a mount test against a volume written by the previous version
+        # (tests/storage/TestLittleFsCompat.cpp). The binding reads littlefs internals (see
+        # LittleFsFileSystem.cpp, dropReadCaches()), so a tag is used instead of a branch and every bump is
+        # reviewed against lfs.c. LittleFsFileSystem.cpp refuses versions other than the reviewed v2.9 and
+        # v2.11, which also covers a superproject that defines its own target. Re-evaluate when a new 2.x
+        # release appears; v3 changes the on-disk format and is out of scope.
         FetchContent_Declare(
                 littlefs
                 GIT_REPOSITORY https://github.com/littlefs-project/littlefs.git
-                GIT_TAG v2.9.3
+                # Tag v2.11.3. The commit is pinned because a tag can be moved.
+                GIT_TAG 6cb4e86540eca0d9ba62500a298385c9d863c8be
                 # Populate only: do not add_subdirectory() whatever CMakeLists.txt upstream ships.
                 SOURCE_SUBDIR art-no-cmake
         )

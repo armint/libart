@@ -70,7 +70,7 @@ file(GLOB TEST_SOURCES
 
 # The LittleFS binding runs the real littlefs; its target is defined by the top-level CMakeLists.txt.
 if (_ART_NEED_LITTLEFS)
-    list(APPEND TEST_SOURCES storage/TestLittleFsFileSystem.cpp storage/TestLittleFsReadCache.cpp storage/TestLittleFsProgramCache.cpp storage/TestFileStreams.cpp)
+    list(APPEND TEST_SOURCES storage/TestLittleFsFileSystem.cpp storage/TestLittleFsReadCache.cpp storage/TestLittleFsProgramCache.cpp storage/TestLittleFsCompat.cpp storage/TestFileStreams.cpp)
 endif ()
 
 file(GLOB TO_TEST_SOURCES
@@ -148,6 +148,8 @@ target_link_libraries(libArT-tests PUBLIC bsd)
 if (_ART_NEED_LITTLEFS)
     target_sources(libArT-tests PRIVATE ../src/storage/littlefs/LittleFsFileSystem.cpp)
     target_link_libraries(libArT-tests PRIVATE littlefs)
+    # Volume images written by earlier littlefs versions, read by storage/TestLittleFsCompat.cpp.
+    target_compile_definitions(libArT-tests PRIVATE LITTLEFS_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/storage/fixtures")
 endif ()
 
 # ETL

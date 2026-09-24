@@ -146,10 +146,21 @@ Error LittleFsFileSystemBase::toError(int lfsError) const {
 // ---- read cache invalidation ----
 
 // lfs_block_t is unsigned, so the cast below yields the same all-ones value as LFS_BLOCK_NULL in lfs.c. That macro is
-// private to lfs.c and the binding needs it, hence this copy. A new major version may change the cache layout or
-// the sentinel, so it must be reviewed together with the cache regression tests (TestLittleFsReadCache.cpp and
-// TestLittleFsProgramCache.cpp).
-static_assert(LFS_VERSION_MAJOR == 2, "review dropReadCaches() and resetProgramCache() against lfs.c of this version");
+// private to lfs.c and the binding needs it, hence this copy.
+//
+// The binding reads and writes littlefs internals (the caches, LFS_F_WRITING and LFS_F_ERRED, and it relies on
+// lfs_bd_read() setting the read cache before it calls the read hook), and its path rules come from the littlefs path
+// parser. That was reviewed against lfs.c of v2.9.3 and v2.11.3, together with the cache regression tests
+// (TestLittleFsReadCache.cpp, TestLittleFsProgramCache.cpp) and the path tests (TestLittleFsFileSystem.cpp). Only
+// those two minor versions are accepted. LFS_VERSION carries no patch level, so an earlier patch of them passes as
+// well; the pin in the top-level CMakeLists.txt names the exact commit. v2.10 was not reviewed, because nothing uses
+// it, and v3 changes the on-disk format. This matters for a superproject that defines its own littlefs target: it
+// owns the pin, and this check makes a version outside the reviewed ones a compile error instead of a silent risk.
+// To accept another version, review the code below against its lfs.c, run the tests, and extend this condition.
+static_assert(LFS_VERSION == 0x00020009 || LFS_VERSION == 0x0002000b,
+              "littlefs is not one of the versions the binding was reviewed against (v2.9.3, v2.11.3): review "
+              "dropReadCaches(), resetProgramCache() and the path rules in LittleFsFileSystem.h against its lfs.c "
+              "before extending this check");
 static_assert(std::is_unsigned_v<lfs_block_t>, "LFS_BLOCK_NULL is (lfs_block_t)-1");
 constexpr lfs_block_t kNoCachedBlock = static_cast<lfs_block_t>(-1);
 

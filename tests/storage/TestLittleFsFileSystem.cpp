@@ -214,6 +214,41 @@ struct CipherStack {
    MockCipherBlockDevice cipher;
 };
 
+// Every entry of the volume as one string, directories with a trailing slash, in the order littlefs lists them.
+std::string snapshot(FileSystem &fileSystem, const std::string &directory = "/") {
+   struct Names {
+      std::vector<std::pair<std::string, bool>> entries;
+      bool visit(const char *name, const FileInfo &info) {
+         entries.emplace_back(name, info.type == EntryType::Directory);
+         return true;
+      }
+   } listed;
+   const auto visited = fileSystem.visitDirectory(directory.c_str(), DirectoryVisitor::create<Names, &Names::visit>(listed));
+   REQUIRE(visited.has_value());
+   std::string result;
+   for(const auto &[name, isDirectory] : listed.entries) {
+      const std::string path = (directory == "/" ? "" : directory) + "/" + name;
+      result += path + (isDirectory ? "/ " : " ");
+      if(isDirectory) {
+         result += snapshot(fileSystem, path);
+      }
+   }
+   return result;
+}
+
+struct EntryCounter {
+   size_t count{ 0u };
+   bool visit(const char *, const FileInfo &) {
+      ++count;
+      return true;
+   }
+};
+
+std::expected<size_t, Error> countEntries(FileSystem &fileSystem, const char *path) {
+   EntryCounter counter;
+   return fileSystem.visitDirectory(path, DirectoryVisitor::create<EntryCounter, &EntryCounter::visit>(counter));
+}
+
 // The save pattern the interface recommends: write a temporary file, then rename it over the target.
 std::expected<void, Error> saveViaTmp(FileSystem &fs, const char *to, const char *tmp, std::span<const uint8_t> data) {
    if(const auto written = fs.writeFile(tmp, data); !written) {
@@ -513,6 +548,178 @@ TEST_SUITE("LittleFsFileSystem") {
       CHECK(failedWith(fileSystem.open(nullptr, OpenMode::Write), Error::InvalidArgument));
       CHECK(failedWith(fileSystem.remove(nullptr), Error::InvalidArgument));
       CHECK(failedWith(fileSystem.rename("/a", "b"), Error::InvalidArgument));
+   }
+
+   // littlefs v2.10.0 rewrote its path parsing. Before, a trailing slash after a file was accepted by stat(), open()
+   // and remove(), and rename() stored the slash as part of the new name (rename("/a", "/d/x/") even left a directory
+   // that could not be listed). From v2.10.0 it is Error::NotDirectory everywhere. The binding hands the path to
+   // littlefs as it is, so these two tests pin the behaviour of v2.10.0 and later and are left out for v2.9, which the
+   // binding still accepts (see the static_assert on LFS_VERSION in LittleFsFileSystem.cpp) and which fails them.
+#if LFS_VERSION >= 0x0002000a
+   STACKED_TEST_CASE("a trailing slash after a file is refused and changes nothing") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/a", bytes("abc")).has_value());
+      REQUIRE(fileSystem.mkdir("/d").has_value());
+      REQUIRE(fileSystem.writeFile("/d/x", bytes("xyz")).has_value());
+      const std::string before = snapshot(fileSystem);
+      REQUIRE(before == "/a /d/ /d/x ");
+      std::array<uint8_t, 8> buffer{};
+      for(const char *path : { "/a/", "/a//", "/a/.", "/a/./", "/d/x/", "/d//x/" }) {
+         CAPTURE(std::string(path));
+         CHECK(failedWith(fileSystem.stat(path), Error::NotDirectory));
+         CHECK(failedWith(fileSystem.mkdir(path), Error::NotDirectory));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::Read), Error::NotDirectory));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::Write), Error::NotDirectory));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::CreateNew), Error::NotDirectory));
+         CHECK(failedWith(fileSystem.readFile(path, buffer), Error::NotDirectory));
+         CHECK(failedWith(fileSystem.remove(path), Error::NotDirectory));
+         CHECK(failedWith(fileSystem.rename(path, "/moved"), Error::NotDirectory));
+         CHECK(failedWith(fileSystem.rename("/a", path), Error::NotDirectory));
+         CHECK(failedWith(countEntries(fileSystem, path), Error::NotDirectory));
+         CHECK(snapshot(fileSystem) == before);
+      }
+      // A file that does not exist yet is not created through a trailing slash either.
+      CHECK(failedWith(fileSystem.open("/new/", OpenMode::Write), Error::NotDirectory));
+      CHECK(failedWith(fileSystem.open("/d/new/", OpenMode::Write), Error::NotDirectory));
+      CHECK(failedWith(fileSystem.rename("/a", "/d/new/"), Error::NotDirectory));
+      CHECK(snapshot(fileSystem) == before);
+      CHECK(readAll(fileSystem, "/a", 8) == bytes("abc"));
+      CHECK(readAll(fileSystem, "/d/x", 8) == bytes("xyz"));
+      REQUIRE(fileSystem.unmount().has_value());
+      REQUIRE(fileSystem.mount().has_value());
+      CHECK(snapshot(fileSystem) == before);
+   }
+
+   STACKED_TEST_CASE("a directory is the same entry with or without slashes and dots") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.mkdir("/d").has_value());
+      REQUIRE(fileSystem.writeFile("/d/x", bytes("xyz")).has_value());
+      for(const char *path : { "/d", "/d/", "/d//", "/d/.", "/d/./", "//d", "/./d/" }) {
+         CAPTURE(std::string(path));
+         const auto info = fileSystem.stat(path);
+         REQUIRE(info.has_value());
+         CHECK(info->type == EntryType::Directory);
+         CHECK(countEntries(fileSystem, path).value_or(0u) == 1u);
+         CHECK(failedWith(fileSystem.mkdir(path), Error::Exists));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::Read), Error::IsDirectory));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::Write), Error::IsDirectory));
+         CHECK(failedWith(fileSystem.remove(path), Error::NotEmpty));
+      }
+      for(const char *path : { "/d/x", "/d//x", "/d/./x", "//d/x", "/./d/./x" }) {
+         CAPTURE(std::string(path));
+         CHECK(readAll(fileSystem, path, 8) == bytes("xyz"));
+      }
+      // A slash after the last name of a new directory is allowed and is not part of the name.
+      REQUIRE(fileSystem.mkdir("/n/").has_value());
+      REQUIRE(fileSystem.mkdir("/d/m//").has_value());
+      CHECK(snapshot(fileSystem) == "/d/ /d/m/ /d/x /n/ ");
+      // A directory moves with slashes on both sides.
+      REQUIRE(fileSystem.rename("/n/", "/o/").has_value());
+      REQUIRE(fileSystem.rename("/d/m/.", "/o/m//").has_value());
+      CHECK(snapshot(fileSystem) == "/d/ /d/x /o/ /o/m/ ");
+      REQUIRE(fileSystem.remove("/o/m/").has_value());
+      REQUIRE(fileSystem.remove("/o//").has_value());
+      CHECK(snapshot(fileSystem) == "/d/ /d/x ");
+      // The name limit counts the name, not the slash behind it.
+      const std::string longest(kMaxNameLength, 'n');
+      REQUIRE(fileSystem.mkdir(("/" + longest + "/").c_str()).has_value());
+      CHECK(fileSystem.stat(("/" + longest).c_str()).has_value());
+      CHECK(failedWith(fileSystem.mkdir(("/" + longest + "n/").c_str()), Error::NameTooLong));
+   }
+
+#endif // LFS_VERSION >= 0x0002000a
+
+   STACKED_TEST_CASE("the root is reachable as / and its spellings, and cannot be removed or renamed") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/a", bytes("abc")).has_value());
+      REQUIRE(fileSystem.mkdir("/d").has_value());
+      for(const char *root : { "/", "//", "/.", "/./", "/././" }) {
+         CAPTURE(std::string(root));
+         const auto info = fileSystem.stat(root);
+         REQUIRE(info.has_value());
+         CHECK(info->type == EntryType::Directory);
+         CHECK(countEntries(fileSystem, root).value_or(0u) == 2u);
+         CHECK(failedWith(fileSystem.mkdir(root), Error::Exists));
+         CHECK(failedWith(fileSystem.open(root, OpenMode::Read), Error::IsDirectory));
+         CHECK(failedWith(fileSystem.open(root, OpenMode::Write), Error::IsDirectory));
+         CHECK(failedWith(fileSystem.remove(root), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.rename(root, "/moved"), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.rename("/a", root), Error::InvalidArgument));
+      }
+      CHECK(snapshot(fileSystem) == "/a /d/ ");
+   }
+
+   // littlefs resolves ".." itself, and v2.10.0 changed how (also for a path that leaves the root). The interface
+   // defines no relative paths, so the binding rejects every path with a ".." component before littlefs sees it,
+   // whatever the call.
+   STACKED_TEST_CASE("a path with a .. component is rejected by every call and changes nothing") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.writeFile("/a", bytes("abc")).has_value());
+      REQUIRE(fileSystem.mkdir("/d").has_value());
+      const std::string before = snapshot(fileSystem);
+      std::array<uint8_t, 8> buffer{};
+      for(const char *path :
+          { "/..", "/../a", "/a/..", "/d/../a", "/d/..", "/d/../", "/d/..//a", "/d/./../a", "/d/../..", "/new/.." }) {
+         CAPTURE(std::string(path));
+         CHECK(failedWith(fileSystem.stat(path), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.mkdir(path), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::Read), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::Write), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::CreateNew), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.readFile(path, buffer), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.writeFile(path, buffer), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.remove(path), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.rename(path, "/moved"), Error::InvalidArgument));
+         CHECK(failedWith(fileSystem.rename("/a", path), Error::InvalidArgument));
+         CHECK(failedWith(countEntries(fileSystem, path), Error::InvalidArgument));
+         CHECK(snapshot(fileSystem) == before);
+      }
+      // Names that only look like it are ordinary names.
+      REQUIRE(fileSystem.writeFile("/...", bytes("dots")).has_value());
+      REQUIRE(fileSystem.writeFile("/.hidden", bytes("h")).has_value());
+      REQUIRE(fileSystem.writeFile("/a..", bytes("a")).has_value());
+      CHECK(readAll(fileSystem, "/...", 8) == bytes("dots"));
+      CHECK(readAll(fileSystem, "/.hidden", 8) == bytes("h"));
+      CHECK(readAll(fileSystem, "/a..", 8) == bytes("a"));
+   }
+
+   // The open-file check compares a hash of the canonical path (empty and "." components dropped). Every spelling
+   // that littlefs resolves to the same file must therefore be caught, or an open handle could be renamed away.
+   STACKED_TEST_CASE("every spelling of an open path is recognised as open") {
+      Stack stack;
+      FileSystemUnderTest fileSystem{ stack.device() };
+      REQUIRE(fileSystem.mount().has_value());
+      REQUIRE(fileSystem.mkdir("/d").has_value());
+      REQUIRE(fileSystem.writeFile("/d/x", bytes("old")).has_value());
+      auto file = fileSystem.open("/d/x", OpenMode::ReadWrite);
+      REQUIRE(file.has_value());
+      for(const char *path : { "/d/x", "/d//x", "/d/./x", "//d/x", "/./d/./x", "///d///x" }) {
+         CAPTURE(std::string(path));
+         CHECK(failedWith(fileSystem.remove(path), Error::Busy));
+         CHECK(failedWith(fileSystem.rename(path, "/moved"), Error::Busy));
+         CHECK(failedWith(fileSystem.rename("/d/x", "/moved2"), Error::Busy));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::Write), Error::Busy));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::CreateNew), Error::Exists));
+         CHECK(failedWith(fileSystem.open(path, OpenMode::Read), Error::Busy)); // the open handle writes
+      }
+      // The trailing slash spelling counts as the open path as well: the binding compares the canonical path before
+      // littlefs sees it, so the answer is Busy, not the NotDirectory that littlefs gives for a closed file. It must
+      // not get around the check by being unknown to the binding.
+      CHECK(failedWith(fileSystem.remove("/d/x/"), Error::Busy));
+      CHECK(failedWith(fileSystem.rename("/d/x/", "/moved"), Error::Busy));
+      CHECK(failedWith(fileSystem.rename("/moved", "/d/x/"), Error::Busy));
+      REQUIRE(file->write(bytes("!")).has_value());
+      REQUIRE(file->close().has_value());
+      CHECK(snapshot(fileSystem) == "/d/ /d/x ");
+      CHECK(readAll(fileSystem, "/d/x", 8) == bytes("!ld"));
    }
 
    STACKED_TEST_CASE("every call on an unmounted file system fails with NotMounted") {

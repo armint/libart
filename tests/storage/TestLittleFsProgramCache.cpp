@@ -21,6 +21,23 @@
 using namespace art::storage;
 using namespace art::storage::test;
 
+namespace art::storage {
+
+// Reaches into the binding to see the state of littlefs that no public call shows.
+struct LittleFsFileSystemTestAccess {
+   // A littlefs call that finishes leaves its program cache empty: no block, and every byte 0xFF (lfs_cache_zero()).
+   // One that fails part way does not, and it is the binding's resetProgramCache() that restores it. The next write
+   // then aborts in an assertion of littlefs, or with the assertions compiled out (the firmware default) programs
+   // the stale bytes in front of its data. Nothing of that is visible through the public calls in every case, so
+   // this reads the state itself; it is the check that works without LFS_ASSERT.
+   static bool programCacheEmpty(const LittleFsFileSystemBase &fileSystem) {
+      return fileSystem.lfs_.pcache.block == static_cast<lfs_block_t>(-1) &&
+             std::ranges::all_of(fileSystem.buffers_.programCache, [](uint8_t byte) { return byte == 0xFFu; });
+   }
+};
+
+} // namespace art::storage
+
 namespace {
 
 // NOR-like: 16 byte read and program unit, 4 KiB erase unit, 16 blocks.
@@ -141,6 +158,7 @@ void sweep(Fixture &fixture,
       completed = attempt(fixture.fileSystem);
       fixture.flaky.disarm();
       failedSteps += completed ? 0u : 1u;
+      CHECK(LittleFsFileSystemTestAccess::programCacheEmpty(fixture.fileSystem));
       if(probe) {
          writeElsewhere(fixture.fileSystem);
       }
