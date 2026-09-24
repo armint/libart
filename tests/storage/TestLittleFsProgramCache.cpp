@@ -389,42 +389,6 @@ TEST_SUITE("LittleFsFileSystem program cache after a failed device read") {
       CHECK(completed);
    }
 
-   TEST_CASE("a failed operation leaves the pending data of another open file alone") {
-      // The program cache is reset, the caches of files that are being written are not: their pending data is
-      // only there.
-      Fixture fixture;
-      const auto pending = pattern(1000u, 17u); // its tail stays in the file cache until close()
-      const std::vector<std::pair<const char *, std::function<bool(FileSystem &)>>> operations{
-         { "mkdir", [](FileSystem &fs) { return fs.mkdir("/made").has_value(); } },
-         { "remove", [](FileSystem &fs) { return fs.remove("/small").has_value(); } },
-         { "rename", [](FileSystem &fs) { return fs.rename("/small", "/renamed").has_value(); } },
-         { "writeFile", [](FileSystem &fs) { return fs.writeFile("/new", pattern(3000u, 18u)).has_value(); } },
-      };
-      for(const auto &[name, operation] : operations) {
-         CAPTURE(std::string(name));
-         bool completed = false;
-         for(uint32_t failAfter = 0u; failAfter < kMaxReads && !completed; ++failAfter) {
-            CAPTURE(failAfter);
-            fixture.restore();
-            auto writer = fixture.fileSystem.open("/pending", OpenMode::Write);
-            REQUIRE(writer.has_value());
-            REQUIRE(writer->write(pending).has_value());
-
-            fixture.flaky.armAfter(failAfter);
-            completed = operation(fixture.fileSystem);
-            fixture.flaky.disarm();
-
-            REQUIRE(writer->write(pattern(10u, 19u)).has_value());
-            REQUIRE(writer->close().has_value());
-            auto expected = pending;
-            const auto tail = pattern(10u, 19u);
-            expected.insert(expected.end(), tail.begin(), tail.end());
-            CHECK(readBack(fixture.fileSystem, "/pending") == expected);
-         }
-         CHECK(completed);
-      }
-   }
-
    TEST_CASE("a commit that compacts a directory can be retried after a failed read at any point") {
       const uint32_t compactingCycle = churnUntilCompaction();
       const std::vector<std::pair<const char *, std::function<bool(FileSystem &)>>> operations{
