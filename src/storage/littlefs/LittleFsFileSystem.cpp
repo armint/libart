@@ -148,7 +148,9 @@ Error LittleFsFileSystemBase::toError(int lfsError) const {
 // lfs_block_t is unsigned, so the cast below yields the same all-ones value as LFS_BLOCK_NULL in lfs.c. That macro is
 // private to lfs.c and the binding needs it, hence this copy. A new major version may change the cache layout or
 // the sentinel, so it must be reviewed together with the cache regression tests (TestLittleFsReadCache.cpp and
-// TestLittleFsProgramCache.cpp).
+// TestLittleFsProgramCache.cpp). The code below was reviewed against lfs.c of v2.9.3 and v2.11.3 (the cache
+// fields, LFS_F_WRITING and LFS_F_ERRED, and lfs_bd_read() setting the cache before it calls the read hook); a
+// newer 2.x tag needs the same review before the pin in the top-level CMakeLists.txt moves.
 static_assert(LFS_VERSION_MAJOR == 2, "review dropReadCaches() and resetProgramCache() against lfs.c of this version");
 static_assert(std::is_unsigned_v<lfs_block_t>, "LFS_BLOCK_NULL is (lfs_block_t)-1");
 constexpr lfs_block_t kNoCachedBlock = static_cast<lfs_block_t>(-1);

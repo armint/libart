@@ -152,6 +152,9 @@ class LittleFsFileSystemBase : public FileSystem {
  * - Open paths are recognised by a 32 bit hash of the path with empty and "." components removed, so
  *   different spellings of one path match. A hash collision can make an unrelated path report Busy. Paths
  *   with ".." components are rejected with Error::InvalidArgument.
+ * - Other path rules are littlefs': a slash after the last name of a directory is ignored, after a file it is
+ *   Error::NotDirectory (and creates nothing), so "/dir/" and "/dir" are the same directory and "/file/" is not
+ *   the file. littlefs before v2.10.0 took a slash after a file and stored it in a new name.
  *
  * @par Failed device operations
  * A call that fails on the device is reported as its own error (Timeout, Io, ...), and the mount stays usable: once
@@ -175,7 +178,8 @@ class LittleFsFileSystemBase : public FileSystem {
  * Limits of the guarantee. The tests behind it (TestLittleFsReadCache.cpp, TestLittleFsProgramCache.cpp) fail a
  * device read at every position of one call at a time, with no other file open for writing, and rename() only
  * within one directory. Two situations are outside of it, and the binding cannot repair them, because they
- * concern state that littlefs keeps in memory:
+ * concern state that littlefs keeps in memory. Both behave the same with littlefs v2.11.3 as with v2.9.3, so the
+ * pin does not change this:
  * - A failed rename() into another directory. It commits twice, and a read that fails in between leaves littlefs
  *   with a pending move that no longer matches the medium. The state is then undefined: a repeat of the rename can
  *   report success and later commits lose entries at the next mount, or the repeat itself trips an assertion of

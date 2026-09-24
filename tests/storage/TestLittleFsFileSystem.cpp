@@ -651,8 +651,9 @@ TEST_SUITE("LittleFsFileSystem") {
       CHECK(snapshot(fileSystem) == "/a /d/ ");
    }
 
-   // littlefs v2.10.0 also accepts ".." and steps above the root without an error. The interface defines neither, so
-   // the binding rejects every path with a ".." component before littlefs sees it, whatever the call.
+   // littlefs resolves ".." itself, and v2.10.0 changed how (also for a path that leaves the root). The interface
+   // defines no relative paths, so the binding rejects every path with a ".." component before littlefs sees it,
+   // whatever the call.
    STACKED_TEST_CASE("a path with a .. component is rejected by every call and changes nothing") {
       Stack stack;
       FileSystemUnderTest fileSystem{ stack.device() };
