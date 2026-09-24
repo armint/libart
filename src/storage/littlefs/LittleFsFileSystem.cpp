@@ -147,8 +147,9 @@ Error LittleFsFileSystemBase::toError(int lfsError) const {
 
 // lfs_block_t is unsigned, so the cast below yields the same all-ones value as LFS_BLOCK_NULL in lfs.c. That macro is
 // private to lfs.c and the binding needs it, hence this copy. A new major version may change the cache layout or
-// the sentinel, so it must be reviewed together with the read-cache regression tests (TestLittleFsReadCache.cpp).
-static_assert(LFS_VERSION_MAJOR == 2, "review dropReadCaches() against lfs_cache_drop() of this littlefs version");
+// the sentinel, so it must be reviewed together with the cache regression tests (TestLittleFsReadCache.cpp and
+// TestLittleFsProgramCache.cpp).
+static_assert(LFS_VERSION_MAJOR == 2, "review dropReadCaches() and resetProgramCache() against lfs.c of this version");
 static_assert(std::is_unsigned_v<lfs_block_t>, "LFS_BLOCK_NULL is (lfs_block_t)-1");
 constexpr lfs_block_t kNoCachedBlock = static_cast<lfs_block_t>(-1);
 
@@ -174,6 +175,33 @@ void LittleFsFileSystemBase::dropReadCaches() {
          slot.file.cache.block = kNoCachedBlock;
       }
    }
+}
+
+// ---- program cache reset ----
+
+// lfs_bd_prog() (lfs.c) asserts that the program cache is empty before it starts on another block. Every operation
+// that finishes leaves it empty, but one that fails part way (a failed device read, program, erase or sync, or
+// NOSPC in the middle of a metadata commit) returns with data in it. The next write would then abort in that
+// assertion, or with the assertions compiled out (ART_LITTLEFS_NO_ASSERT) can program the stale data.
+//
+// The cache legitimately holds data while an operation runs, so it cannot be reset in a device hook. It is reset
+// where a failed call is turned into an Error, which is the end of that call: littlefs is not re-entrant and the
+// mutex is held, so nothing is using the cache any more. Calls that only read (stat(), visitDirectory(),
+// freeSpace()) never fill it and do not reset it.
+// Only lfs_.pcache is reset. The cache of an open file also serves as its program cache, but it holds the pending
+// data of that file (LFS_F_WRITING), which is nowhere else, and it is never a stale read.
+//
+// Filled with 0xFF like lfs_cache_zero() does: lfs_bd_prog() programs the bytes in front of the first one it
+// writes as they are, and 0xFF leaves the cells untouched.
+void LittleFsFileSystemBase::resetProgramCache() {
+   std::ranges::fill(buffers_.programCache, uint8_t{ 0xFFu });
+   lfs_.pcache.block = kNoCachedBlock;
+}
+
+// Maps a failed littlefs call to an Error and leaves littlefs ready for the next operation.
+Error LittleFsFileSystemBase::failed(int lfsError) {
+   resetProgramCache();
+   return toError(lfsError);
 }
 
 // ---- block device callbacks ----
@@ -372,7 +400,7 @@ uint8_t *LittleFsFileSystemBase::cacheOf(size_t index) const {
 
 // Maps a failed call on a file and remembers the error for isErrored() files.
 Error LittleFsFileSystemBase::noteFailure(FileSlot &slot, int lfsError) {
-   slot.lastError = toError(lfsError);
+   slot.lastError = failed(lfsError);
    return slot.lastError;
 }
 
@@ -389,7 +417,7 @@ std::expected<void, Error> LittleFsFileSystemBase::closeSlot(FileSlot &slot) {
    slot.used = false;
    slot.generation = (slot.generation + 1u) & kGenerationMask;
    if(result != LFS_ERR_OK) {
-      return failure(toError(result));
+      return failure(failed(result));
    }
    if(errored) {
       return failure(slot.lastError);
@@ -430,7 +458,7 @@ std::expected<File, Error> LittleFsFileSystemBase::open(const char *path, OpenMo
    freeSlot->config.buffer = cacheOf(index);
    int result = lfs_file_opencfg(&lfs_, &freeSlot->file, path, toLfsFlags(mode), &freeSlot->config);
    if(result < 0) {
-      return failure(toError(result));
+      return failure(failed(result));
    }
    if(mode == OpenMode::Append) {
       result = lfs_file_seek(&lfs_, &freeSlot->file, 0, LFS_SEEK_END);
@@ -462,7 +490,7 @@ std::expected<void, Error> LittleFsFileSystemBase::remove(const char *path) {
    }
    deviceError_.reset();
    const int result = lfs_remove(&lfs_, path);
-   return result < 0 ? std::expected<void, Error>{ failure(toError(result)) } : std::expected<void, Error>{};
+   return result < 0 ? std::expected<void, Error>{ failure(failed(result)) } : std::expected<void, Error>{};
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::rename(const char *oldPath, const char *newPath) {
@@ -485,7 +513,7 @@ std::expected<void, Error> LittleFsFileSystemBase::rename(const char *oldPath, c
    }
    deviceError_.reset();
    const int result = lfs_rename(&lfs_, oldPath, newPath);
-   return result < 0 ? std::expected<void, Error>{ failure(toError(result)) } : std::expected<void, Error>{};
+   return result < 0 ? std::expected<void, Error>{ failure(failed(result)) } : std::expected<void, Error>{};
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::mkdir(const char *path) {
@@ -498,7 +526,7 @@ std::expected<void, Error> LittleFsFileSystemBase::mkdir(const char *path) {
    }
    deviceError_.reset();
    const int result = lfs_mkdir(&lfs_, path);
-   return result < 0 ? std::expected<void, Error>{ failure(toError(result)) } : std::expected<void, Error>{};
+   return result < 0 ? std::expected<void, Error>{ failure(failed(result)) } : std::expected<void, Error>{};
 }
 
 std::expected<FileInfo, Error> LittleFsFileSystemBase::stat(const char *path) {

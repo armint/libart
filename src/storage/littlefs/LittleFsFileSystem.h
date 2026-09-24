@@ -87,6 +87,8 @@ class LittleFsFileSystemBase : public FileSystem {
    static bool isErrored(const FileSlot &slot);
    bool isPathOpen(uint32_t pathHash) const;
    void dropReadCaches();
+   void resetProgramCache();
+   Error failed(int lfsError);
    Error toError(int lfsError) const;
 
    static int lfsGet(const lfs_config *c, lfs_block_t blk, lfs_off_t at, void *buf, lfs_size_t n);
