@@ -63,6 +63,7 @@ file(GLOB TEST_SOURCES
         storage/TestFileSystem.cpp
         storage/TestFatFile.cpp
         storage/TestFatDir.cpp
+        storage/TestFatDiskIo.cpp
         storage/TestFatFileReadable.cpp
         storage/TestFatFileWritable.cpp
 )
