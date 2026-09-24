@@ -119,9 +119,10 @@ class FileSystem {
    /**
     * @brief Mounts the file system found on the underlying medium.
     *
-    * Mounting an already mounted file system succeeds and changes nothing. What happens to a medium without a
-    * valid file system is up to the implementation: it either fails with Error::Corrupt or formats it (see
-    * the documentation of the implementation). A failure never aborts the caller.
+    * Mounting an already mounted file system succeeds and changes nothing, unless the implementation refuses every
+    * call with Error::NeedsRemount (see StorageError.h): then mount() is refused as well, and unmount() comes
+    * first. What happens to a medium without a valid file system is up to the implementation: it either fails with
+    * Error::Corrupt or formats it (see the documentation of the implementation). A failure never aborts the caller.
     */
    virtual std::expected<void, Error> mount() = 0;
 
@@ -129,7 +130,9 @@ class FileSystem {
     * @brief Unmounts the file system.
     *
     * All open files are flushed and closed first, and the Files that refer to them become stale: their
-    * operations return Error::BadHandle. Unmounting a file system that is not mounted succeeds.
+    * operations return Error::BadHandle. Unmounting a file system that is not mounted succeeds. A file system that
+    * refuses everything with Error::NeedsRemount does not flush: it drops what its open files have not synced, and
+    * unmount() is the way out of that state.
     *
     * @return Nothing on success, otherwise the error of flushing (for example Error::Io). The file system is
     * unmounted in every case.

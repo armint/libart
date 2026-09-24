@@ -15,6 +15,8 @@ namespace art::storage {
  *
  * Adapters should keep the distinctions a caller can act on: NotReady, Timeout and Busy are transient and may
  * be retried or backed off, WriteProtected is permanent until the user intervenes, Io is a hard failure.
+ * NeedsRemount is the one code where a retry is wrong: the file system holds state it cannot trust and refuses
+ * everything until the caller unmounts and mounts it again (see LittleFsFileSystem).
  * Native codes without a dedicated enumerator map to the closest one. The FatFs mapping is:
  * - FR_DISK_ERR, FR_MKFS_ABORTED: Io (a failed format is a failed medium access; the cause is not observable).
  * - FR_NOT_READY: NotReady (no card in the slot, or not yet out of its power-up sequence).
@@ -64,7 +66,8 @@ enum class Error : uint8_t {
    Timeout,         ///< The device or a lock did not become ready in time. Retrying may succeed.
    Busy,            ///< The device or resource is in use or locked by someone else. Retrying later may succeed.
    WriteProtected,  ///< The medium or device is write protected (SD lock switch, NOR block protection).
-   NotReady, ///< No medium present or the device is not ready yet (empty SD slot, power-up). Retry or ask the user.
+   NotReady,     ///< No medium present or the device is not ready yet (empty SD slot, power-up). Retry or ask the user.
+   NeedsRemount, ///< The file system refuses every call until unmount() and mount(). A retry is refused as well.
 };
 
 /**
@@ -116,6 +119,8 @@ constexpr const char *toString(Error error) {
       return "WriteProtected";
    case Error::NotReady:
       return "NotReady";
+   case Error::NeedsRemount:
+      return "NeedsRemount";
    }
    return "Unknown";
 }

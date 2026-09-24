@@ -93,6 +93,24 @@ bool isWritable(OpenMode mode) {
    return mode != OpenMode::Read;
 }
 
+// littlefs returns these while it looks a path up, before it has changed anything: the call did not start, so it cannot
+// leave state behind. Any other error (a failed device call, or NOSPC in the middle of a commit) can come from part
+// way through. INVAL is what a rename of the root or onto the root gets. Errors that the binding rules out before it
+// calls littlefs (name length, other invalid arguments) are not listed: they never reach failedMutation().
+constexpr bool failsBeforeAnyChange(int lfsError) {
+   switch(lfsError) {
+   case LFS_ERR_NOENT:
+   case LFS_ERR_EXIST:
+   case LFS_ERR_NOTDIR:
+   case LFS_ERR_ISDIR:
+   case LFS_ERR_NOTEMPTY:
+   case LFS_ERR_INVAL:
+      return true;
+   default:
+      return false;
+   }
+}
+
 std::unexpected<Error> failure(Error error) {
    return std::unexpected(error);
 }
@@ -215,6 +233,44 @@ Error LittleFsFileSystemBase::failed(int lfsError) {
    return toError(lfsError);
 }
 
+// ---- poisoned mount ----
+
+// littlefs keeps state in memory that a failed call can leave out of step with the medium, and the binding cannot
+// repair it (see "Poisoned mount" in LittleFsFileSystem.h). Two situations are known to do that:
+// - a failed rename(): when the entry moves to another metadata pair it commits twice, and littlefs holds a pending
+//   move (gstate) in between. The pair is not the directory (a directory that has grown holds entries in several
+//   pairs) and the binding cannot ask which one a path lands in, so every rename counts;
+// - a failed mutating call while another file is open for writing (issue #15): the data of that writer was lost.
+// The mount is then refused until unmount() and mount(), which start from the medium like after a power cut.
+// A failure that littlefs reports before it changed anything (failsBeforeAnyChange()) is not one of them; the
+// same call on a healthy device would have failed in the same way.
+bool LittleFsFileSystemBase::hasOtherWriter(const FileSlot *self) const {
+   return std::ranges::any_of(buffers_.slots,
+                              [self](const FileSlot &slot) { return slot.used && slot.writable && &slot != self; });
+}
+
+// Like failed(), for a call that mutates: poisons the mount if the failure can have left littlefs undefined.
+// `self` is the slot of the file the call works on, if any. `isRename` is true for rename().
+Error LittleFsFileSystemBase::failedMutation(int lfsError, const FileSlot *self, bool isRename) {
+   if(!failsBeforeAnyChange(lfsError) && !poisoned_ && (isRename || hasOtherWriter(self))) {
+      poisoned_ = true;
+      LOG_ERROR(logger(), "%s failed (%d), the mount is refused until unmount() and mount()",
+                isRename ? "rename" : "change with a file open for writing", lfsError);
+   }
+   return failed(lfsError);
+}
+
+// Why a call cannot run, if it cannot.
+std::optional<Error> LittleFsFileSystemBase::refusal() const {
+   if(!mounted_) {
+      return Error::NotMounted;
+   }
+   if(poisoned_) {
+      return Error::NeedsRemount;
+   }
+   return std::nullopt;
+}
+
 // ---- block device callbacks ----
 
 int LittleFsFileSystemBase::lfsGet(const lfs_config *c, lfs_block_t blk, lfs_off_t at, void *buf, lfs_size_t n) {
@@ -315,6 +371,9 @@ std::expected<void, Error> LittleFsFileSystemBase::configure() {
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::mountLocked() {
+   if(poisoned_) {
+      return failure(Error::NeedsRemount); // mounted, and not to be trusted; unmount() first
+   }
    if(mounted_) {
       return {};
    }
@@ -350,14 +409,23 @@ std::expected<void, Error> LittleFsFileSystemBase::unmountLocked() {
    deviceError_.reset();
    std::expected<void, Error> outcome;
    for(auto &slot : buffers_.slots) {
-      if(slot.used) {
-         if(const auto closed = closeSlot(slot); !closed && outcome) {
-            outcome = closed;
-         }
+      if(!slot.used) {
+         continue;
+      }
+      // A poisoned mount must not commit: closing a writer would sync it through the state that cannot be trusted.
+      // What a writer has not synced is dropped; the caller has been refused since the failure. poisoned_ is read
+      // for every slot on purpose: a close that fails here can poison the mount, and the writers after it are then
+      // dropped like on any poisoned mount. unmount() reports that first error.
+      if(poisoned_) {
+         LOG_WARN(logger(), "dropping a file that was open on a poisoned mount, its unsynced data is lost");
+         releaseSlot(slot);
+      } else if(const auto closed = closeSlot(slot); !closed && outcome) {
+         outcome = closed;
       }
    }
    const int result = lfs_unmount(&lfs_);
    mounted_ = false;
+   poisoned_ = false;
    if(result != LFS_ERR_OK && outcome) {
       outcome = failure(toError(result));
    }
@@ -410,8 +478,8 @@ uint8_t *LittleFsFileSystemBase::cacheOf(size_t index) const {
 }
 
 // Maps a failed call on a file and remembers the error for isErrored() files.
-Error LittleFsFileSystemBase::noteFailure(FileSlot &slot, int lfsError) {
-   slot.lastError = failed(lfsError);
+Error LittleFsFileSystemBase::noteFailure(FileSlot &slot, int lfsError, bool mutating) {
+   slot.lastError = mutating ? failedMutation(lfsError, &slot) : failed(lfsError);
    return slot.lastError;
 }
 
@@ -425,15 +493,20 @@ bool LittleFsFileSystemBase::isErrored(const FileSlot &slot) {
 std::expected<void, Error> LittleFsFileSystemBase::closeSlot(FileSlot &slot) {
    const bool errored = isErrored(slot);
    const int result = lfs_file_close(&lfs_, &slot.file);
-   slot.used = false;
-   slot.generation = (slot.generation + 1u) & kGenerationMask;
+   releaseSlot(slot);
    if(result != LFS_ERR_OK) {
-      return failure(failed(result));
+      return failure(failedMutation(result, &slot));
    }
    if(errored) {
       return failure(slot.lastError);
    }
    return {};
+}
+
+// Frees the slot and invalidates its handles, without touching littlefs.
+void LittleFsFileSystemBase::releaseSlot(FileSlot &slot) {
+   slot.used = false;
+   slot.generation = (slot.generation + 1u) & kGenerationMask;
 }
 
 bool LittleFsFileSystemBase::isPathOpen(uint32_t pathHash) const {
@@ -445,8 +518,8 @@ bool LittleFsFileSystemBase::isPathOpen(uint32_t pathHash) const {
 
 std::expected<File, Error> LittleFsFileSystemBase::open(const char *path, OpenMode mode) {
    art::rtos::MutexGuard guard(mutex_);
-   if(!mounted_) {
-      return failure(Error::NotMounted);
+   if(const auto refused = refusal()) {
+      return failure(*refused);
    }
    const auto pathHash = hashPath(path);
    if(!pathHash) {
@@ -469,12 +542,12 @@ std::expected<File, Error> LittleFsFileSystemBase::open(const char *path, OpenMo
    freeSlot->config.buffer = cacheOf(index);
    int result = lfs_file_opencfg(&lfs_, &freeSlot->file, path, toLfsFlags(mode), &freeSlot->config);
    if(result < 0) {
-      return failure(failed(result));
+      return failure(writable ? failedMutation(result, nullptr) : failed(result));
    }
    if(mode == OpenMode::Append) {
       result = lfs_file_seek(&lfs_, &freeSlot->file, 0, LFS_SEEK_END);
       if(result < 0) {
-         const Error error = failed(result);
+         const Error error = failedMutation(result, nullptr);
          if(const int closed = lfs_file_close(&lfs_, &freeSlot->file); closed < 0) {
             static_cast<void>(failed(closed));
          }
@@ -491,8 +564,8 @@ std::expected<File, Error> LittleFsFileSystemBase::open(const char *path, OpenMo
 
 std::expected<void, Error> LittleFsFileSystemBase::remove(const char *path) {
    art::rtos::MutexGuard guard(mutex_);
-   if(!mounted_) {
-      return failure(Error::NotMounted);
+   if(const auto refused = refusal()) {
+      return failure(*refused);
    }
    const auto pathHash = hashPath(path);
    if(!pathHash) {
@@ -503,13 +576,16 @@ std::expected<void, Error> LittleFsFileSystemBase::remove(const char *path) {
    }
    deviceError_.reset();
    const int result = lfs_remove(&lfs_, path);
-   return result < 0 ? std::expected<void, Error>{ failure(failed(result)) } : std::expected<void, Error>{};
+   if(result < 0) {
+      return failure(failedMutation(result, nullptr));
+   }
+   return {};
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::rename(const char *oldPath, const char *newPath) {
    art::rtos::MutexGuard guard(mutex_);
-   if(!mounted_) {
-      return failure(Error::NotMounted);
+   if(const auto refused = refusal()) {
+      return failure(*refused);
    }
    const auto oldHash = hashPath(oldPath);
    if(!oldHash) {
@@ -526,26 +602,32 @@ std::expected<void, Error> LittleFsFileSystemBase::rename(const char *oldPath, c
    }
    deviceError_.reset();
    const int result = lfs_rename(&lfs_, oldPath, newPath);
-   return result < 0 ? std::expected<void, Error>{ failure(failed(result)) } : std::expected<void, Error>{};
+   if(result < 0) {
+      return failure(failedMutation(result, nullptr, true));
+   }
+   return {};
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::mkdir(const char *path) {
    art::rtos::MutexGuard guard(mutex_);
-   if(!mounted_) {
-      return failure(Error::NotMounted);
+   if(const auto refused = refusal()) {
+      return failure(*refused);
    }
    if(const auto pathHash = hashPath(path); !pathHash) {
       return failure(pathHash.error());
    }
    deviceError_.reset();
    const int result = lfs_mkdir(&lfs_, path);
-   return result < 0 ? std::expected<void, Error>{ failure(failed(result)) } : std::expected<void, Error>{};
+   if(result < 0) {
+      return failure(failedMutation(result, nullptr));
+   }
+   return {};
 }
 
 std::expected<FileInfo, Error> LittleFsFileSystemBase::stat(const char *path) {
    art::rtos::MutexGuard guard(mutex_);
-   if(!mounted_) {
-      return failure(Error::NotMounted);
+   if(const auto refused = refusal()) {
+      return failure(*refused);
    }
    if(const auto pathHash = hashPath(path); !pathHash) {
       return failure(pathHash.error());
@@ -562,8 +644,8 @@ std::expected<FileInfo, Error> LittleFsFileSystemBase::stat(const char *path) {
 
 std::expected<size_t, Error> LittleFsFileSystemBase::visitDirectory(const char *path, DirectoryVisitor visitor) {
    art::rtos::MutexGuard guard(mutex_);
-   if(!mounted_) {
-      return failure(Error::NotMounted);
+   if(const auto refused = refusal()) {
+      return failure(*refused);
    }
    if(const auto pathHash = hashPath(path); !pathHash) {
       return failure(pathHash.error());
@@ -600,8 +682,8 @@ std::expected<size_t, Error> LittleFsFileSystemBase::visitDirectory(const char *
 
 std::expected<offset_t, Error> LittleFsFileSystemBase::freeSpace() {
    art::rtos::MutexGuard guard(mutex_);
-   if(!mounted_) {
-      return failure(Error::NotMounted);
+   if(const auto refused = refusal()) {
+      return failure(*refused);
    }
    deviceError_.reset();
    const lfs_ssize_t usedBlocks = lfs_fs_size(&lfs_);
@@ -617,6 +699,9 @@ std::expected<offset_t, Error> LittleFsFileSystemBase::freeSpace() {
 
 std::expected<size_t, Error> LittleFsFileSystemBase::fileRead(FileHandle handle, std::span<uint8_t> buffer) {
    art::rtos::MutexGuard guard(mutex_);
+   if(poisoned_) {
+      return failure(Error::NeedsRemount);
+   }
    FileSlot *slot = lookup(handle);
    if(slot == nullptr) {
       return failure(Error::BadHandle);
@@ -628,13 +713,16 @@ std::expected<size_t, Error> LittleFsFileSystemBase::fileRead(FileHandle handle,
    const auto count = static_cast<lfs_size_t>(std::min<size_t>(buffer.size(), std::numeric_limits<int32_t>::max()));
    const lfs_ssize_t result = lfs_file_read(&lfs_, &slot->file, buffer.data(), count);
    if(result < 0) {
-      return failure(noteFailure(*slot, result));
+      return failure(noteFailure(*slot, result, false));
    }
    return static_cast<size_t>(result);
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::fileWrite(FileHandle handle, std::span<const uint8_t> data) {
    art::rtos::MutexGuard guard(mutex_);
+   if(poisoned_) {
+      return failure(Error::NeedsRemount);
+   }
    FileSlot *slot = lookup(handle);
    if(slot == nullptr) {
       return failure(Error::BadHandle);
@@ -648,14 +736,20 @@ std::expected<void, Error> LittleFsFileSystemBase::fileWrite(FileHandle handle, 
    deviceError_.reset();
    const lfs_ssize_t result = lfs_file_write(&lfs_, &slot->file, data.data(), static_cast<lfs_size_t>(data.size()));
    if(result < 0) {
-      return failure(noteFailure(*slot, result));
+      return failure(noteFailure(*slot, result, true));
    }
    // littlefs reports NOSPC as an error; a short count is treated the same way, never as success.
-   return static_cast<size_t>(result) == data.size() ? std::expected<void, Error>{} : failure(Error::NoSpace);
+   if(static_cast<size_t>(result) != data.size()) {
+      return failure(noteFailure(*slot, LFS_ERR_NOSPC, true));
+   }
+   return {};
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::fileSeek(FileHandle handle, offset_t position) {
    art::rtos::MutexGuard guard(mutex_);
+   if(poisoned_) {
+      return failure(Error::NeedsRemount);
+   }
    FileSlot *slot = lookup(handle);
    if(slot == nullptr) {
       return failure(Error::BadHandle);
@@ -665,11 +759,17 @@ std::expected<void, Error> LittleFsFileSystemBase::fileSeek(FileHandle handle, o
    }
    deviceError_.reset();
    const lfs_soff_t result = lfs_file_seek(&lfs_, &slot->file, static_cast<lfs_soff_t>(position), LFS_SEEK_SET);
-   return result < 0 ? std::expected<void, Error>{ failure(noteFailure(*slot, result)) } : std::expected<void, Error>{};
+   if(result < 0) {
+      return failure(noteFailure(*slot, result, false));
+   }
+   return {};
 }
 
 std::expected<offset_t, Error> LittleFsFileSystemBase::fileTell(FileHandle handle) {
    art::rtos::MutexGuard guard(mutex_);
+   if(poisoned_) {
+      return failure(Error::NeedsRemount);
+   }
    FileSlot *slot = lookup(handle);
    if(slot == nullptr) {
       return failure(Error::BadHandle);
@@ -684,6 +784,9 @@ std::expected<offset_t, Error> LittleFsFileSystemBase::fileTell(FileHandle handl
 
 std::expected<offset_t, Error> LittleFsFileSystemBase::fileSize(FileHandle handle) {
    art::rtos::MutexGuard guard(mutex_);
+   if(poisoned_) {
+      return failure(Error::NeedsRemount);
+   }
    FileSlot *slot = lookup(handle);
    if(slot == nullptr) {
       return failure(Error::BadHandle);
@@ -698,6 +801,9 @@ std::expected<offset_t, Error> LittleFsFileSystemBase::fileSize(FileHandle handl
 
 std::expected<void, Error> LittleFsFileSystemBase::fileSync(FileHandle handle) {
    art::rtos::MutexGuard guard(mutex_);
+   if(poisoned_) {
+      return failure(Error::NeedsRemount);
+   }
    FileSlot *slot = lookup(handle);
    if(slot == nullptr) {
       return failure(Error::BadHandle);
@@ -708,11 +814,17 @@ std::expected<void, Error> LittleFsFileSystemBase::fileSync(FileHandle handle) {
    }
    deviceError_.reset();
    const int result = lfs_file_sync(&lfs_, &slot->file);
-   return result < 0 ? std::expected<void, Error>{ failure(noteFailure(*slot, result)) } : std::expected<void, Error>{};
+   if(result < 0) {
+      return failure(noteFailure(*slot, result, true));
+   }
+   return {};
 }
 
 std::expected<void, Error> LittleFsFileSystemBase::fileClose(FileHandle handle) {
    art::rtos::MutexGuard guard(mutex_);
+   if(poisoned_) {
+      return failure(Error::NeedsRemount);
+   }
    FileSlot *slot = lookup(handle);
    if(slot == nullptr) {
       return failure(Error::BadHandle);

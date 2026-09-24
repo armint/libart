@@ -297,7 +297,10 @@ TEST_SUITE("LittleFsFileSystem program cache after a failed device read") {
       }
    }
 
-   TEST_CASE("rename within a directory can be retried after a failed read at any point") {
+   // A failed rename() poisons the mount (TestLittleFsPoison.cpp): the retry is refused, and littlefs starts again from
+   // the medium at the remount. The program cache is empty in any case, which the sweep checks after every step, and
+   // the volume must be consistent and take writes after the remount.
+   TEST_CASE("rename within a directory is refused after a failed read at any point, and a remount recovers") {
       Fixture fixture;
       // A new name, one that replaces a file, and the same in a subdirectory.
       using Rename = std::pair<const char *, const char *>;
@@ -311,12 +314,23 @@ TEST_SUITE("LittleFsFileSystem program cache after a failed device read") {
          fixture, [&, to = to, from = from](FileSystem &fs) { return fs.rename(from, to).has_value(); },
          [&, to = to, from = from](FileSystem &fs, bool completed) {
             if(!completed) {
-               retryOrAlreadyDone(fs.rename(from, to), Error::NoEntry);
+               const auto retry = fs.rename(from, to);
+               CHECK((!retry.has_value() && retry.error() == Error::NeedsRemount));
+               REQUIRE(fs.unmount().has_value());
+               REQUIRE(fs.mount().has_value());
+               REQUIRE(fs.writeFile("/settled", pattern(30u, 27u)).has_value());
             }
-            CHECK(readBack(fs, to) == content);
-            CHECK((fs.stat(from).error() == Error::NoEntry));
+            // The rename took place or not; a target that is a baseline file is replaced or as it was.
+            const bool moved = !fs.stat(from).has_value();
+            CHECK((completed ? moved : true));
+            if(moved) {
+               CHECK(readBack(fs, to) == content);
+            } else {
+               CHECK(readBack(fs, from) == content);
+            }
             expectWritesWork(fs, "/after", pattern(3000u, 13u), true, { from, to });
-         });
+         },
+         1u, false);
       }
    }
 
@@ -389,42 +403,6 @@ TEST_SUITE("LittleFsFileSystem program cache after a failed device read") {
       CHECK(completed);
    }
 
-   TEST_CASE("a failed operation leaves the pending data of another open file alone") {
-      // The program cache is reset, the caches of files that are being written are not: their pending data is
-      // only there.
-      Fixture fixture;
-      const auto pending = pattern(1000u, 17u); // its tail stays in the file cache until close()
-      const std::vector<std::pair<const char *, std::function<bool(FileSystem &)>>> operations{
-         { "mkdir", [](FileSystem &fs) { return fs.mkdir("/made").has_value(); } },
-         { "remove", [](FileSystem &fs) { return fs.remove("/small").has_value(); } },
-         { "rename", [](FileSystem &fs) { return fs.rename("/small", "/renamed").has_value(); } },
-         { "writeFile", [](FileSystem &fs) { return fs.writeFile("/new", pattern(3000u, 18u)).has_value(); } },
-      };
-      for(const auto &[name, operation] : operations) {
-         CAPTURE(std::string(name));
-         bool completed = false;
-         for(uint32_t failAfter = 0u; failAfter < kMaxReads && !completed; ++failAfter) {
-            CAPTURE(failAfter);
-            fixture.restore();
-            auto writer = fixture.fileSystem.open("/pending", OpenMode::Write);
-            REQUIRE(writer.has_value());
-            REQUIRE(writer->write(pending).has_value());
-
-            fixture.flaky.armAfter(failAfter);
-            completed = operation(fixture.fileSystem);
-            fixture.flaky.disarm();
-
-            REQUIRE(writer->write(pattern(10u, 19u)).has_value());
-            REQUIRE(writer->close().has_value());
-            auto expected = pending;
-            const auto tail = pattern(10u, 19u);
-            expected.insert(expected.end(), tail.begin(), tail.end());
-            CHECK(readBack(fixture.fileSystem, "/pending") == expected);
-         }
-         CHECK(completed);
-      }
-   }
-
    TEST_CASE("a commit that compacts a directory can be retried after a failed read at any point") {
       const uint32_t compactingCycle = churnUntilCompaction();
       const std::vector<std::pair<const char *, std::function<bool(FileSystem &)>>> operations{
@@ -434,15 +412,21 @@ TEST_SUITE("LittleFsFileSystem program cache after a failed device read") {
          { "rename", [](FileSystem &fs) { return fs.rename("/small", "/renamed").has_value(); } },
          { "handle", [](FileSystem &fs) { return writeThroughHandle(fs, "/small", OpenMode::Write, pattern(50u)); } },
       };
+      // A rename poisons the mount when it fails; the recovery starts with the remount then.
       const auto recover = [](FileSystem &fs, bool) {
-         expectWritesWork(fs, "/after", pattern(3000u, 25u), true, { "/small" });
+         if(const auto info = fs.stat("/dir"); !info && info.error() == Error::NeedsRemount) {
+            REQUIRE(fs.unmount().has_value());
+            REQUIRE(fs.mount().has_value());
+            REQUIRE(fs.writeFile("/settled", pattern(30u, 27u)).has_value());
+         }
+         expectWritesWork(fs, "/after", pattern(3000u, 25u), true, { "/small", "/renamed" });
       };
       for(const auto &[name, operation] : operations) {
          for(uint32_t margin = 1u; margin <= 2u; ++margin) {
             CAPTURE(std::string(name));
             CAPTURE(margin);
             Fixture fixture(compactingCycle - margin);
-            sweep(fixture, operation, recover, kCompactionStride);
+            sweep(fixture, operation, recover, kCompactionStride, std::string_view(name) != "rename");
          }
       }
    }

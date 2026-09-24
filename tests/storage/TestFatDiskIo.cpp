@@ -236,8 +236,9 @@ TEST_CASE("[FatDiskIo] device errors map onto DRESULT [FatDiskIo]") {
       { Error::Busy, RES_ERROR },
       { Error::WriteProtected, RES_WRPRT },
       { Error::NotReady, RES_NOTRDY },
+      { Error::NeedsRemount, RES_ERROR },
    };
-   static_assert(std::size(rows) == static_cast<size_t>(Error::NotReady) + 1u);
+   static_assert(std::size(rows) == static_cast<size_t>(Error::NeedsRemount) + 1u);
 
    for(const Row &row : rows) {
       CAPTURE(toString(row.error));
