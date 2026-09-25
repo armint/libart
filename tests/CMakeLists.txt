@@ -120,6 +120,7 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/SHA256Digest.cpp
         storage/FatTestDisk.h
         storage/RamBlockDevice.h
+        storage/PowerCutDevice.h
         storage/InMemoryFileSystem.h
         storage/MockCipherBlockDevice.h
         storage/BlockDeviceContract.h
