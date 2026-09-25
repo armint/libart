@@ -45,7 +45,8 @@ class LittleFsFileSystemBase : public FileSystem {
     *
     * @return Error::NotMounted if the file system is not mounted and Error::NeedsRemount if the mount is poisoned
     * (nothing is attempted then). A failure of the repair itself (Io, Timeout, NoSpace, Corrupt, ...) is reported like
-    * any other and poisons the mount: unmount() and mount(), then call it again.
+    * any other and poisons the mount: unmount() and mount(), and go on without the repair (the volume is readable) or
+    * try it once more later. Do not retry in a loop, see "Boot sequence" in "Consistency after a remount".
     */
    std::expected<void, Error> makeConsistent();
 
@@ -266,20 +267,24 @@ class LittleFsFileSystemBase : public FileSystem {
  *   number of read-only mounts. Call makeConsistent() after the remount and before reading anything that matters.
  *
  * @par Consistency after a remount
- * littlefs completes some changes lazily. A rename() into another metadata pair commits twice, and between the two
+ * littlefs completes some changes lazily. A rename() between two metadata pairs commits twice, and between the two
  * commits the medium holds a pending move that hides the old entry. littlefs finishes it in the first call that
  * changes the volume after the next mount, never in mount() or in a read. The state is on the medium after a power cut
  * between the two commits, after an unclean power-down in general, and after a rename() that failed (see "Poisoned
- * mount"); it survives any number of read-only mounts.
+ * mount"); it survives any number of read-only mounts. The unit is the metadata pair, not the directory: a rename()
+ * inside one directory is affected as well when that directory has outgrown one pair (about 55 small entries with
+ * 4 KiB blocks), so this is not limited to renames into another directory.
  *
- * Until the move is finished, the entry that follows the moved one in the source directory is missing: stat() reports
- * Error::NoEntry for it and visitDirectory() does not list it, although the file is intact. That is an upstream
- * regression of littlefs (commit ddbfcaa7, in v2.9.1 up to and including v2.11.3), and it hits unrelated files of the
- * directory the rename moved from, for example the spool or backlog directory a task lists at boot.
+ * Until the move is finished, the entry that follows the moved one in the source directory is missing: visitDirectory()
+ * does not list it, and stat(), open() for reading and readFile() report Error::NoEntry for it, although the file is
+ * intact. That is an upstream regression of littlefs (commit ddbfcaa7, in v2.9.1 up to and including v2.11.3), and it
+ * hits unrelated files of that directory, for example the spool or backlog directory a task lists at boot. The
+ * lookup by name is affected, not only the listing: a task that opens a record by name is told it does not exist,
+ * and may drop it.
  *
  * makeConsistent() finishes the pending changes on request. The application must call it once after every mount()
- * that follows a NeedsRemount recovery or an unclean power-down (in practice after every boot), before it lists or
- * stat()s anything that matters. Before that call the volume is consistent but reads can be wrong.
+ * that follows a NeedsRemount recovery or an unclean power-down (in practice after every boot), before it lists, opens,
+ * reads or stat()s anything that matters. Before that call the volume is consistent but reads can be wrong.
  * - It is not part of mount(), on purpose. A mount that writes could fail with Io or NoSpace on exactly the failing
  *   medium that needs the repair, and the read-only recovery path would be gone. The application decides when a write
  *   is acceptable.
@@ -287,9 +292,24 @@ class LittleFsFileSystemBase : public FileSystem {
  * - It is refused with Error::NotMounted or Error::NeedsRemount like every call.
  * - Open files are no obstacle: littlefs runs the same code before every remove(), mkdir(), rename() and open() for
  *   writing, with the open files on its list, so nothing extra is at stake. An open writer keeps its unsynced data.
+ * - Cost when something is pending. The pending move of a rename costs about 20 device operations and one write
+ *   (TestLittleFsConsistency.cpp). That is not a bound: an orphan (a metadata pair that no directory references, left
+ *   by a power cut while a directory was removed, or while a block was relocated) makes littlefs traverse the whole
+ *   metadata tree twice, so the cost grows with the number of metadata pairs (570 device operations and 3 writes on
+ *   the small test volume). Only the pending move, and the orphan of a removed directory on a small volume, are
+ *   tested.
  * - A failure poisons the mount (see "Poisoned mount"), whatever else is open: littlefs deletes the moved entry with
  *   the move already cleared in memory, so a failed commit leaves the memory out of step with the medium like a failed
- *   rename(). Call unmount(), mount() and makeConsistent() again. The medium is still consistent afterwards.
+ *   rename(). The medium is still consistent afterwards.
+ *
+ * Boot sequence. The repair writes, so it can keep failing on a medium that cannot be written (a write that fails for
+ * good, or NoSpace on a full volume). Every failure poisons the mount and every read is refused then, but the volume
+ * itself stays readable after a remount without the repair. So do not retry in a loop:
+ * 1. mount().
+ * 2. makeConsistent(), once.
+ * 3. If it failed: unmount() and mount() again, go on read-only without the repair, and accept that the entry behind a
+ *    moved one can be hidden (also from open() and stat()) until a later attempt succeeds. Try the repair again on the
+ *    next boot, or when space was freed or the medium works again, never in a tight loop.
  *
  * @par Stack use
  * visitDirectory() and stat() keep an lfs_info (about 260 bytes) and an lfs_dir_t on the stack.
