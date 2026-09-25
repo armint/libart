@@ -297,9 +297,10 @@ class LittleFsFileSystemBase : public FileSystem {
  * - Cost when something is pending. The pending move of a rename costs about 20 device operations and one write
  *   (TestLittleFsConsistency.cpp). That is not a bound: an orphan (a metadata pair that no directory references, left
  *   by a power cut while a directory was removed, or while a block was relocated) makes littlefs traverse the whole
- *   metadata tree twice, so the cost grows with the number of metadata pairs (570 device operations and 3 writes on
- *   the small test volume). Only the pending move, and the orphan of a removed directory on a small volume, are
- *   tested.
+ *   metadata tree twice. That grows faster than linearly with the number of metadata pairs (measured with
+ *   directories added to a volume: 33 device operations with none, 296 with 6, 1420 with 20, 7699 with 50), while
+ *   the writes stay at 2 or 3, so it is a boot time cost, not wear. The test volume needs 570 operations and
+ *   3 writes. Only the pending move, and the orphan of a removed directory on a small volume, are tested.
  * - A failure poisons the mount (see "Poisoned mount"), whatever else is open: littlefs deletes the moved entry with
  *   the move already cleared in memory, so a failed commit leaves the memory out of step with the medium like a failed
  *   rename(). The medium is still consistent afterwards.
