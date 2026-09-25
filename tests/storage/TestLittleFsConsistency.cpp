@@ -17,9 +17,9 @@
 //
 // littlefs completes the pending move of a cross-directory rename() lazily, in the first call that changes the volume
 // after a mount. Since littlefs commit ddbfcaa7 (v2.9.1 up to v2.11.3) a read before that call does not find the entry
-// that follows the moved one in the source directory: visitDirectory() does not list it and stat() reports NoEntry,
-// although nothing is wrong on the medium. The state is left by a failed rename() (the mount is poisoned and the caller
-// remounts) and by a power cut between the two commits of the rename.
+// that follows the moved one in the source directory: visitDirectory() does not list it and stat(), open() and
+// readFile() report NoEntry for it, although nothing is wrong on the medium. The state is left by a failed rename()
+// (the mount is poisoned and the caller remounts) and by a power cut between the two commits of the rename.
 //
 // The volume is the one of the review that found it: rename("/old", "/dir/moved") in a root directory that holds
 // dir, existing, old and small. "small" follows "old" and is the entry that goes missing. The sweeps fail a device call
@@ -83,12 +83,24 @@ std::optional<Names> listing(FileSystem &fileSystem, const char *path) {
    return lister.names;
 }
 
-// What a read-only boot sees of the files that have nothing to do with the rename. False is the upstream problem.
+// What a read-only boot sees of the files that have nothing to do with the rename. False is the upstream problem. It
+// shows in four calls that share the lookup: visitDirectory() misses the entry, and stat(), open() and readFile()
+// report NoEntry for it.
 bool seesUnrelatedFiles(FileSystem &fileSystem) {
    const auto root = listing(fileSystem, "/");
    const auto small = fileSystem.stat("/small");
+   const auto opened = fileSystem.open("/small", OpenMode::Read);
    const bool listed = root && root->contains("dir") && root->contains("existing") && root->contains("small");
-   return listed && small && small->size == 20u;
+   const bool intact = small && small->size == 20u && content(fileSystem, "/small") == pattern(20u, 2u);
+   return listed && intact && opened.has_value();
+}
+
+// True when all four calls agree that "small" is gone, which is what the upstream problem does to a caller.
+bool hidesSmallEverywhere(FileSystem &fileSystem) {
+   const auto root = listing(fileSystem, "/");
+   const bool statFails = failsWith(fileSystem.stat("/small"), Error::NoEntry);
+   const bool openFails = failsWith(fileSystem.open("/small", OpenMode::Read), Error::NoEntry);
+   return root && !root->contains("small") && statFails && openFails && !content(fileSystem, "/small").has_value();
 }
 
 // The volume, when the interrupted rename("/old", "/dir/moved") has taken effect completely or not at all, with every
@@ -199,7 +211,8 @@ RenameCost measureRename(Volume &volume) {
 struct SweepResult {
    uint32_t positions{ 0u };
    uint32_t failed{ 0u };
-   uint32_t missedEntries{ 0u }; // remounts where a read before makeConsistent() missed an unrelated file
+   uint32_t missedEntries{ 0u };    // remounts where a read before makeConsistent() missed an unrelated file
+   uint32_t hiddenEverywhere{ 0u }; // of those, remounts where the listing, stat(), open() and readFile() all miss it
 };
 
 // Fails the rename at every position of the kind, remounts like a boot, and checks that makeConsistent() settles the
@@ -223,6 +236,7 @@ SweepResult sweepRename(Volume &volume, uint32_t positions, bool readFirst, Arm 
       volume.remount();
       if(readFirst && !seesUnrelatedFiles(volume.fileSystem)) {
          ++result.missedEntries;
+         result.hiddenEverywhere += hidesSmallEverywhere(volume.fileSystem) ? 1u : 0u;
       }
       // No write has happened since the mount, so this is the state a boot finds.
       REQUIRE(volume.fileSystem.makeConsistent().has_value());
@@ -256,6 +270,8 @@ void runReadFaultSweep(bool readFirst) {
       // The test is only worth something while it reproduces the problem. If a newer littlefs no longer does, this
       // fails: then the sweep does not prove that makeConsistent() heals anything and needs a new trigger.
       CHECK(result.missedEntries >= 10u);
+      // A caller that opens or reads a record by name is told it does not exist, not only that it is not listed.
+      CHECK(result.hiddenEverywhere == result.missedEntries);
    }
 }
 
@@ -318,6 +334,31 @@ uint32_t sweepMakeConsistent(Volume &volume, const Bytes &pending, uint32_t posi
       CHECK(volume.deviceOperations() == 0u);
    }
    return failed;
+}
+
+// The boot sequence the header documents: mount, try the repair once, and if that fails go on without it after a
+// remount (the failure poisoned the mount). Never loops. Returns whether the repair worked.
+bool bootWithBoundedRepair(LittleFsFileSystemBase &fileSystem) {
+   REQUIRE(fileSystem.mount().has_value());
+   if(fileSystem.makeConsistent()) {
+      return true;
+   }
+   REQUIRE(fileSystem.unmount().has_value());
+   REQUIRE(fileSystem.mount().has_value());
+   return false;
+}
+
+// The volume of the sweeps, with the files that have nothing to do with the operation under test intact.
+void expectBaseFilesIntact(FileSystem &fileSystem) {
+   const auto root = listing(fileSystem, "/");
+   REQUIRE(root.has_value());
+   CHECK(root->contains("dir"));
+   CHECK(root->contains("existing"));
+   CHECK(content(fileSystem, "/existing") == pattern(400u, 4u));
+   CHECK(content(fileSystem, "/dir/x") == pattern(500u, 3u));
+   const auto info = fileSystem.stat("/dir");
+   REQUIRE(info.has_value());
+   CHECK(info->type == EntryType::Directory);
 }
 
 } // namespace
@@ -522,5 +563,87 @@ TEST_SUITE("LittleFsFileSystem makeConsistent") {
       CHECK(failsWith(volume.fileSystem.makeConsistent(), Error::Timeout));
       volume.flaky.disarm();
       CHECK(failsWith(volume.fileSystem.makeConsistent(), Error::NeedsRemount));
+   }
+
+   TEST_CASE("a medium that cannot be written: the bounded boot sequence keeps reading the volume") {
+      Volume volume;
+      const Bytes pending = pendingMoveImage(volume);
+      volume.load(pending);
+
+      // The first write of the first boot kills the power for good; the medium is read only from then on.
+      REQUIRE(volume.fileSystem.mount().has_value());
+      volume.powerCut.armCut(1u, 0u);
+      REQUIRE(failsWith(volume.fileSystem.makeConsistent(), Error::Io));
+      REQUIRE(failsWith(volume.fileSystem.stat("/existing"), Error::NeedsRemount)); // why the caller must not loop
+      REQUIRE(volume.fileSystem.unmount().has_value());
+
+      for(uint32_t boot = 0u; boot < 3u; ++boot) {
+         CAPTURE(boot);
+         CHECK_FALSE(bootWithBoundedRepair(volume.fileSystem));
+         // Everything but the entry the upstream problem hides is readable, the volume is not lost.
+         expectBaseFilesIntact(volume.fileSystem);
+         REQUIRE(volume.fileSystem.unmount().has_value());
+      }
+
+      // The medium works again (or space was freed): the repair, tried once more, settles the volume.
+      volume.powerCut.restorePower();
+      CHECK(bootWithBoundedRepair(volume.fileSystem));
+      expectRenameSettled(volume.fileSystem);
+   }
+
+   TEST_CASE("makeConsistent() after a power cut in rmdir: cost and result with an orphan") {
+      // Removing a directory commits the parent first, with the orphan count raised in the gstate, and drops the
+      // directory's metadata pair afterwards. A power cut in between leaves an orphan, which littlefs finds by
+      // traversing the whole metadata tree in two passes in the first change. That is not bounded by the move of a
+      // rename, so this measures the cost and checks the result.
+      Volume volume;
+      volume.restore();
+      REQUIRE(volume.fileSystem.mkdir("/gone").has_value());
+      REQUIRE(volume.fileSystem.unmount().has_value());
+      const Bytes withGone(volume.backing.begin(), volume.backing.end());
+      volume.load(withGone);
+      REQUIRE(volume.fileSystem.mount().has_value());
+      REQUIRE(volume.fileSystem.remove("/gone").has_value());
+      const uint32_t writes = volume.powerCut.writeOperations();
+      REQUIRE(writes >= 2u);
+
+      uint32_t cuts = 0u;
+      uint32_t withWork = 0u;
+      uint32_t mostOperations = 0u;
+      uint32_t mostWrites = 0u;
+      for(const size_t tornBytes : { size_t{ 0u }, size_t{ 8u } }) {
+         for(uint32_t position = 0u; position < writes; ++position) {
+            CAPTURE(tornBytes);
+            CAPTURE(position);
+            volume.load(withGone);
+            REQUIRE(volume.fileSystem.mount().has_value());
+            volume.powerCut.armCut(position + 1u, tornBytes);
+            CHECK_FALSE(volume.fileSystem.remove("/gone").has_value());
+            volume.remount();
+            ++cuts;
+            volume.ram.resetCounters();
+            volume.powerCut.resetCount();
+            REQUIRE(volume.fileSystem.makeConsistent().has_value());
+            if(volume.deviceOperations() > 0u) {
+               ++withWork;
+               mostOperations = std::max(mostOperations, volume.deviceOperations());
+               mostWrites = std::max(mostWrites, volume.powerCut.writeOperations());
+            }
+            expectBaseFilesIntact(volume.fileSystem);
+            const auto root = listing(volume.fileSystem, "/");
+            REQUIRE(root.has_value());
+            CHECK(root->size() == (root->contains("gone") ? 5u : 4u)); // removed completely, or not at all
+
+            // The repair is on the medium, and the volume takes the call again.
+            volume.remount();
+            volume.ram.resetCounters();
+            CHECK(volume.fileSystem.makeConsistent().has_value());
+            CHECK(volume.deviceOperations() == 0u);
+            CHECK(volume.fileSystem.mkdir("/after").has_value());
+         }
+      }
+      INFO("rmdir sweep: ", cuts, " cuts, ", withWork, " left work, at most ", mostOperations,
+           " device operations and ", mostWrites, " writes");
+      CHECK(withWork >= 1u); // the test measures an orphan, or it measures nothing
    }
 }
