@@ -217,12 +217,13 @@ class LittleFsFileSystemBase : public FileSystem {
  *   commits twice, and a read that fails in between leaves littlefs with a pending move. A repeat of the rename can
  *   then report success and later commits lose entries at the next mount, or trip an assertion of littlefs
  *   (`dir->count > 0` in lfs_dir_relocatingcommit()), which continues with a wrong count when assertions are compiled
- *   out. The pair is not the directory: a directory that has grown over several pairs (about 55 small entries with
- *   4 KiB blocks) takes this path for a rename inside it, and the binding cannot ask which pair a path lands in. So
- *   every failed rename() poisons the mount, whatever its paths are. makeConsistent() commits the second half of such
- *   a rename (it deletes the moved entry) with the pending move already cleared in memory, so a failed commit leaves
- *   the same state, and every failure of it poisons the mount, whatever else is open. Without that, 1 of the 20
- *   failing device calls of the repair on the volume of TestLittleFsConsistency.cpp lost a file at the next mount.
+ *   out. The pair is not the directory: a directory that has grown over several pairs (measured with 4 KiB blocks:
+ *   from 65 entries with 30 character names to 119 with 3 character names) takes this path for a rename inside it,
+ *   and the binding cannot ask which pair a path lands in. So every failed rename() poisons the mount, whatever its
+ *   paths are. makeConsistent() commits the second half of such a rename (it deletes the moved entry) with the
+ *   pending move already cleared in memory, so a failed commit leaves the same state, and every failure of it poisons
+ *   the mount, whatever else is open. Without that, 1 of the 20 failing device calls of the repair on the volume of
+ *   TestLittleFsConsistency.cpp lost a file at the next mount.
  * - A failed change (open for writing, File::write(), File::sync(), File::close(), remove(), mkdir(), and rename()
  *   as above) while another file is open for writing. One read position was observed to lose the data of that file at
  *   its close(), although the close reports success (issue #15).
@@ -272,8 +273,9 @@ class LittleFsFileSystemBase : public FileSystem {
  * changes the volume after the next mount, never in mount() or in a read. The state is on the medium after a power cut
  * between the two commits, after an unclean power-down in general, and after a rename() that failed (see "Poisoned
  * mount"); it survives any number of read-only mounts. The unit is the metadata pair, not the directory: a rename()
- * inside one directory is affected as well when that directory has outgrown one pair (about 55 small entries with
- * 4 KiB blocks), so this is not limited to renames into another directory.
+ * inside one directory is affected as well when that directory has outgrown one pair (with 4 KiB blocks, from 65
+ * entries with 30 character names to 119 with 3 character names), so this is not limited to renames into another
+ * directory.
  *
  * Until the move is finished, the entry that follows the moved one in the source directory is missing: visitDirectory()
  * does not list it, and stat(), open() for reading and readFile() report Error::NoEntry for it, although the file is
