@@ -70,7 +70,7 @@ file(GLOB TEST_SOURCES
 
 # The LittleFS binding runs the real littlefs; its target is defined by the top-level CMakeLists.txt.
 if (_ART_NEED_LITTLEFS)
-    list(APPEND TEST_SOURCES storage/TestLittleFsFileSystem.cpp storage/TestLittleFsReadCache.cpp storage/TestLittleFsProgramCache.cpp storage/TestLittleFsCompat.cpp storage/TestLittleFsPoison.cpp storage/TestFileStreams.cpp)
+    list(APPEND TEST_SOURCES storage/TestLittleFsFileSystem.cpp storage/TestLittleFsReadCache.cpp storage/TestLittleFsProgramCache.cpp storage/TestLittleFsCompat.cpp storage/TestLittleFsPoison.cpp storage/TestLittleFsConsistency.cpp storage/TestFileStreams.cpp)
 endif ()
 
 file(GLOB TO_TEST_SOURCES
@@ -120,6 +120,7 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/SHA256Digest.cpp
         storage/FatTestDisk.h
         storage/RamBlockDevice.h
+        storage/PowerCutDevice.h
         storage/InMemoryFileSystem.h
         storage/MockCipherBlockDevice.h
         storage/BlockDeviceContract.h
