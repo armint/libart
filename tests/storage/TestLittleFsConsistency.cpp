@@ -580,6 +580,7 @@ TEST_SUITE("LittleFsFileSystem makeConsistent") {
       for(uint32_t boot = 0u; boot < 3u; ++boot) {
          CAPTURE(boot);
          CHECK_FALSE(bootWithBoundedRepair(volume.fileSystem));
+         CHECK(hidesSmallEverywhere(volume.fileSystem)); // the accepted limitation of going on without the repair
          // Everything but the entry the upstream problem hides is readable, the volume is not lost.
          expectBaseFilesIntact(volume.fileSystem);
          REQUIRE(volume.fileSystem.unmount().has_value());
