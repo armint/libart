@@ -250,12 +250,14 @@ bool LittleFsFileSystemBase::hasOtherWriter(const FileSlot *self) const {
 }
 
 // Like failed(), for a call that mutates: poisons the mount if the failure can have left littlefs undefined.
-// `self` is the slot of the file the call works on, if any. `isRename` is true for rename().
-Error LittleFsFileSystemBase::failedMutation(int lfsError, const FileSlot *self, bool isRename) {
-   if(!failsBeforeAnyChange(lfsError) && !poisoned_ && (isRename || hasOtherWriter(self))) {
+// `self` is the slot of the file the call works on, if any. `multiCommitCall` names a call that commits more than once
+// with a gstate change in memory in between (rename(), makeConsistent()): a failure of it poisons the mount whatever
+// else is open.
+Error LittleFsFileSystemBase::failedMutation(int lfsError, const FileSlot *self, const char *multiCommitCall) {
+   if(!failsBeforeAnyChange(lfsError) && !poisoned_ && (multiCommitCall != nullptr || hasOtherWriter(self))) {
       poisoned_ = true;
       LOG_ERROR(logger(), "%s failed (%d), the mount is refused until unmount() and mount()",
-                isRename ? "rename" : "change with a file open for writing", lfsError);
+                multiCommitCall != nullptr ? multiCommitCall : "change with a file open for writing", lfsError);
    }
    return failed(lfsError);
 }
@@ -603,7 +605,7 @@ std::expected<void, Error> LittleFsFileSystemBase::rename(const char *oldPath, c
    deviceError_.reset();
    const int result = lfs_rename(&lfs_, oldPath, newPath);
    if(result < 0) {
-      return failure(failedMutation(result, nullptr, true));
+      return failure(failedMutation(result, nullptr, "rename"));
    }
    return {};
 }
@@ -620,6 +622,28 @@ std::expected<void, Error> LittleFsFileSystemBase::mkdir(const char *path) {
    const int result = lfs_mkdir(&lfs_, path);
    if(result < 0) {
       return failure(failedMutation(result, nullptr));
+   }
+   return {};
+}
+
+// lfs_fs_mkconsistent() completes what littlefs leaves for the first change after a mount: the pending move of a
+// rename() (lfs_fs_demove(), which hides entries of the source directory from reads until it ran), a half-done
+// directory split (orphans) and a pending superblock rewrite. It writes only if there is something to complete.
+// Open files are fine: every mutating call of littlefs runs the same code first, with the open files on its list
+// (lfs_fs_forceconsistency()), so remove() or mkdir() with a file open does exactly this. The move is deleted with
+// gstate set in memory before the commit, so a failed commit leaves the gstate out of step with the medium like a
+// failed rename() does: any failure poisons the mount, whatever else is open. Measured on a volume with a pending move:
+// when the caller went on after a failed repair (no poison), 1 of the 20 failing device calls lost an unrelated file
+// at the next mount.
+std::expected<void, Error> LittleFsFileSystemBase::makeConsistent() {
+   art::rtos::MutexGuard guard(mutex_);
+   if(const auto refused = refusal()) {
+      return failure(*refused);
+   }
+   deviceError_.reset();
+   const int result = lfs_fs_mkconsistent(&lfs_);
+   if(result < 0) {
+      return failure(failedMutation(result, nullptr, "makeConsistent"));
    }
    return {};
 }

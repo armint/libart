@@ -37,6 +37,18 @@ class LittleFsFileSystemBase : public FileSystem {
    std::expected<size_t, Error> visitDirectory(const char *path, DirectoryVisitor visitor) override;
    std::expected<offset_t, Error> freeSpace() override;
 
+   /**
+    * @brief Completes the changes littlefs left pending on the medium, so that reads see every entry.
+    *
+    * See "Consistency after a remount" in LittleFsFileSystem. Not part of FileSystem: no other file system needs it.
+    * Writes only if something is pending; on a consistent volume it reads and changes nothing.
+    *
+    * @return Error::NotMounted if the file system is not mounted and Error::NeedsRemount if the mount is poisoned
+    * (nothing is attempted then). A failure of the repair itself (Io, Timeout, NoSpace, Corrupt, ...) is reported like
+    * any other and poisons the mount: unmount() and mount(), then call it again.
+    */
+   std::expected<void, Error> makeConsistent();
+
    protected:
    /// State of one entry of the static open-file pool.
    struct FileSlot {
@@ -90,7 +102,7 @@ class LittleFsFileSystemBase : public FileSystem {
    void dropReadCaches();
    void resetProgramCache();
    Error failed(int lfsError);
-   Error failedMutation(int lfsError, const FileSlot *self, bool isRename = false);
+   Error failedMutation(int lfsError, const FileSlot *self, const char *multiCommitCall = nullptr);
    bool hasOtherWriter(const FileSlot *self) const;
    std::optional<Error> refusal() const;
    Error toError(int lfsError) const;
@@ -250,6 +262,32 @@ class LittleFsFileSystemBase : public FileSystem {
  * rename()) brings the entries back, at every position. After a remount that follows a failed rename(), make a change
  * before reading anything that matters. An explicit call for this is tracked in libart issue #19; it is deliberately
  * not part of mount(), which would then write and could fail on the medium that caused the problem.
+ *
+ * @par Consistency after a remount
+ * littlefs completes some changes lazily. A rename() into another metadata pair commits twice, and between the two
+ * commits the medium holds a pending move that hides the old entry. littlefs finishes it in the first call that
+ * changes the volume after the next mount, never in mount() or in a read. The state is on the medium after a power cut
+ * between the two commits, after an unclean power-down in general, and after a rename() that failed (see "Poisoned
+ * mount"); it survives any number of read-only mounts.
+ *
+ * Until the move is finished, the entry that follows the moved one in the source directory is missing: stat() reports
+ * Error::NoEntry for it and visitDirectory() does not list it, although the file is intact. That is an upstream
+ * regression of littlefs (commit ddbfcaa7, in v2.9.1 up to and including v2.11.3), and it hits unrelated files of the
+ * directory the rename moved from, for example the spool or backlog directory a task lists at boot.
+ *
+ * makeConsistent() finishes the pending changes on request. The application must call it once after every mount()
+ * that follows a NeedsRemount recovery or an unclean power-down (in practice after every boot), before it lists or
+ * stat()s anything that matters. Before that call the volume is consistent but reads can be wrong.
+ * - It is not part of mount(), on purpose. A mount that writes could fail with Io or NoSpace on exactly the failing
+ *   medium that needs the repair, and the read-only recovery path would be gone. The application decides when a write
+ *   is acceptable.
+ * - On a consistent volume it reads and writes nothing (littlefs checks a flag in memory first).
+ * - It is refused with Error::NotMounted or Error::NeedsRemount like every call.
+ * - Open files are no obstacle: littlefs runs the same code before every remove(), mkdir(), rename() and open() for
+ *   writing, with the open files on its list, so nothing extra is at stake. An open writer keeps its unsynced data.
+ * - A failure poisons the mount (see "Poisoned mount"), whatever else is open: littlefs deletes the moved entry with
+ *   the move already cleared in memory, so a failed commit leaves the memory out of step with the medium like a failed
+ *   rename(). Call unmount(), mount() and makeConsistent() again. The medium is still consistent afterwards.
  *
  * @par Stack use
  * visitDirectory() and stat() keep an lfs_info (about 260 bytes) and an lfs_dir_t on the stack.
