@@ -188,8 +188,8 @@ class LittleFsFileSystemBase : public FileSystem {
  * A call that fails on the device is reported as its own error (Timeout, Io, ...), and the mount stays usable: once
  * the device works again, the next call runs and the failed call can be repeated. That covers the read operations
  * (File::read(), readFile(), open(), stat(), visitDirectory(), freeSpace()) and the write operations (writeFile(),
- * File::write(), File::sync(), File::close(), rename(), remove(), mkdir()). mount() and format() always start
- * with empty caches. littlefs alone does not allow this, for two reasons that the binding handles:
+ * File::write(), File::sync(), File::close(), rename(), remove(), mkdir(), makeConsistent()). mount() and format()
+ * always start with empty caches. littlefs alone does not allow this, for two reasons that the binding handles:
  * - After a failed read it keeps a range marked as cached that the read never filled, so a repeat could return
  *   stale bytes. The binding drops the read caches whenever the device fails a read (dropReadCaches() in
  *   LittleFsFileSystem.cpp).
@@ -212,16 +212,19 @@ class LittleFsFileSystemBase : public FileSystem {
  * @par Poisoned mount
  * Two situations leave littlefs with state in memory that no longer matches the medium, and the binding cannot
  * inspect or repair it. Both behave the same with littlefs v2.11.3 as with v2.9.3, so the pin does not change this:
- * - A failed rename(). When the old and the new entry are in different metadata pairs it commits twice, and a read
- *   that fails in between leaves littlefs with a pending move. A repeat of the rename can then report success and
- *   later commits lose entries at the next mount, or trip an assertion of littlefs (`dir->count > 0` in
- *   lfs_dir_relocatingcommit()), which continues with a wrong count when assertions are compiled out. The pair is not
- *   the directory: a directory that has grown over several pairs (about 55 small entries with 4 KiB blocks) takes
- *   this path for a rename inside it, and the binding cannot ask which pair a path lands in. So every failed
- *   rename() poisons the mount, whatever its paths are.
+ * - A failed rename() or makeConsistent(). When the old and the new entry are in different metadata pairs a rename()
+ *   commits twice, and a read that fails in between leaves littlefs with a pending move. A repeat of the rename can
+ *   then report success and later commits lose entries at the next mount, or trip an assertion of littlefs
+ *   (`dir->count > 0` in lfs_dir_relocatingcommit()), which continues with a wrong count when assertions are compiled
+ *   out. The pair is not the directory: a directory that has grown over several pairs (about 55 small entries with
+ *   4 KiB blocks) takes this path for a rename inside it, and the binding cannot ask which pair a path lands in. So
+ *   every failed rename() poisons the mount, whatever its paths are. makeConsistent() commits the second half of such
+ *   a rename (it deletes the moved entry) with the pending move already cleared in memory, so a failed commit leaves
+ *   the same state, and every failure of it poisons the mount, whatever else is open. Without that, 1 of the 20
+ *   failing device calls of the repair on the volume of TestLittleFsConsistency.cpp lost a file at the next mount.
  * - A failed change (open for writing, File::write(), File::sync(), File::close(), remove(), mkdir(), and rename()
  *   as above) while another file is open for writing. One read position was observed to lose the data of that file at
- * its close(), although the close reports success (issue #15).
+ *   its close(), although the close reports success (issue #15).
  *
  * The binding then poisons the mount: every call is refused with Error::NeedsRemount until unmount() and mount().
  * - Refused are all methods and all File operations, including the retry of the failed call, open() and stat()
@@ -233,14 +236,15 @@ class LittleFsFileSystemBase : public FileSystem {
  *   through littlefs: it releases the file slots and unmounts. Every File that was open becomes stale
  *   (Error::BadHandle), and what a writer has not synced is lost. The destructor does the same. The same rule applies
  *   inside a healthy unmount(), which closes the writers in turn: if the close of one fails, that poisons the mount
- * (the others are still open), the writers behind it are dropped without a commit, and unmount() returns that error.
+ *   (the others are still open), the writers behind it are dropped without a commit, and unmount() returns that error.
  * - The state is per mount. unmount() ends it, and the next mount() starts from the medium like after a power cut.
  * - A failure that littlefs reports before it changed anything does not poison the mount: NoEntry, Exists,
  *   NotDirectory, IsDirectory, NotEmpty and InvalidArgument (which littlefs gives a rename of the root or onto it;
  *   and the errors that the binding reports itself, such as Busy or NameTooLong). Every other failure of the calls
- * above poisons the mount in the two situations, including NoSpace and Corrupt. Anywhere else it does not: not with no
- * other file open for writing (rename() excepted), and not for a failed read (File::read(), File::seek(), stat(),
- * visitDirectory(), freeSpace(), open() for reading) with a writer open, which cost the writer no data in the tests.
+ *   above poisons the mount in the two situations, including NoSpace and Corrupt. Anywhere else it does not: not with
+ *   no other file open for writing (rename() and makeConsistent() excepted), and not for a failed read (File::read(),
+ *   File::seek(), stat(), visitDirectory(), freeSpace(), open() for reading) with a writer open, which cost the writer
+ *   no data in the tests.
  *
  * What a remount finds (TestLittleFsPoison.cpp fails a read, or a read, program or erase, at every position of the
  * call, and remounts at once):
@@ -254,14 +258,12 @@ class LittleFsFileSystemBase : public FileSystem {
  *   to its last sync(); an existing file that was truncated by open() or appended to holds the content it had before
  *   it was opened (plus the synced part for Append). Everything written since the last sync is lost, exactly like
  *   after a power cut.
- * - Interrupted rename(): littlefs applies its pending move in the first call that changes the volume, not at mount().
- *   Until then a read can miss entries of the directory the rename moved from, also ones that have nothing to do with
- *   it: at 27 of 179 read positions of rename("/old", "/dir/moved") in the volume of TestLittleFsPoison.cpp,
- * visitDirectory("/") and stat() did not find an unrelated file next to the moved one. This is medium state, so it
- * survives any number of read-only mounts, and the first change of the volume (any writeFile(), mkdir(), remove() or
- * rename()) brings the entries back, at every position. After a remount that follows a failed rename(), make a change
- * before reading anything that matters. An explicit call for this is tracked in libart issue #19; it is deliberately
- * not part of mount(), which would then write and could fail on the medium that caused the problem.
+ * - Interrupted rename(): the volume is consistent, but littlefs applies its pending move in the first call that
+ *   changes the volume, not at mount(). Until then a read can miss entries of the directory the rename moved from, also
+ *   ones that have nothing to do with it: at 23 of 144 read positions of rename("/old", "/dir/moved") in the volume of
+ *   TestLittleFsConsistency.cpp, visitDirectory("/") and stat() did not find an unrelated file next to the moved one
+ *   (an upstream regression of littlefs, see "Consistency after a remount"). This is medium state, so it survives any
+ *   number of read-only mounts. Call makeConsistent() after the remount and before reading anything that matters.
  *
  * @par Consistency after a remount
  * littlefs completes some changes lazily. A rename() into another metadata pair commits twice, and between the two
