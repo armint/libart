@@ -140,7 +140,9 @@ foreach(_art_test_target libArT-tests libArT-tests-64bit)
     target_compile_options(${_art_test_target} PUBLIC -O0 -g)
     # Needed for FatFile::MockState/FatFile::state, used by
     # storage/TestFatFileReadable.cpp and storage/TestFatFileWritable.cpp.
-    target_compile_definitions(${_art_test_target} PRIVATE UNIT_TESTING)
+    # PRINTF_ENABLE_FLOATING_POINT turns on tfp_printf's %f/%F path so it is
+    # actually exercised by TestTfpPrintf.cpp instead of staying dead code.
+    target_compile_definitions(${_art_test_target} PRIVATE UNIT_TESTING PRINTF_ENABLE_FLOATING_POINT)
     target_include_directories(${_art_test_target} PRIVATE
             ../src
             ../src/storage
