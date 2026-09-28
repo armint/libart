@@ -43,6 +43,11 @@ TEST_CASE("tfp_printf basic formatting [tfp_printf]") {
         CHECK(format("%d", -123) == "-123");
         CHECK(format("%i", -456) == "-456");
     }
+    SUBCASE("negative zero-padded width keeps the sign ahead of the zeros") {
+        // Regression: putchw() used to zero-pad in front of the whole
+        // string, sign included, giving "000-5" instead of "-0005".
+        CHECK(format("%05d", -5) == "-0005");
+    }
     SUBCASE("pointer") {
         // Pointer format %p should be 8 chars with zero padding (in this implementation)
         CHECK(format("%p", (void*)0x1234) == "00001234");
@@ -96,10 +101,9 @@ TEST_CASE("tfp_printf %f formatting [tfp_printf]") {
         CHECK(format("%.2f", -1e30f) == "-ovf");
     }
     SUBCASE("integer-range boundary depends on big_uint_t's width") {
-        // CI only builds this test with PRINTF_ENABLE_FLOATING_POINT on the
-        // 32-bit (libArT-tests-float) configuration, so only the #else
-        // branch actually runs today; the #if branch documents (and would
-        // cover) the 64-bit behavior if a 64-bit+float target is added.
+        // Runs under both libArT-tests-float (32-bit) and
+        // libArT-tests-float-64bit, exercising the 2^32 and 2^64 overflow
+        // boundaries respectively.
 #if defined(LIBART_ENABLE_64BIT)
         CHECK(format("%.0f", 5000000000.0f) == "5000000000.0");
 #else
@@ -123,17 +127,21 @@ TEST_CASE("tfp_printf %f formatting [tfp_printf]") {
         // integer power-of-ten scale cannot overflow big_uint_t; requesting
         // more than that must not change the output.
         CHECK(format("%.9f", 0.5f) == format("%.20f", 0.5f));
+        // 0.5 and 1e9 are both exact in binary float, so this is exact too.
+        CHECK(format("%.20f", 0.5f) == "0.500000000");
     }
     SUBCASE("width and zero padding apply to the integer part only") {
         CHECK(format("%08.2f", 3.5f) == "00000003.50");
         CHECK(format("%8.2f", 3.5f) == "       3.50");
     }
     SUBCASE("width and zero padding on negative values keep the sign with the digits") {
-        // The sign is part of the padded field (matching how %d already
-        // handles a negative int_to_string() result), not printed ahead of
-        // the padding.
+        // Space padding: the sign already sits ahead of the digits in bf,
+        // so right-justifying with spaces needs no special handling.
         CHECK(format("%8.2f", -3.5f) == "      -3.50");
-        CHECK(format("%08.2f", -3.5f) == "000000-3.50");
+        // Zero padding: the sign must stay ahead of the zeros, not behind
+        // them (putchw() fix), so the field reads "-0000003", not
+        // "000000-3".
+        CHECK(format("%08.2f", -3.5f) == "-0000003.50");
     }
 }
 #endif

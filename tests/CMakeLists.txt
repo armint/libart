@@ -130,6 +130,7 @@ file(GLOB ADDITIONAL_SOURCES
 add_executable(libArT-tests ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
 add_executable(libArT-tests-64bit ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
 add_executable(libArT-tests-float ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
+add_executable(libArT-tests-float-64bit ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
 
 # LIBART_ENABLE_64BIT switches big_int_t/big_uint_t between int32_t/uint32_t
 # and int64_t/uint64_t (src/art_types.h) and gates the ll-sized paths in
@@ -142,10 +143,11 @@ add_executable(libArT-tests-float ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONA
 # ships without it by default too (it isn't defined anywhere outside these
 # tests), so it is deliberately left off libArT-tests and libArT-tests-64bit
 # to keep CI covering that default (float-disabled) configuration on both
-# integer widths. libArT-tests-float is a dedicated 32-bit build with the
-# macro on, so TestTfpPrintf.cpp's %f cases actually run instead of staying
-# dead code.
-foreach(_art_test_target libArT-tests libArT-tests-64bit libArT-tests-float)
+# integer widths. libArT-tests-float and libArT-tests-float-64bit turn the
+# macro on for each width, so TestTfpPrintf.cpp's %f cases (including the
+# width-dependent overflow boundary at 2^32 vs 2^64) actually run instead of
+# staying dead code.
+foreach(_art_test_target libArT-tests libArT-tests-64bit libArT-tests-float libArT-tests-float-64bit)
     target_compile_options(${_art_test_target} PUBLIC -O0 -g)
     # Needed for FatFile::MockState/FatFile::state, used by
     # storage/TestFatFileReadable.cpp and storage/TestFatFileWritable.cpp.
@@ -181,6 +183,7 @@ endforeach()
 
 target_compile_definitions(libArT-tests-64bit PRIVATE LIBART_ENABLE_64BIT)
 target_compile_definitions(libArT-tests-float PRIVATE PRINTF_ENABLE_FLOATING_POINT)
+target_compile_definitions(libArT-tests-float-64bit PRIVATE PRINTF_ENABLE_FLOATING_POINT LIBART_ENABLE_64BIT)
 
 # Discover all libArT-tests
 # catch_discover_tests(libArT-tests)
