@@ -128,38 +128,49 @@ file(GLOB ADDITIONAL_SOURCES
 
 
 add_executable(libArT-tests ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
+add_executable(libArT-tests-64bit ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
 
-target_compile_options(libArT-tests PUBLIC -O0 -g)
-# Needed for FatFile::MockState/FatFile::state, used by
-# storage/TestFatFileReadable.cpp and storage/TestFatFileWritable.cpp.
-target_compile_definitions(libArT-tests PRIVATE UNIT_TESTING)
-target_include_directories(libArT-tests PRIVATE
-        ../src
-        ../src/storage
-        .
-        ../src/storage/fatfs
-        stubs/freertos
-        include
-)
+# LIBART_ENABLE_64BIT switches big_int_t/big_uint_t between int32_t/uint32_t
+# and int64_t/uint64_t (src/art_types.h) and gates the ll-sized paths in
+# tfp_printf.cpp. art-core ships without it by default, so libArT-tests
+# stays in that (32-bit) configuration to match what actually ships;
+# libArT-tests-64bit builds the same sources with the macro defined, so
+# both configurations run in CI instead of one silently going untested.
+foreach(_art_test_target libArT-tests libArT-tests-64bit)
+    target_compile_options(${_art_test_target} PUBLIC -O0 -g)
+    # Needed for FatFile::MockState/FatFile::state, used by
+    # storage/TestFatFileReadable.cpp and storage/TestFatFileWritable.cpp.
+    target_compile_definitions(${_art_test_target} PRIVATE UNIT_TESTING)
+    target_include_directories(${_art_test_target} PRIVATE
+            ../src
+            ../src/storage
+            .
+            ../src/storage/fatfs
+            stubs/freertos
+            include
+    )
 
-# strlcpy support
-#target_compile_options(libArT-tests PUBLIC -include "bsd/string.h")
-target_link_libraries(libArT-tests PUBLIC bsd)
+    # strlcpy support
+    #target_compile_options(${_art_test_target} PUBLIC -include "bsd/string.h")
+    target_link_libraries(${_art_test_target} PUBLIC bsd)
 
-if (_ART_NEED_LITTLEFS)
-    target_sources(libArT-tests PRIVATE ../src/storage/littlefs/LittleFsFileSystem.cpp)
-    target_link_libraries(libArT-tests PRIVATE littlefs)
-    # Volume images written by earlier littlefs versions, read by storage/TestLittleFsCompat.cpp.
-    target_compile_definitions(libArT-tests PRIVATE LITTLEFS_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/storage/fixtures")
-endif ()
+    if (_ART_NEED_LITTLEFS)
+        target_sources(${_art_test_target} PRIVATE ../src/storage/littlefs/LittleFsFileSystem.cpp)
+        target_link_libraries(${_art_test_target} PRIVATE littlefs)
+        # Volume images written by earlier littlefs versions, read by storage/TestLittleFsCompat.cpp.
+        target_compile_definitions(${_art_test_target} PRIVATE LITTLEFS_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/storage/fixtures")
+    endif ()
 
-# ETL
-target_link_libraries(libArT-tests PRIVATE etl::etl)
-# doctest
-target_link_libraries(libArT-tests PRIVATE doctest::doctest)
-target_include_directories(libArT-tests PRIVATE ${doctest_SOURCE_DIR})
-# JSON library
-target_link_libraries(libArT-tests PUBLIC ArduinoJson)
+    # ETL
+    target_link_libraries(${_art_test_target} PRIVATE etl::etl)
+    # doctest
+    target_link_libraries(${_art_test_target} PRIVATE doctest::doctest)
+    target_include_directories(${_art_test_target} PRIVATE ${doctest_SOURCE_DIR})
+    # JSON library
+    target_link_libraries(${_art_test_target} PUBLIC ArduinoJson)
+endforeach()
+
+target_compile_definitions(libArT-tests-64bit PRIVATE LIBART_ENABLE_64BIT)
 
 # Discover all libArT-tests
 # catch_discover_tests(libArT-tests)
