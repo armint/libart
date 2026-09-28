@@ -129,6 +129,7 @@ file(GLOB ADDITIONAL_SOURCES
 
 add_executable(libArT-tests ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
 add_executable(libArT-tests-64bit ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
+add_executable(libArT-tests-float ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOURCES})
 
 # LIBART_ENABLE_64BIT switches big_int_t/big_uint_t between int32_t/uint32_t
 # and int64_t/uint64_t (src/art_types.h) and gates the ll-sized paths in
@@ -136,13 +137,19 @@ add_executable(libArT-tests-64bit ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONA
 # stays in that (32-bit) configuration to match what actually ships;
 # libArT-tests-64bit builds the same sources with the macro defined, so
 # both configurations run in CI instead of one silently going untested.
-foreach(_art_test_target libArT-tests libArT-tests-64bit)
+#
+# PRINTF_ENABLE_FLOATING_POINT turns on tfp_printf's %f/%F path. art-core
+# ships without it by default too (it isn't defined anywhere outside these
+# tests), so it is deliberately left off libArT-tests and libArT-tests-64bit
+# to keep CI covering that default (float-disabled) configuration on both
+# integer widths. libArT-tests-float is a dedicated 32-bit build with the
+# macro on, so TestTfpPrintf.cpp's %f cases actually run instead of staying
+# dead code.
+foreach(_art_test_target libArT-tests libArT-tests-64bit libArT-tests-float)
     target_compile_options(${_art_test_target} PUBLIC -O0 -g)
     # Needed for FatFile::MockState/FatFile::state, used by
     # storage/TestFatFileReadable.cpp and storage/TestFatFileWritable.cpp.
-    # PRINTF_ENABLE_FLOATING_POINT turns on tfp_printf's %f/%F path so it is
-    # actually exercised by TestTfpPrintf.cpp instead of staying dead code.
-    target_compile_definitions(${_art_test_target} PRIVATE UNIT_TESTING PRINTF_ENABLE_FLOATING_POINT)
+    target_compile_definitions(${_art_test_target} PRIVATE UNIT_TESTING)
     target_include_directories(${_art_test_target} PRIVATE
             ../src
             ../src/storage
@@ -173,6 +180,7 @@ foreach(_art_test_target libArT-tests libArT-tests-64bit)
 endforeach()
 
 target_compile_definitions(libArT-tests-64bit PRIVATE LIBART_ENABLE_64BIT)
+target_compile_definitions(libArT-tests-float PRIVATE PRINTF_ENABLE_FLOATING_POINT)
 
 # Discover all libArT-tests
 # catch_discover_tests(libArT-tests)

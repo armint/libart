@@ -78,6 +78,15 @@ TEST_CASE("tfp_printf %f formatting [tfp_printf]") {
         CHECK(format("%.2f", 0.999755859375f) == "1.00");
         CHECK(format("%.2f", -0.999755859375f) == "-1.00");
     }
+    SUBCASE("rounding does not overshoot at the float +0.5 boundary") {
+        // 0.49999997f is the float just below 0.5f. Computing the round-up
+        // decision as (frac * scale + 0.5f) truncated is wrong here: the
+        // addition itself rounds the intermediate sum up to exactly 1.0f,
+        // which would incorrectly carry into the integer part. Rounding
+        // from the leftover (scaled - truncated) instead of adding 0.5f
+        // avoids that.
+        CHECK(format("%.0f", 0.49999997f) == "0.0");
+    }
     SUBCASE("large values") {
         // Exact in binary float: needs ~21 significant bits.
         CHECK(format("%.1f", 1000000.5f) == "1000000.5");
@@ -87,6 +96,10 @@ TEST_CASE("tfp_printf %f formatting [tfp_printf]") {
         CHECK(format("%.2f", -1e30f) == "-ovf");
     }
     SUBCASE("integer-range boundary depends on big_uint_t's width") {
+        // CI only builds this test with PRINTF_ENABLE_FLOATING_POINT on the
+        // 32-bit (libArT-tests-float) configuration, so only the #else
+        // branch actually runs today; the #if branch documents (and would
+        // cover) the 64-bit behavior if a 64-bit+float target is added.
 #if defined(LIBART_ENABLE_64BIT)
         CHECK(format("%.0f", 5000000000.0f) == "5000000000.0");
 #else
@@ -99,12 +112,28 @@ TEST_CASE("tfp_printf %f formatting [tfp_printf]") {
         CHECK(format("%f", std::numeric_limits<float>::quiet_NaN()) == "nan");
     }
     SUBCASE("precision") {
-        CHECK(format("%.0f", 3.0f) == "3.0"); // decimals=0 still emits one digit, matching %.Nf width behavior below
+        // decimals=0 still emits one fractional digit: the pre-existing
+        // %.Nf output shape (int part + '.' + N digits) is kept as-is, N=0
+        // isn't special-cased into dropping the point and digit.
+        CHECK(format("%.0f", 3.0f) == "3.0");
         CHECK(format("%.5f", 3.5f) == "3.50000");
+    }
+    SUBCASE("precision is capped at 9 decimals regardless of big_uint_t's width") {
+        // Beyond 9 decimals the requested precision is clamped so the
+        // integer power-of-ten scale cannot overflow big_uint_t; requesting
+        // more than that must not change the output.
+        CHECK(format("%.9f", 0.5f) == format("%.20f", 0.5f));
     }
     SUBCASE("width and zero padding apply to the integer part only") {
         CHECK(format("%08.2f", 3.5f) == "00000003.50");
         CHECK(format("%8.2f", 3.5f) == "       3.50");
+    }
+    SUBCASE("width and zero padding on negative values keep the sign with the digits") {
+        // The sign is part of the padded field (matching how %d already
+        // handles a negative int_to_string() result), not printed ahead of
+        // the padding.
+        CHECK(format("%8.2f", -3.5f) == "      -3.50");
+        CHECK(format("%08.2f", -3.5f) == "000000-3.50");
     }
 }
 #endif
