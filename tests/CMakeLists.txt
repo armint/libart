@@ -132,7 +132,10 @@ add_executable(libArT-tests ${TEST_SOURCES} ${TO_TEST_SOURCES} ${ADDITIONAL_SOUR
 target_compile_options(libArT-tests PUBLIC -O0 -g)
 # Needed for FatFile::MockState/FatFile::state, used by
 # storage/TestFatFileReadable.cpp and storage/TestFatFileWritable.cpp.
-target_compile_definitions(libArT-tests PRIVATE UNIT_TESTING)
+# LIBART_ENABLE_64BIT exercises the big_int_t/big_uint_t = int64_t/uint64_t
+# path (see src/art_types.h) so the 64-bit tfp_printf tests actually run;
+# without it that code and its tests are compiled out entirely.
+target_compile_definitions(libArT-tests PRIVATE UNIT_TESTING LIBART_ENABLE_64BIT)
 target_include_directories(libArT-tests PRIVATE
         ../src
         ../src/storage
