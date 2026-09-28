@@ -200,7 +200,7 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
 
 #if defined(LIBART_ENABLE_64BIT)
             if(ll) {
-               unsigned_int_to_string(va_arg(va, uint64_t), 2, upperCase, bf, sizeof(bf));
+               unsigned_int_to_string(va_arg(va, uint64_t), base, upperCase, bf, sizeof(bf));
             } else if(l) {
                unsigned_int_to_string(va_arg(va, unsigned long), base, upperCase, bf, sizeof(bf));
             } else {
