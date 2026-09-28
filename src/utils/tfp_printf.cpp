@@ -130,11 +130,20 @@ static void putchw(void *putp, putcf putf, int n, char z, char *bf) {
    char fc = z ? '0' : ' ';
    char ch;
    char *p = bf;
+   if(z && *p == '-') {
+      // Zero-padding a signed field: emit the sign first so the zeros land
+      // between it and the digits (e.g. "-0005"), not ahead of the sign
+      // (e.g. "000-5").
+      putf(putp, *p++);
+      if(n > 0)
+         n--;
+   }
+   char *digits = p;
    while(*p++ && n > 0)
       n--;
    while(n-- > 0)
       putf(putp, fc);
-   while((ch = *bf++))
+   while((ch = *digits++))
       putf(putp, ch);
 }
 
