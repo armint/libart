@@ -259,13 +259,10 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             const uint32_t exponent = (bits >> 23) & 0xFFu;
             const uint32_t mantissa = bits & 0x7FFFFFu;
 
-            if(negative) {
-               putf(putp, '-');
-            }
-
             if(exponent == 0xFFu) {
-               // Sign was already emitted above, matching the sign bit of the
-               // payload; only the magnitude classifies it as nan vs inf.
+               if(negative) {
+                  putf(putp, '-');
+               }
                putstr(putp, putf, mantissa != 0 ? "nan" : "inf");
                break;
             }
@@ -280,14 +277,19 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
             constexpr float kOverflowBound = 4294967296.0f; // 2^32
 #endif
             if(!(magnitude < kOverflowBound)) {
+               if(negative) {
+                  putf(putp, '-');
+               }
                putstr(putp, putf, "ovf");
                break;
             }
 
-            // Cap the requested precision so the power-of-ten scale below
-            // cannot overflow big_uint_t.
-            if(decimals > std::numeric_limits<big_uint_t>::digits10) {
-               decimals = std::numeric_limits<big_uint_t>::digits10;
+            // Cap the requested precision at 9 decimals (independent of
+            // big_uint_t's width) so the power-of-ten scale below cannot
+            // overflow it.
+            constexpr int kMaxDecimals = 9;
+            if(decimals > kMaxDecimals) {
+               decimals = kMaxDecimals;
             }
 
             // Integer power of ten, computed without powf()/libm.
@@ -298,19 +300,40 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
 
             big_uint_t ipart = (big_uint_t)magnitude;
             float frac = magnitude - (float)ipart;
-            // Round to nearest at the last requested decimal digit.
-            big_uint_t fracPart = (big_uint_t)(frac * (float)scale + 0.5f);
+            // Round to nearest at the last requested decimal digit, from the
+            // leftover (scaled - truncated) rather than truncating
+            // (scaled + 0.5f): the addition itself can round the
+            // intermediate sum up to the next integer for a fraction just
+            // below the halfway point, which would carry incorrectly.
+            float scaledFrac = frac * (float)scale;
+            big_uint_t fracPart = (big_uint_t)scaledFrac;
+            float leftover = scaledFrac - (float)fracPart;
+            if(leftover >= 0.5f) {
+               fracPart += 1;
+            }
             if(fracPart >= scale) {
                fracPart -= scale;
                if(ipart == std::numeric_limits<big_uint_t>::max()) {
                   // Rounding carried out of the representable integer range.
+                  if(negative) {
+                     putf(putp, '-');
+                  }
                   putstr(putp, putf, "ovf");
                   break;
                }
                ipart += 1;
             }
 
-            unsigned_int_to_string(ipart, 10, 0, bf, sizeof(bf));
+            // The sign goes into bf, ahead of the digits, so putchw()'s
+            // width/zero-fill padding treats it as part of the field (same
+            // as int_to_string() already does for %d) instead of printing
+            // it before the padding.
+            char *p = bf;
+            if(negative) {
+               *p++ = '-';
+            }
+            int room = (int)sizeof(bf) - (int)(p - bf);
+            unsigned_int_to_string(ipart, 10, 0, p, room);
             putchw(putp, putf, minChars, lz, bf);
             putf(putp, '.');
             unsigned_int_to_string(fracPart, 10, 0, bf, sizeof(bf));
