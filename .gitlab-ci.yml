@@ -26,18 +26,22 @@ build:
 # storage/ tests use Catch2-style TEST_CASE/CHECK/SUBCASE macros, which
 # doctest supports with the same names/semantics).
 #
-# Two binaries, same sources: libArT-tests builds without LIBART_ENABLE_64BIT
-# (big_int_t/big_uint_t = int32_t/uint32_t), matching what art-core ships by
-# default; libArT-tests-64bit defines it (big_int_t/big_uint_t = int64_t/
-# uint64_t), so the ll-sized tfp_printf paths and other big_*_t users are
-# exercised too, instead of just one configuration running in CI.
+# Three binaries, same sources: libArT-tests builds without LIBART_ENABLE_64BIT
+# (big_int_t/big_uint_t = int32_t/uint32_t) or PRINTF_ENABLE_FLOATING_POINT,
+# matching what art-core ships by default; libArT-tests-64bit defines
+# LIBART_ENABLE_64BIT (big_int_t/big_uint_t = int64_t/uint64_t), so the
+# ll-sized tfp_printf paths and other big_*_t users are exercised too;
+# libArT-tests-float defines PRINTF_ENABLE_FLOATING_POINT (32-bit), so
+# tfp_printf's %f/%F path — also opt-in, undefined by default — gets run
+# somewhere instead of staying untested dead code, without giving up CI
+# coverage of the float-disabled default on either integer width.
 test:
   stage: build
   variables:
     GIT_DEPTH: 0
   script:
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug
-    - cmake --build build --target libArT-tests libArT-tests-64bit -j$(nproc)
+    - cmake --build build --target libArT-tests libArT-tests-64bit libArT-tests-float -j$(nproc)
     # doctest writes every active reporter's output to the same --out file,
     # which corrupts the XML if the console reporter is also active; run
     # twice instead — console output determines job pass/fail, the second
@@ -46,12 +50,15 @@ test:
     - ./build/tests/libArT-tests --reporters=junit --out=build/junit.xml
     - ./build/tests/libArT-tests-64bit
     - ./build/tests/libArT-tests-64bit --reporters=junit --out=build/junit-64bit.xml
+    - ./build/tests/libArT-tests-float
+    - ./build/tests/libArT-tests-float --reporters=junit --out=build/junit-float.xml
   artifacts:
     when: always
     reports:
       junit:
         - build/junit.xml
         - build/junit-64bit.xml
+        - build/junit-float.xml
 
 # Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
 # optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the
