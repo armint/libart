@@ -30,7 +30,7 @@
  */
 #include "tfp_printf.h"
 #include <art_types.h>
-#include <cmath>
+#include <cstring>
 #include <limits>
 
 typedef void (*putcf)(void *, char);
@@ -119,6 +119,11 @@ char string_to_int(char ch, const char **src, int base, int *nump) {
       *nump = (int)num;
    }
    return ch;
+}
+
+static void putstr(void *putp, putcf putf, const char *s) {
+   while(*s)
+      putf(putp, *s++);
 }
 
 static void putchw(void *putp, putcf putf, int n, char z, char *bf) {
@@ -243,13 +248,72 @@ void tfp_format(void *putp, putcf putf, const char *fmt, va_list va) {
          case 'f':
             // Fall through
          case 'F': {
-            float num = va_arg(va, double);
-            int_to_string(truncf(num), bf, sizeof(bf));
+            float num = (float)va_arg(va, double);
+
+            // Classify via the raw bit pattern instead of std::isnan/std::isinf
+            // so this stays a plain bit test with no libm dependency.
+            uint32_t bits;
+            static_assert(sizeof(bits) == sizeof(num), "expected IEEE-754 32-bit float");
+            std::memcpy(&bits, &num, sizeof(bits));
+            const bool negative = (bits >> 31) != 0;
+            const uint32_t exponent = (bits >> 23) & 0xFFu;
+            const uint32_t mantissa = bits & 0x7FFFFFu;
+
+            if(negative) {
+               putf(putp, '-');
+            }
+
+            if(exponent == 0xFFu) {
+               // Sign was already emitted above, matching the sign bit of the
+               // payload; only the magnitude classifies it as nan vs inf.
+               putstr(putp, putf, mantissa != 0 ? "nan" : "inf");
+               break;
+            }
+
+            float magnitude = negative ? -num : num;
+
+            // Values that don't fit in big_uint_t would make the cast below
+            // undefined behaviour; report them with a distinct marker instead.
+#if defined(LIBART_ENABLE_64BIT)
+            constexpr float kOverflowBound = 18446744073709551616.0f; // 2^64
+#else
+            constexpr float kOverflowBound = 4294967296.0f; // 2^32
+#endif
+            if(!(magnitude < kOverflowBound)) {
+               putstr(putp, putf, "ovf");
+               break;
+            }
+
+            // Cap the requested precision so the power-of-ten scale below
+            // cannot overflow big_uint_t.
+            if(decimals > std::numeric_limits<big_uint_t>::digits10) {
+               decimals = std::numeric_limits<big_uint_t>::digits10;
+            }
+
+            // Integer power of ten, computed without powf()/libm.
+            big_uint_t scale = 1;
+            for(int i = 0; i < decimals; ++i) {
+               scale *= 10;
+            }
+
+            big_uint_t ipart = (big_uint_t)magnitude;
+            float frac = magnitude - (float)ipart;
+            // Round to nearest at the last requested decimal digit.
+            big_uint_t fracPart = (big_uint_t)(frac * (float)scale + 0.5f);
+            if(fracPart >= scale) {
+               fracPart -= scale;
+               if(ipart == std::numeric_limits<big_uint_t>::max()) {
+                  // Rounding carried out of the representable integer range.
+                  putstr(putp, putf, "ovf");
+                  break;
+               }
+               ipart += 1;
+            }
+
+            unsigned_int_to_string(ipart, 10, 0, bf, sizeof(bf));
             putchw(putp, putf, minChars, lz, bf);
             putf(putp, '.');
-            num -= truncf(num);
-            float rest = num * powf(10.0f, (float)decimals);
-            int_to_string(truncf(rest), bf, sizeof(bf));
+            unsigned_int_to_string(fracPart, 10, 0, bf, sizeof(bf));
             putchw(putp, putf, decimals, 1, bf);
          } break;
 #endif
