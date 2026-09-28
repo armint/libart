@@ -1,6 +1,7 @@
 #include <optional>
 #include <doctest/doctest.h>
 #include <utils/tfp_printf.h>
+#include <cstdint>
 #include <cstring>
 #include <etl/string.h>
 #include <etl/string_view.h>
@@ -56,12 +57,23 @@ TEST_CASE("tfp_printf 64-bit formatting [tfp_printf]") {
     SUBCASE("unsigned 64-bit") {
         CHECK(format("%llu", 12345678901234567890ull) == "12345678901234567890");
     }
+    SUBCASE("unsigned 64-bit edge values") {
+        CHECK(format("%llu", 0ull) == "0");
+        CHECK(format("%llu", UINT64_MAX) == "18446744073709551615");
+    }
     SUBCASE("binary 64-bit") {
         CHECK(format("%llb", 0x100000000ull) == "100000000000000000000000000000000");
     }
     SUBCASE("hex 64-bit") {
         CHECK(format("%llx", 0x123456789abcdef0ull) == "123456789abcdef0");
         CHECK(format("%llX", 0x123456789abcdef0ull) == "123456789ABCDEF0");
+    }
+    SUBCASE("hex 64-bit width and zero padding") {
+        CHECK(format("%020llx", 0x123456789abcdef0ull) == "0000123456789abcdef0");
+    }
+    SUBCASE("signed 64-bit") {
+        CHECK(format("%lld", INT64_MIN) == "-9223372036854775808");
+        CHECK(format("%lli", (int64_t)-42) == "-42");
     }
 }
 #endif
