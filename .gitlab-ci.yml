@@ -72,10 +72,17 @@ test:
 # (FloatText does not depend on LIBART_ENABLE_64BIT or PRINTF_ENABLE_FLOATING_POINT, so the other
 # three would only repeat the same 2^32 iterations). tests/CMakeLists.txt builds FloatText.cpp,
 # ryu_float.c and TestFloatText.cpp at -O2 regardless of CMAKE_BUILD_TYPE specifically so this
-# finishes in a reasonable time.
+# finishes in a reasonable time (measured locally: under 8 minutes), but it is still too slow for
+# every push/MR pipeline, so it only runs automatically on a schedule; otherwise it is a manual,
+# non-blocking job (allow_failure so an untriggered/still-running manual job never blocks the
+# pipeline).
 float-exhaustive:
   stage: build
   timeout: 20m
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - when: manual
+      allow_failure: true
   variables:
     GIT_DEPTH: 0
   script:
