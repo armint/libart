@@ -3,30 +3,53 @@
 # (src/utils/FloatText.h, tracking issue embedded-libraries/libArT-proto#28):
 #
 #   1. A program that never calls utils::FloatText::formatFloat()/parseFloat() links none of
-#      FloatText's or Ryu's code, because a static archive only pulls in the member object files
-#      that resolve an outstanding undefined symbol.
+#      FloatText's or Ryu's code.
 #   2. A program that does call them does not pull in newlib's assert()/printf()/malloc() chain
 #      (see the NDEBUG guard at the top of src/utils/ryu_float.c).
 #
+# For (1), FloatText.o and ryu_float.o are linked directly (not archived into a .a first): an
+# archive member is only ever pulled in for an outstanding undefined symbol, so a program that
+# references nothing from it would trivially "pass" whether or not FloatText's own code is
+# actually dead-strippable. Linking the objects directly and relying on --gc-sections (with
+# -ffunction-sections/-fdata-sections) to drop what is unreferenced is what actually exercises the
+# claim - for example, it is the only way this catches an accidental static constructor (which
+# --gc-sections keeps as a GC root regardless of whether anything calls into it).
+#
 # Needs a cross C/C++ compiler pair (default: arm-none-eabi-gcc/g++, override with CROSS_CC/
-# CROSS_CXX) and the populated Ryu source tree (RYU_SOURCE_DIR, e.g.
-# <build>/_deps/ryu-src after configuring this project once). Skips gracefully, exit 0, when
-# either is missing, so this is safe to run outside a full firmware toolchain.
+# CROSS_CXX/CROSS_NM) and the populated Ryu source tree (RYU_SOURCE_DIR, e.g.
+# <build>/_deps/ryu-src after configuring this project once). By default, skips gracefully
+# (exit 0) when either is missing, so this is safe to run outside a full firmware toolchain; set
+# REQUIRE_TOOLCHAIN=1 (CI does) to turn that into a hard failure instead - a skip that still exits
+# 0 is indistinguishable from a pass in a pipeline's job list.
 set -euo pipefail
 
 CC="${CROSS_CC:-arm-none-eabi-gcc}"
 CXX="${CROSS_CXX:-arm-none-eabi-g++}"
 NM="${CROSS_NM:-arm-none-eabi-nm}"
 
-if ! command -v "$CC" >/dev/null 2>&1 || ! command -v "$CXX" >/dev/null 2>&1 || ! command -v "$NM" >/dev/null 2>&1; then
-   echo "No cross toolchain ($CC/$CXX/$NM) found on PATH; skipping the FloatText zero-cost check."
+missing=""
+if ! command -v "$CC" >/dev/null 2>&1; then missing="$missing $CC"; fi
+if ! command -v "$CXX" >/dev/null 2>&1; then missing="$missing $CXX"; fi
+if ! command -v "$NM" >/dev/null 2>&1; then missing="$missing $NM"; fi
+if [ -n "$missing" ]; then
+   echo "Cross toolchain tool(s) not found on PATH:$missing"
+   if [ "${REQUIRE_TOOLCHAIN:-0}" = "1" ]; then
+      echo "REQUIRE_TOOLCHAIN=1: treating this as a failure instead of skipping." >&2
+      exit 1
+   fi
+   echo "Skipping the FloatText zero-cost check (set REQUIRE_TOOLCHAIN=1 to make this a failure)."
    exit 0
 fi
 
 if [ -z "${RYU_SOURCE_DIR:-}" ] || [ ! -d "$RYU_SOURCE_DIR" ]; then
-   echo "RYU_SOURCE_DIR is not set to a populated Ryu checkout; skipping the FloatText zero-cost check."
+   echo "RYU_SOURCE_DIR is not set to a populated Ryu checkout."
    echo "(configure this project with CMake at least once so FetchContent populates it, then pass"
    echo " RYU_SOURCE_DIR=<build dir>/_deps/ryu-src)"
+   if [ "${REQUIRE_TOOLCHAIN:-0}" = "1" ]; then
+      echo "REQUIRE_TOOLCHAIN=1: treating this as a failure instead of skipping." >&2
+      exit 1
+   fi
+   echo "Skipping the FloatText zero-cost check (set REQUIRE_TOOLCHAIN=1 to make this a failure)."
    exit 0
 fi
 
@@ -47,7 +70,6 @@ CFLAGS="-Os -ffunction-sections -fdata-sections $MFLAGS -I$RYU_SOURCE_DIR"
 # CMAKE_BUILD_TYPE=Debug build both leave NDEBUG unset).
 "$CXX" -c $CXXFLAGS -o "$WORK/FloatText.o" "$SRC/utils/FloatText.cpp"
 "$CC" -c $CFLAGS -o "$WORK/ryu_float.o" "$SRC/utils/ryu_float.c"
-ar rcs "$WORK/libfloattext.a" "$WORK/FloatText.o" "$WORK/ryu_float.o"
 
 cat >"$WORK/unused.cpp" <<'SRC_EOF'
 // Calls nothing from FloatText or Ryu.
@@ -75,9 +97,11 @@ SRC_EOF
 status=0
 for variant in unused used; do
    "$CXX" -c $CXXFLAGS -o "$WORK/$variant.o" "$WORK/$variant.cpp"
+   # FloatText.o and ryu_float.o are always on this link line, for both variants: it is
+   # --gc-sections, not the linker's archive-member selection, that must drop them when unused.
    "$CXX" -nostartfiles --specs=nano.specs --specs=nosys.specs $MFLAGS \
       -Wl,--gc-sections -Wl,-e,_start -Wl,--build-id=none \
-      -o "$WORK/$variant.elf" "$WORK/$variant.o" -L"$WORK" -lfloattext
+      -o "$WORK/$variant.elf" "$WORK/$variant.o" "$WORK/FloatText.o" "$WORK/ryu_float.o"
 done
 
 echo "== unused.elf must contain no FloatText/Ryu code =="
