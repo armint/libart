@@ -65,6 +65,50 @@ test:
         - build/junit-float.xml
         - build/junit-float-64bit.xml
 
+# FloatText's exhaustive round-trip test (TestFloatText.cpp) formats and parses all 2^32 float
+# bit patterns and checks the result is bit-identical to the original (NaN is only checked as
+# still being a NaN). It is doctest::skip()'d by default, so the "test" job above never runs it;
+# this dedicated job runs it explicitly with --no-skip=true, on just one of the four binaries
+# (FloatText does not depend on LIBART_ENABLE_64BIT or PRINTF_ENABLE_FLOATING_POINT, so the other
+# three would only repeat the same 2^32 iterations). tests/CMakeLists.txt builds FloatText.cpp,
+# ryu_float.c and TestFloatText.cpp at -O2 regardless of CMAKE_BUILD_TYPE specifically so this
+# finishes in a reasonable time (measured locally: under 8 minutes), but it is still too slow for
+# every push/MR pipeline, so it only runs automatically on a schedule - a weekly one, Sunday
+# 03:00 Europe/Amsterdam on dev, is configured in the project's pipeline schedules; otherwise it
+# is a manual, non-blocking job (allow_failure so an untriggered/still-running manual job never
+# blocks the pipeline).
+float-exhaustive:
+  stage: build
+  timeout: 20m
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - when: manual
+      allow_failure: true
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug
+    - cmake --build build --target libArT-tests -j$(nproc)
+    - ./build/tests/libArT-tests --test-case="*exhaustive*" --no-skip=true
+
+# Verifies, with a real cross-compile and link (arm-none-eabi-gcc/g++, expected on PATH in this
+# image), that FloatText/Ryu (src/utils/FloatText.*, ryu_float.c) are genuinely absent from a
+# program that never calls them, and that a program that does call them does not pull in newlib's
+# assert/printf/malloc chain (see tests/check-floattext-zero-cost.sh). This image
+# (firmware-builder:v1.14.0) has arm-none-eabi-gcc under /opt, not on PATH by default - the same
+# toolchain path other embedded-libraries projects' CI (sentinode-th, universal-oven-controller-
+# firmware) points GCC_TOOLCHAIN_PREFIX at. REQUIRE_TOOLCHAIN=1 turns a missing toolchain or a
+# missing RYU_SOURCE_DIR into a job failure instead of a silently-green skip.
+floattext-zero-cost:
+  stage: build
+  variables:
+    GIT_DEPTH: 0
+    REQUIRE_TOOLCHAIN: "1"
+  script:
+    - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
+    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
+    - RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
+
 # Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
 # optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the
 # FreeRTOS host stubs of the unit tests; a cross build of it needs a FreeRTOS target from a superproject

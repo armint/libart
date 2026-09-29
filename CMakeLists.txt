@@ -29,10 +29,14 @@ if(ESP_PLATFORM)
         FetchContent_Populate(ArduinoJson)
     endif()
 
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/ryu.cmake")
+
     target_include_directories(${COMPONENT_LIB} PUBLIC
             ${etl_SOURCE_DIR}/include
             ${arduinojson_SOURCE_DIR}/src
     )
+    # Private: only ryu_float.c and FloatText.cpp include ryu/*, never a public libArT header.
+    target_include_directories(${COMPONENT_LIB} PRIVATE ${ryu_SOURCE_DIR})
 
     return()
 endif()
@@ -63,6 +67,8 @@ FetchContent_Declare(ArduinoJson
 )
 
 FetchContent_MakeAvailable(ArduinoJson)
+
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/ryu.cmake")
 
 # The LittleFS binding (art-storage-littlefs) is optional and off by default, so that art-core and every
 # existing consumer stay free of a littlefs dependency (and of its fetch). The native unit tests compile the
@@ -117,6 +123,9 @@ target_include_directories(art-core
 )
 
 target_compile_features(art-core PUBLIC cxx_std_23)
+
+# Private: only ryu_float.c and FloatText.cpp include ryu/*, never a public libArT header.
+target_include_directories(art-core PRIVATE $<BUILD_INTERFACE:${ryu_SOURCE_DIR}>)
 
 # Link dependencies privately to avoid exporting build-tree targets via
 # our install(EXPORT ...) set. Consumers will get dependencies re-attached

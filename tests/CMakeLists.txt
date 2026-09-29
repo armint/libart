@@ -22,6 +22,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(etl)
 
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/ryu.cmake")
+
 if (NOT DEFINED PROJECT_NAME)
     # We are not in a subproject
     project(libArT-tests C CXX)
@@ -57,6 +59,7 @@ file(GLOB TEST_SOURCES
         TestSTypeThermocoupleSensor.cpp
         TestCompensatedThermocoupleSensor.cpp
         TestRingBuffer.cpp
+        TestFloatText.cpp
         storage/TestBlockDeviceDecorator.cpp
         storage/BlockDeviceContract.cpp
         storage/TestBlockDevice.cpp
@@ -118,6 +121,8 @@ file(GLOB ADDITIONAL_SOURCES
         ../src/utils/IBMCRC16Digest.cpp
         ../src/utils/IBMCRC16FastDigest.cpp
         ../src/utils/SHA256Digest.cpp
+        ../src/utils/FloatText.cpp
+        ../src/utils/ryu_float.c
         storage/FatTestDisk.h
         storage/RamBlockDevice.h
         storage/PowerCutDevice.h
@@ -172,6 +177,8 @@ foreach(_art_test_target libArT-tests libArT-tests-64bit libArT-tests-float libA
         target_compile_definitions(${_art_test_target} PRIVATE LITTLEFS_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/storage/fixtures")
     endif ()
 
+    # Ryu (FloatText.h/.cpp); private, see the top-level CMakeLists.txt.
+    target_include_directories(${_art_test_target} PRIVATE ${ryu_SOURCE_DIR})
     # ETL
     target_link_libraries(${_art_test_target} PRIVATE etl::etl)
     # doctest
@@ -184,6 +191,20 @@ endforeach()
 target_compile_definitions(libArT-tests-64bit PRIVATE LIBART_ENABLE_64BIT)
 target_compile_definitions(libArT-tests-float PRIVATE PRINTF_ENABLE_FLOATING_POINT)
 target_compile_definitions(libArT-tests-float-64bit PRIVATE PRINTF_ENABLE_FLOATING_POINT LIBART_ENABLE_64BIT)
+
+# TestFloatText.cpp's exhaustive round-trip case (doctest::skip()'d by default, see the file)
+# walks all 2^32 float bit patterns; every other target here builds at -O0 for debuggability,
+# which would make that loop impractically slow. Override just the files on its hot path back up
+# to -O2 (last -O flag on the command line wins over the target's -O0), so the dedicated CI job
+# that runs it with --no-skip=true finishes in a reasonable time. This affects every one of the
+# four binaries equally (harmless: FloatText does not depend on LIBART_ENABLE_64BIT or
+# PRINTF_ENABLE_FLOATING_POINT), but the exhaustive case itself only actually runs in that job.
+set_source_files_properties(
+        TestFloatText.cpp
+        ../src/utils/FloatText.cpp
+        ../src/utils/ryu_float.c
+        PROPERTIES COMPILE_OPTIONS "-O2"
+)
 
 # Discover all libArT-tests
 # catch_discover_tests(libArT-tests)
