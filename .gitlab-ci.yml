@@ -90,6 +90,19 @@ float-exhaustive:
     - cmake --build build --target libArT-tests -j$(nproc)
     - ./build/tests/libArT-tests --test-case="*exhaustive*" --no-skip=true
 
+# Verifies, with a real cross-compile and link (arm-none-eabi-gcc/g++, expected on PATH in this
+# image), that FloatText/Ryu (src/utils/FloatText.*, ryu_float.c) are genuinely absent from a
+# program that never calls them, and that a program that does call them does not pull in newlib's
+# assert/printf/malloc chain (see tests/check-floattext-zero-cost.sh). Degrades to a no-op,
+# instead of failing, on an image without a cross toolchain.
+floattext-zero-cost:
+  stage: build
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
+    - RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
+
 # Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
 # optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the
 # FreeRTOS host stubs of the unit tests; a cross build of it needs a FreeRTOS target from a superproject
