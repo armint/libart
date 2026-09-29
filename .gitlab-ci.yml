@@ -73,9 +73,10 @@ test:
 # three would only repeat the same 2^32 iterations). tests/CMakeLists.txt builds FloatText.cpp,
 # ryu_float.c and TestFloatText.cpp at -O2 regardless of CMAKE_BUILD_TYPE specifically so this
 # finishes in a reasonable time (measured locally: under 8 minutes), but it is still too slow for
-# every push/MR pipeline, so it only runs automatically on a schedule; otherwise it is a manual,
-# non-blocking job (allow_failure so an untriggered/still-running manual job never blocks the
-# pipeline).
+# every push/MR pipeline, so it only runs automatically on a schedule - a weekly one, Sunday
+# 03:00 Europe/Amsterdam on dev, is configured in the project's pipeline schedules; otherwise it
+# is a manual, non-blocking job (allow_failure so an untriggered/still-running manual job never
+# blocks the pipeline).
 float-exhaustive:
   stage: build
   timeout: 20m
