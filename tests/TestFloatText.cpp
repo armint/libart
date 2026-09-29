@@ -1,6 +1,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <doctest/doctest.h>
 #include <limits>
@@ -159,27 +160,90 @@ TEST_CASE("FloatText::parseFloat - signed zero") {
 }
 
 TEST_CASE("FloatText::parseFloat - more than 9 significant digits rounds instead of failing") {
+   // Exact bit comparisons throughout: doctest::Approx's default epsilon (~1.2e-5 relative) is
+   // far too loose to tell adjacent floats apart, so it would pass even with the rounding broken
+   // (e.g. it accepts 1.23456788f where 1.23456790f is the correct answer below).
+
    // 1.234567895 has 10 significant digits; s2f itself would reject it outright. The 10th digit
    // is a 5 with nothing after it and the 9th kept digit (9) is odd, so round-half-to-even rounds
    // up: 1.23456790.
    auto r = parseFloat("1.234567895");
    REQUIRE(r.has_value());
-   CHECK(*r == doctest::Approx(1.23456790f));
+   CHECK(bitsOf(*r) == bitsOf(1.23456790f));
 
    // Same mantissa but the 9th kept digit (8) is even: round-half-to-even rounds down.
    auto r2 = parseFloat("1.234567885");
    REQUIRE(r2.has_value());
-   CHECK(*r2 == doctest::Approx(1.23456788f));
+   CHECK(bitsOf(*r2) == bitsOf(1.23456788f));
 
    // A non-zero digit beyond the round digit breaks the tie regardless of parity (sticky bit).
    auto r3 = parseFloat("1.2345678851");
    REQUIRE(r3.has_value());
-   CHECK(*r3 == doctest::Approx(1.23456789f));
+   CHECK(bitsOf(*r3) == bitsOf(1.23456789f));
 
    // Rounding the kept mantissa up can itself carry all the way out (999999999.5 -> 1.00000000e9).
    auto r4 = parseFloat("999999999.5");
    REQUIRE(r4.has_value());
-   CHECK(*r4 == doctest::Approx(1.0e9f));
+   CHECK(bitsOf(*r4) == bitsOf(1.0e9f));
+}
+
+TEST_CASE("FloatText::parseFloat - sampled comparison against the host's strtof") {
+   // parseFloat() rounds a >9-significant-digit literal to 9 digits before handing it to s2f,
+   // which double-rounds and can be up to 1 ULP off from the true correctly-rounded result (see
+   // FloatText.h). This samples literals of exactly 9, then more than 9, significant digits and
+   // checks against glibc strtof: bit-exact at 9 digits, at most 1 ULP off beyond that.
+   pcg::pcg32 rng(0x5717F0Fu, 1);
+
+   auto randomDigits = [&](int count) {
+      std::string s;
+      s.reserve(static_cast<size_t>(count) + 1);
+      s += static_cast<char>('1' + rng.next_bounded(9)); // leading digit must not be zero
+      for(int i = 1; i < count; ++i) {
+         s += static_cast<char>('0' + rng.next_bounded(10));
+      }
+      return s;
+   };
+
+   SUBCASE("exactly 9 significant digits: bit-exact") {
+      for(int i = 0; i < 200'000; ++i) {
+         const int32_t exp10 = static_cast<int32_t>(rng.next_bounded(60)) - 30;
+         const std::string literal = randomDigits(9) + "e" + std::to_string(exp10);
+
+         auto parsed = parseFloat(literal);
+         REQUIRE(parsed.has_value());
+         const float reference = std::strtof(literal.c_str(), nullptr);
+         INFO("literal: ", literal);
+         CHECK(bitsOf(*parsed) == bitsOf(reference));
+      }
+   }
+
+   SUBCASE("more than 9 significant digits: at most 1 ULP off") {
+      uint64_t offByOne = 0;
+      constexpr int kSamples = 200'000;
+      for(int i = 0; i < kSamples; ++i) {
+         const int digitCount = 10 + static_cast<int>(rng.next_bounded(9)); // 10..18 digits
+         const int32_t exp10 = static_cast<int32_t>(rng.next_bounded(60)) - 30;
+         const std::string literal = randomDigits(digitCount) + "e" + std::to_string(exp10);
+
+         auto parsed = parseFloat(literal);
+         REQUIRE(parsed.has_value());
+         const float reference = std::strtof(literal.c_str(), nullptr);
+         const uint32_t parsedBits = bitsOf(*parsed);
+         const uint32_t referenceBits = bitsOf(reference);
+         if(parsedBits == referenceBits) {
+            continue;
+         }
+         // Adjacent floats have adjacent bit patterns (same sign, same or adjacent exponent),
+         // so a 1-ULP difference is exactly a difference of 1 in the integer bit pattern.
+         const int64_t delta = static_cast<int64_t>(parsedBits) - static_cast<int64_t>(referenceBits);
+         INFO("literal: ", literal, ", parsed bits: ", parsedBits, ", strtof bits: ", referenceBits);
+         CHECK((delta == 1 || delta == -1));
+         offByOne++;
+      }
+      // Documents the measured error rate this MR reports in FloatText.h; not a tight bound, just
+      // a sanity check that it is in the right ballpark rather than, say, 50%.
+      CHECK(offByOne < kSamples / 10);
+   }
 }
 
 TEST_CASE("FloatText::parseFloat - out of range literals saturate instead of erroring") {
@@ -200,12 +264,32 @@ TEST_CASE("FloatText::parseFloat - out of range literals saturate instead of err
    CHECK(bitsOf(*tinyNeg) == bitsOf(-0.0f));
 
    // A digit run padded with zeros plus a large negative exponent: still handled without
-   // overflowing the internal exponent arithmetic (and without tripping the defensive length
-   // cap tested separately below).
+   // overflowing the internal exponent arithmetic.
    std::string zeros(50, '0');
    auto padded = parseFloat("1" + zeros + "e-500");
    REQUIRE(padded.has_value());
    CHECK(bitsOf(*padded) == bitsOf(0.0f));
+
+   // An exponent digit run so long it would overflow a naive int32_t accumulator: still
+   // saturates instead of erroring (the accumulator itself saturates, see parseFloat()).
+   auto overflowingExp = parseFloat("1e2147483648");
+   REQUIRE(overflowingExp.has_value());
+   CHECK(*overflowingExp == std::numeric_limits<float>::infinity());
+
+   auto reallyOverflowingExp = parseFloat("1e99999999999");
+   REQUIRE(reallyOverflowingExp.has_value());
+   CHECK(*reallyOverflowingExp == std::numeric_limits<float>::infinity());
+
+   // Same, but the mantissa is zero: the result is zero regardless of how huge the exponent is.
+   auto zeroWithHugeExp = parseFloat("0e99999999999");
+   REQUIRE(zeroWithHugeExp.has_value());
+   CHECK(bitsOf(*zeroWithHugeExp) == bitsOf(0.0f));
+
+   // No length limit on the literal itself: a legitimate (if unusual) way to write 1.0.
+   std::string manyZeros(64, '0');
+   auto longButValid = parseFloat("1." + manyZeros);
+   REQUIRE(longButValid.has_value());
+   CHECK(bitsOf(*longButValid) == bitsOf(1.0f));
 }
 
 TEST_CASE("FloatText::parseFloat - rejects malformed input") {
@@ -220,12 +304,6 @@ TEST_CASE("FloatText::parseFloat - rejects malformed input") {
          CHECK(r.error() == DecodeError::MalformedInput);
       }
    }
-}
-
-TEST_CASE("FloatText::parseFloat - rejects an absurdly long literal defensively") {
-   std::string tooLong(65, '1');
-   auto r = parseFloat(tooLong);
-   CHECK_FALSE(r.has_value());
 }
 
 TEST_CASE("FloatText - structural round-trip over every exponent") {
@@ -255,10 +333,12 @@ TEST_CASE("FloatText - structural round-trip over every exponent") {
    }
 }
 
-TEST_CASE("FloatText - sampled round-trip (subset of the exhaustive 2^32 check)") {
+TEST_CASE("FloatText - sampled round-trip (2,000,000 random bit patterns)") {
    // A fixed seed keeps a failure reproducible. This is the "sampled subset" the issue asks for
    // in the normal test run; TestFloatText.cpp's exhaustive case below covers every bit pattern
-   // but only runs in the dedicated CI job (it is doctest::skip()'d here).
+   // but only runs in the dedicated CI job (it is doctest::skip()'d here). Named to not contain
+   // "exhaustive": --test-case="*exhaustive*" (used to run just that case) would otherwise also
+   // match this one.
    pcg::pcg32 rng(0xF10A7u, 1);
    char buf[kMaxTextLength];
 
