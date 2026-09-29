@@ -22,15 +22,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(etl)
 
-# See the top-level CMakeLists.txt for why this is a pinned tarball, populate-only.
-FetchContent_Declare(ryu
-        URL https://github.com/ulfjack/ryu/archive/4c0618b0e44f7ef027ebae05d2cc7812048f7c8f.tar.gz
-        URL_HASH SHA256=5c039f2957769c5f61a8699b12d8703043b3f47c3ac6e2124c5a04afb6819f29
-)
-FetchContent_GetProperties(ryu)
-if(NOT ryu_POPULATED)
-    FetchContent_Populate(ryu)
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/ryu.cmake")
 
 if (NOT DEFINED PROJECT_NAME)
     # We are not in a subproject

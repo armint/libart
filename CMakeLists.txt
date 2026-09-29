@@ -29,21 +29,7 @@ if(ESP_PLATFORM)
         FetchContent_Populate(ArduinoJson)
     endif()
 
-    # Ryu (https://github.com/ulfjack/ryu) backs FloatText.h/.cpp (src/utils/), which is picked up
-    # by the SRC_DIRS above like any other src/utils source. A pinned tarball, not a git checkout:
-    # it never changes once fetched, and a tarball+hash is verifiable offline (see
-    # FETCHCONTENT_SOURCE_DIR_RYU in AGENTS.md for an offline override). Populate only: its own
-    # CMakeLists.txt calls idf_component_register()/add_subdirectory() paths this project doesn't
-    # want (it also builds the double conversion, which FloatText never uses); ryu_float.c
-    # (src/utils/) includes the two float-only .c files it needs directly.
-    FetchContent_Declare(ryu
-            URL https://github.com/ulfjack/ryu/archive/4c0618b0e44f7ef027ebae05d2cc7812048f7c8f.tar.gz
-            URL_HASH SHA256=5c039f2957769c5f61a8699b12d8703043b3f47c3ac6e2124c5a04afb6819f29
-    )
-    FetchContent_GetProperties(ryu)
-    if(NOT ryu_POPULATED)
-        FetchContent_Populate(ryu)
-    endif()
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/ryu.cmake")
 
     target_include_directories(${COMPONENT_LIB} PUBLIC
             ${etl_SOURCE_DIR}/include
@@ -82,21 +68,7 @@ FetchContent_Declare(ArduinoJson
 
 FetchContent_MakeAvailable(ArduinoJson)
 
-# Ryu (https://github.com/ulfjack/ryu, Apache-2.0 / Boost-1.0) backs FloatText.h/.cpp
-# (src/utils/): correctly-rounded, shortest-round-trip float<->text conversion without newlib
-# printf/strtod, libm or heap. A pinned tarball, not a git checkout: it never changes once
-# fetched, and a tarball+hash is verifiable offline. Set FETCHCONTENT_SOURCE_DIR_RYU to a local
-# checkout to build offline instead. Populate only, do not add_subdirectory() it: its own
-# CMakeLists.txt also builds the double conversion (d2s.c and friends), which this project has no
-# use for; ryu_float.c (src/utils/) includes only the two float-only .c files it needs.
-FetchContent_Declare(ryu
-        URL https://github.com/ulfjack/ryu/archive/4c0618b0e44f7ef027ebae05d2cc7812048f7c8f.tar.gz
-        URL_HASH SHA256=5c039f2957769c5f61a8699b12d8703043b3f47c3ac6e2124c5a04afb6819f29
-)
-FetchContent_GetProperties(ryu)
-if(NOT ryu_POPULATED)
-    FetchContent_Populate(ryu)
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/ryu.cmake")
 
 # The LittleFS binding (art-storage-littlefs) is optional and off by default, so that art-core and every
 # existing consumer stay free of a littlefs dependency (and of its fetch). The native unit tests compile the
