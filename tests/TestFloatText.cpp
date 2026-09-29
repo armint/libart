@@ -206,7 +206,7 @@ TEST_CASE("FloatText::parseFloat - sampled comparison against the host's strtof"
 
    SUBCASE("exactly 9 significant digits: bit-exact") {
       for(int i = 0; i < 200'000; ++i) {
-         const int32_t exp10 = static_cast<int32_t>(rng.next_bounded(60)) - 30;
+         const int32_t exp10 = static_cast<int32_t>(rng.next_bounded(110)) - 65; // -65..44: reaches subnormals and the overflow edge
          const std::string literal = randomDigits(9) + "e" + std::to_string(exp10);
 
          auto parsed = parseFloat(literal);
@@ -222,7 +222,7 @@ TEST_CASE("FloatText::parseFloat - sampled comparison against the host's strtof"
       constexpr int kSamples = 200'000;
       for(int i = 0; i < kSamples; ++i) {
          const int digitCount = 10 + static_cast<int>(rng.next_bounded(9)); // 10..18 digits
-         const int32_t exp10 = static_cast<int32_t>(rng.next_bounded(60)) - 30;
+         const int32_t exp10 = static_cast<int32_t>(rng.next_bounded(110)) - 65; // -65..44: reaches subnormals and the overflow edge
          const std::string literal = randomDigits(digitCount) + "e" + std::to_string(exp10);
 
          auto parsed = parseFloat(literal);
