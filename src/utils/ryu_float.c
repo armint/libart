@@ -28,3 +28,15 @@
 #define RYU_FLOAT_FULL_TABLE
 #include "ryu/f2s.c"
 #include "ryu/s2f.c"
+
+// f2d() (Ryu's decimal-conversion core: raw mantissa/exponent bits in, shortest-round-trip
+// decimal mantissa and exponent out) is `static inline` in f2s.c, so it is only reachable from
+// within this translation unit. formatFloat() (FloatText.cpp) needs it directly, rather than
+// going through f2s_buffered_n() and re-parsing the text it produces back into digits and an
+// exponent: f2s_buffered_n() pulls in to_chars() and DIGIT_TABLE for formatting a decimal string
+// that FloatText.cpp would immediately take apart again.
+void art_ryu_f2d(uint32_t ieeeMantissa, uint32_t ieeeExponent, uint32_t *mantissaOut, int32_t *exponentOut) {
+   const floating_decimal_32 v = f2d(ieeeMantissa, ieeeExponent);
+   *mantissaOut = v.mantissa;
+   *exponentOut = v.exponent;
+}

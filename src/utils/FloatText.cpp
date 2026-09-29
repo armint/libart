@@ -3,166 +3,137 @@
 #include <cstdint>
 
 extern "C" {
-#include "ryu/ryu.h"
 #include "ryu/ryu_parse.h"
+// Defined in ryu_float.c; exposes Ryu's static f2d() (see the comment there).
+void art_ryu_f2d(uint32_t ieeeMantissa, uint32_t ieeeExponent, uint32_t *mantissaOut, int32_t *exponentOut);
 }
 
 namespace utils::FloatText {
 
 namespace {
 
-bool iequals(std::string_view a, std::string_view b) {
-   if(a.size() != b.size()) {
-      return false;
+// Digit-by-digit, mantissa*10^k lookup used to write a decimal mantissa without a division or
+// modulo instruction (some of this project's targets have no hardware divider).
+constexpr uint32_t kPow10[9] = { 100000000u, 10000000u, 1000000u, 100000u, 10000u, 1000u, 100u, 10u, 1u };
+
+// Writes the decimal digits of m (1..999999999, i.e. never called with m == 0) with no leading
+// zeros, and returns how many digits it wrote (1..9).
+size_t writeDigits(uint32_t m, char *out) {
+   size_t k = 0;
+   while(kPow10[k] > m) {
+      k++;
    }
-   for(size_t i = 0; i < a.size(); ++i) {
-      char ca = a[i];
-      char cb = b[i];
-      if(ca >= 'A' && ca <= 'Z') {
-         ca = static_cast<char>(ca - 'A' + 'a');
+   size_t n = 0;
+   for(; k < 9; ++k) {
+      char digit = '0';
+      while(m >= kPow10[k]) {
+         m -= kPow10[k];
+         digit++;
       }
-      if(cb >= 'A' && cb <= 'Z') {
-         cb = static_cast<char>(cb - 'A' + 'a');
-      }
-      if(ca != cb) {
+      out[n++] = digit;
+   }
+   return n;
+}
+
+// Writes e (0..99) as exactly two decimal digits, no division.
+void writeTwoDigits(uint32_t e, char *out) {
+   char tens = '0';
+   while(e >= 10) {
+      e -= 10;
+      tens++;
+   }
+   out[0] = tens;
+   out[1] = static_cast<char>('0' + e);
+}
+
+// Case-insensitive exact match (ASCII only): lowercases with `| 0x20`, which only ever touches
+// the 'A'-'Z' bit and leaves digits/punctuation unchanged.
+bool iequals(std::string_view text, const char *lower) {
+   size_t i = 0;
+   for(; lower[i] != '\0'; ++i) {
+      if(i >= text.size() || (text[i] | 0x20) != lower[i]) {
          return false;
       }
    }
-   return true;
+   return i == text.size();
 }
 
 float bitsToFloat(uint32_t bits) {
    return std::bit_cast<float>(bits);
 }
 
-float makeInf(bool negative) {
-   return bitsToFloat(0x7F800000u | (negative ? 0x80000000u : 0u));
-}
-
-float makeNan() {
-   return bitsToFloat(0x7FC00000u);
-}
-
-float makeZero(bool negative) {
-   return bitsToFloat(negative ? 0x80000000u : 0u);
-}
-
 } // namespace
 
 size_t formatFloat(float value, std::span<char> dest) {
-   // f2s_buffered_n never null-terminates and, per Ryu's own f2s() (which malloc(16)s), never
-   // writes more than 15 characters; give it a little headroom regardless.
-   char ryuBuf[16];
-   const int ryuLen = f2s_buffered_n(value, ryuBuf);
-   const std::string_view ryuText(ryuBuf, static_cast<size_t>(ryuLen));
+   const uint32_t bits = std::bit_cast<uint32_t>(value);
+   const uint32_t ieeeExponent = (bits >> 23) & 0xFFu;
+   const uint32_t ieeeMantissa = bits & 0x7FFFFFu;
 
    char buf[kMaxTextLength];
    size_t len = 0;
 
-   // A numeric result never starts with 'N' or 'I' (only a digit or a '-' followed by a digit),
-   // so a single leading character tells the special cases apart from a normal value without
-   // pulling in string comparison machinery for it.
-   if(ryuText[0] == 'N') { // "NaN"
+   if(ieeeExponent == 0xFFu && ieeeMantissa != 0u) {
+      // NaN: Ryu's own text form drops the sign bit too (there is exactly one bit pattern's
+      // worth of information - "is it a NaN" - worth reporting in text; the payload does not
+      // round-trip through text either way).
       buf[len++] = 'n';
       buf[len++] = 'a';
       buf[len++] = 'n';
-   } else if(ryuText[0] == 'I' || ryuText[1] == 'I') { // "Infinity" or "-Infinity"
-      if(ryuText[0] == '-') {
-         buf[len++] = '-';
-      }
-      buf[len++] = 'i';
-      buf[len++] = 'n';
-      buf[len++] = 'f';
    } else {
-      // Reformat Ryu's normalized scientific notation ("[-]D[.DDD]E[-]DD") into %g style.
-      size_t i = 0;
-      bool negative = false;
-      if(ryuText[i] == '-') {
-         negative = true;
-         i++;
-      }
-      char digits[9];
-      size_t ndigits = 0;
-      while(ryuText[i] != 'E') {
-         if(ryuText[i] != '.') {
-            digits[ndigits++] = ryuText[i];
-         }
-         i++;
-      }
-      i++; // skip 'E'
-      bool expNegative = false;
-      if(ryuText[i] == '-') {
-         expNegative = true;
-         i++;
-      }
-      int exp = 0;
-      for(; i < ryuText.size(); ++i) {
-         exp = exp * 10 + (ryuText[i] - '0');
-      }
-      if(expNegative) {
-         exp = -exp;
-      }
-
-      if(negative) {
+      if(bits >> 31) {
          buf[len++] = '-';
       }
-      // %g-style threshold: fixed-point while the value fits in at most the 9 significant
-      // digits a float ever needs (exp < 9), scientific below 1e-4 (exp < -4) as usual.
-      const bool useFixed = exp >= -4 && exp < 9;
-      if(useFixed) {
-         if(exp >= 0) {
-            const size_t intDigits = static_cast<size_t>(exp) + 1;
-            if(ndigits <= intDigits) {
+      if(ieeeExponent == 0xFFu) { // infinity (mantissa == 0, checked by the branch above)
+         buf[len++] = 'i';
+         buf[len++] = 'n';
+         buf[len++] = 'f';
+      } else if((bits << 1) == 0u) { // +-0.0 (exponent and mantissa both zero)
+         buf[len++] = '0';
+      } else {
+         uint32_t mantissa = 0;
+         int32_t exponent = 0;
+         art_ryu_f2d(ieeeMantissa, ieeeExponent, &mantissa, &exponent);
+         char digits[9];
+         const size_t ndigits = writeDigits(mantissa, digits);
+         // Normalized scientific exponent: value == digits[0].digits[1:] * 10^exp.
+         const int32_t exp = exponent + static_cast<int32_t>(ndigits) - 1;
+
+         // %g-style threshold: fixed-point while the value fits in at most the 9 significant
+         // digits a float ever needs (exp < 9), scientific below 1e-4 (exp < -4) as usual.
+         if(exp >= -4 && exp < 9) {
+            if(exp >= 0) {
+               const size_t intDigits = static_cast<size_t>(exp) + 1;
+               for(size_t k = 0; k < intDigits; ++k) {
+                  buf[len++] = k < ndigits ? digits[k] : '0';
+               }
+               if(ndigits > intDigits) {
+                  buf[len++] = '.';
+                  for(size_t k = intDigits; k < ndigits; ++k) {
+                     buf[len++] = digits[k];
+                  }
+               }
+            } else {
+               buf[len++] = '0';
+               buf[len++] = '.';
+               for(int32_t k = -1; k > exp; --k) {
+                  buf[len++] = '0';
+               }
                for(size_t k = 0; k < ndigits; ++k) {
                   buf[len++] = digits[k];
                }
-               for(size_t k = ndigits; k < intDigits; ++k) {
-                  buf[len++] = '0';
-               }
-            } else {
-               for(size_t k = 0; k < intDigits; ++k) {
-                  buf[len++] = digits[k];
-               }
+            }
+         } else {
+            buf[len++] = digits[0];
+            if(ndigits > 1) {
                buf[len++] = '.';
-               for(size_t k = intDigits; k < ndigits; ++k) {
+               for(size_t k = 1; k < ndigits; ++k) {
                   buf[len++] = digits[k];
                }
             }
-         } else {
-            buf[len++] = '0';
-            buf[len++] = '.';
-            const size_t zeros = static_cast<size_t>(-exp - 1);
-            for(size_t k = 0; k < zeros; ++k) {
-               buf[len++] = '0';
-            }
-            for(size_t k = 0; k < ndigits; ++k) {
-               buf[len++] = digits[k];
-            }
-         }
-      } else {
-         buf[len++] = digits[0];
-         if(ndigits > 1) {
-            buf[len++] = '.';
-            for(size_t k = 1; k < ndigits; ++k) {
-               buf[len++] = digits[k];
-            }
-         }
-         buf[len++] = 'e';
-         int e = exp;
-         if(e < 0) {
-            buf[len++] = '-';
-            e = -e;
-         } else {
-            buf[len++] = '+';
-         }
-         // Zero-padded to 2 digits; a float's decimal exponent never needs a 3rd (see
-         // kMaxTextLength).
-         if(e < 10) {
-            buf[len++] = '0';
-            buf[len++] = static_cast<char>('0' + e);
-         } else {
-            buf[len++] = static_cast<char>('0' + e / 10);
-            buf[len++] = static_cast<char>('0' + e % 10);
+            buf[len++] = 'e';
+            buf[len++] = exp < 0 ? '-' : '+';
+            writeTwoDigits(static_cast<uint32_t>(exp < 0 ? -exp : exp), buf + len);
+            len += 2;
          }
       }
    }
@@ -177,221 +148,158 @@ size_t formatFloat(float value, std::span<char> dest) {
 }
 
 std::expected<float, DecodeError> parseFloat(std::string_view text) {
-   // Defensive cap: no literal formatFloat() produces, or anyone would reasonably hand-write,
-   // comes anywhere near this long; keeps the scan below bounded instead of unbounded on
-   // attacker-supplied input.
-   if(text.empty() || text.size() > 64) {
-      return std::unexpected(DecodeError::MalformedInput);
-   }
-
    size_t i = 0;
    bool negative = false;
-   if(text[0] == '-') {
-      negative = true;
-      i = 1;
-   } else if(text[0] == '+') {
-      i = 1;
+   if(i < text.size() && (text[i] == '-' || text[i] == '+')) {
+      negative = text[i++] == '-';
    }
-
    // Built from a pointer and length rather than text.substr(i): substr() is bounds-checked and
    // throws on misuse, which (even though i can never exceed text.size() here) still pulls the
    // exception-throwing path, and everything it drags in, into the link.
    std::string_view rest(text.data() + i, text.size() - i);
-   if(rest.empty()) {
-      return std::unexpected(DecodeError::MalformedInput);
-   }
+   const uint32_t sign = negative ? 0x80000000u : 0u;
 
    if(iequals(rest, "inf") || iequals(rest, "infinity")) {
-      return makeInf(negative);
+      return bitsToFloat(sign | 0x7F800000u);
    }
    if(iequals(rest, "nan")) {
-      return makeNan();
+      return bitsToFloat(0x7FC00000u);
    }
-
-   // Optional trailing f/F suffix on a numeric literal (not on inf/nan, handled above already).
-   if(rest.back() == 'f' || rest.back() == 'F') {
+   if(!rest.empty() && (rest.back() | 0x20) == 'f') {
       rest.remove_suffix(1);
-      if(rest.empty()) {
-         return std::unexpected(DecodeError::MalformedInput);
-      }
    }
 
-   // Grammar: digits ['.' digits] [('e'|'E') ['+'|'-'] digits], with at least one digit on
-   // either side of the '.'. Everything else, including a garbled/incomplete exponent, is
-   // malformed input.
-   size_t ePos = std::string_view::npos;
-   for(size_t k = 0; k < rest.size(); ++k) {
-      if(rest[k] == 'e' || rest[k] == 'E') {
-         ePos = k;
-         break;
-      }
-   }
-   // Sliced with pointer/length instead of substr(), for the same reason as rest above.
-   const std::string_view mantissaPart =
-      ePos == std::string_view::npos ? rest : std::string_view(rest.data(), ePos);
-   const std::string_view expPart =
-      ePos == std::string_view::npos ? std::string_view{} : std::string_view(rest.data() + ePos + 1, rest.size() - ePos - 1);
-   if(ePos != std::string_view::npos && expPart.empty()) {
-      return std::unexpected(DecodeError::MalformedInput);
-   }
-
-   std::string_view intPart = mantissaPart;
-   std::string_view fracPart;
-   size_t dotPos = std::string_view::npos;
-   for(size_t k = 0; k < mantissaPart.size(); ++k) {
-      if(mantissaPart[k] == '.') {
-         dotPos = k;
-         break;
-      }
-   }
-   if(dotPos != std::string_view::npos) {
-      intPart = std::string_view(mantissaPart.data(), dotPos);
-      fracPart = std::string_view(mantissaPart.data() + dotPos + 1, mantissaPart.size() - dotPos - 1);
-   }
-   if(intPart.empty() && fracPart.empty()) {
-      return std::unexpected(DecodeError::MalformedInput);
-   }
-   for(char c : intPart) {
-      if(c < '0' || c > '9') {
-         return std::unexpected(DecodeError::MalformedInput);
-      }
-   }
-   for(char c : fracPart) {
-      if(c < '0' || c > '9') {
-         return std::unexpected(DecodeError::MalformedInput);
-      }
-   }
-
-   int32_t expValue = 0;
-   if(!expPart.empty()) {
-      const auto parsedExp = stringToInteger<int32_t>(expPart);
-      if(!parsedExp) {
-         return std::unexpected(parsedExp.error());
-      }
-      expValue = *parsedExp;
-   }
-
-   // Concatenate the integer and fractional digits (dropping the decimal point itself), and
-   // locate the significant run: everything from the first to the last non-zero digit.
-   char digits[64];
-   size_t nd = 0;
-   for(char c : intPart) {
-      digits[nd++] = c;
-   }
-   for(char c : fracPart) {
-      digits[nd++] = c;
-   }
-   const int64_t fracLen = static_cast<int64_t>(fracPart.size());
-
-   size_t first = 0;
-   while(first < nd && digits[first] == '0') {
-      first++;
-   }
-   if(first == nd) {
-      return makeZero(negative);
-   }
-   size_t last = nd - 1;
-   while(digits[last] == '0') {
-      last--;
-   }
-
-   const size_t sigLen = last - first + 1;
-   // value == digits[first..last] (as an integer) * 10^finalExp.
-   int64_t finalExp = static_cast<int64_t>(expValue) - fracLen + static_cast<int64_t>(nd - 1 - last);
-
+   // Single left-to-right pass: build value == mantissa * 10^exponent as we go, keeping at most
+   // the 9 significant digits s2f accepts. mantissa==0 && exponent==0 for every digit seen so far
+   // means "still in leading zeros", which is how leading zeros (in either the integer or the
+   // fractional part) are told apart from a significant digit without a separate pre-scan.
    uint32_t mantissa = 0;
-   size_t usedDigits;
-   if(sigLen <= 9) {
-      for(size_t k = first; k <= last; ++k) {
-         mantissa = mantissa * 10 + static_cast<uint32_t>(digits[k] - '0');
+   int significantDigits = 0;
+   int32_t exponent = 0;
+   int roundDigit = -1; // first digit dropped past the 9th significant one, or -1 if none yet
+   bool sticky = false; // any nonzero digit dropped after roundDigit
+   bool sawDigit = false;
+   bool sawDot = false;
+
+   size_t k = 0;
+   for(; k < rest.size(); ++k) {
+      const char c = rest[k];
+      if(c == '.') {
+         if(sawDot) {
+            return std::unexpected(DecodeError::MalformedInput);
+         }
+         sawDot = true;
+         continue;
       }
-      usedDigits = sigLen;
-   } else {
-      // s2f rejects 9+ significant mantissa digits outright, so round the excess away:
-      // round-half-to-even on the 10th significant digit, with a sticky bit for the rest.
-      for(size_t k = 0; k < 9; ++k) {
-         mantissa = mantissa * 10 + static_cast<uint32_t>(digits[first + k] - '0');
+      if(c < '0' || c > '9') {
+         break;
       }
-      const int roundDigit = digits[first + 9] - '0';
-      bool sticky = false;
-      for(size_t k = first + 10; k <= last; ++k) {
-         if(digits[k] != '0') {
-            sticky = true;
-            break;
+      sawDigit = true;
+      const uint32_t digit = static_cast<uint32_t>(c - '0');
+      if(significantDigits < 9) {
+         if(mantissa == 0 && digit == 0) {
+            // An insignificant leading zero. One after the point still shifts the exponent
+            // (0.0123 has one fewer significant leftward shift than 0.123); one before it, or
+            // before any digit at all, does not.
+            if(sawDot) {
+               exponent--;
+            }
+            continue;
+         }
+         mantissa = mantissa * 10 + digit;
+         significantDigits++;
+         if(sawDot) {
+            exponent--;
+         }
+      } else {
+         // Beyond the 9 significant digits s2f accepts. A digit here still in the integer part
+         // (no '.' yet) represents a higher place value that the fixed-width mantissa above
+         // cannot hold, so it must still shift the exponent up; one in the fractional part is
+         // just extra precision being rounded away and does not.
+         if(!sawDot) {
+            exponent++;
+         }
+         if(roundDigit < 0) {
+            roundDigit = static_cast<int>(digit);
+         } else {
+            sticky |= digit != 0;
          }
       }
-      const bool roundUp = roundDigit > 5 || (roundDigit == 5 && (sticky || (mantissa & 1) != 0));
-      int64_t extraExp = static_cast<int64_t>(sigLen - 9);
-      if(roundUp) {
-         mantissa++;
-         if(mantissa == 1000000000u) {
-            // Carried into a 10th digit; drop the trailing zero it introduced instead.
-            mantissa = 100000000u;
-            extraExp++;
-         }
-      }
-      finalExp += extraExp;
-      usedDigits = 9;
+   }
+   if(!sawDigit) {
+      return std::unexpected(DecodeError::MalformedInput);
    }
 
-   // Replicate s2f_n's own out-of-range shortcuts (see s2f.c) before constructing its input:
-   // this keeps the exponent we hand it small, regardless of how the original literal was
-   // written (e.g. "1" followed by 60 zeros and a huge negative exponent).
-   const int64_t magnitude = static_cast<int64_t>(usedDigits) + finalExp;
+   if(k < rest.size()) {
+      if((rest[k] | 0x20) != 'e') {
+         return std::unexpected(DecodeError::MalformedInput);
+      }
+      ++k;
+      bool exponentNegative = false;
+      if(k < rest.size() && (rest[k] == '-' || rest[k] == '+')) {
+         exponentNegative = rest[k++] == '-';
+      }
+      if(k == rest.size()) {
+         return std::unexpected(DecodeError::MalformedInput);
+      }
+      int32_t literalExponent = 0;
+      for(; k < rest.size(); ++k) {
+         const char c = rest[k];
+         if(c < '0' || c > '9') {
+            return std::unexpected(DecodeError::MalformedInput);
+         }
+         // Saturate rather than overflow: once past this, the result is 0 or +-inf regardless of
+         // any further digits, which the magnitude check below still gets right.
+         if(literalExponent < 100000) {
+            literalExponent = literalExponent * 10 + (c - '0');
+         }
+      }
+      exponent += exponentNegative ? -literalExponent : literalExponent;
+   }
+
+   // s2f rejects mantissas with 10 or more significant digits outright, so a literal with more
+   // than 9 is rounded to 9 first (round-half-to-even on the first dropped digit, with a sticky
+   // bit for the rest) - see FloatText.h for the resulting, measured 1-ULP error rate on such
+   // literals.
+   if(roundDigit > 5 || (roundDigit == 5 && (sticky || (mantissa & 1) != 0))) {
+      if(++mantissa == 1000000000u) {
+         // Carried into a 10th digit; drop the trailing zero it introduced instead.
+         mantissa = 100000000u;
+         exponent++;
+      }
+   }
+   if(mantissa == 0) {
+      return bitsToFloat(sign);
+   }
+
+   // Replicate s2f_n's own out-of-range shortcuts (see s2f.c) before constructing its input: this
+   // keeps the exponent we hand it small, regardless of how the original literal was written
+   // (e.g. "1" followed by 60 zeros and a huge negative exponent, or a saturated one above).
+   char buf[16];
+   size_t len = writeDigits(mantissa, buf);
+   const int32_t magnitude = static_cast<int32_t>(len) + exponent;
    if(magnitude <= -46) {
-      return makeZero(negative);
+      return bitsToFloat(sign);
    }
    if(magnitude >= 40) {
-      return makeInf(negative);
+      return bitsToFloat(sign | 0x7F800000u);
    }
 
-   // Build "<mantissa>e<finalExp>" for s2f_n: at most 9 mantissa digits and, thanks to the
-   // range check above, at most a 2-digit exponent.
-   char buf[24];
-   size_t len = 0;
-   {
-      char tmp[9];
-      size_t tn = 0;
-      uint32_t m = mantissa;
-      do {
-         tmp[tn++] = static_cast<char>('0' + m % 10);
-         m /= 10;
-      } while(m != 0);
-      while(tn > 0) {
-         buf[len++] = tmp[--tn];
-      }
-   }
    buf[len++] = 'e';
-   // The magnitude check above guarantees finalExp fits comfortably in an int32_t (roughly
-   // -55..39); narrow it before the digit-extraction loop below so it stays 32-bit division
-   // (64-bit div/mod has no hardware support on most of this project's targets and pulls in a
-   // sizeable software implementation).
-   int32_t e = static_cast<int32_t>(finalExp);
-   if(e < 0) {
+   if(exponent < 0) {
       buf[len++] = '-';
-      e = -e;
+      exponent = -exponent;
    }
-   {
-      char tmp[8];
-      size_t tn = 0;
-      uint32_t ee = static_cast<uint32_t>(e);
-      do {
-         tmp[tn++] = static_cast<char>('0' + ee % 10);
-         ee /= 10;
-      } while(ee != 0);
-      while(tn > 0) {
-         buf[len++] = tmp[--tn];
-      }
-   }
+   writeTwoDigits(static_cast<uint32_t>(exponent), buf + len);
+   len += 2;
 
-   float magnitudeResult = 0.0f;
-   const enum Status status = s2f_n(buf, static_cast<int>(len), &magnitudeResult);
-   if(status != SUCCESS) {
-      // Should not happen given the normalization above; fail safe rather than propagate a
-      // wrong value.
+   float result = 0.0f;
+   if(s2f_n(buf, static_cast<int>(len), &result) != SUCCESS) {
+      // Should not happen given the normalization above; fail safe rather than propagate a wrong
+      // value.
       return std::unexpected(DecodeError::MalformedInput);
    }
-   return negative ? -magnitudeResult : magnitudeResult;
+   return negative ? -result : result;
 }
 
 } // namespace utils::FloatText
