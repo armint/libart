@@ -94,13 +94,18 @@ float-exhaustive:
 # Verifies, with a real cross-compile and link (arm-none-eabi-gcc/g++, expected on PATH in this
 # image), that FloatText/Ryu (src/utils/FloatText.*, ryu_float.c) are genuinely absent from a
 # program that never calls them, and that a program that does call them does not pull in newlib's
-# assert/printf/malloc chain (see tests/check-floattext-zero-cost.sh). Degrades to a no-op,
-# instead of failing, on an image without a cross toolchain.
+# assert/printf/malloc chain (see tests/check-floattext-zero-cost.sh). This image
+# (firmware-builder:v1.14.0) has arm-none-eabi-gcc under /opt, not on PATH by default - the same
+# toolchain path other embedded-libraries projects' CI (sentinode-th, universal-oven-controller-
+# firmware) points GCC_TOOLCHAIN_PREFIX at. REQUIRE_TOOLCHAIN=1 turns a missing toolchain or a
+# missing RYU_SOURCE_DIR into a job failure instead of a silently-green skip.
 floattext-zero-cost:
   stage: build
   variables:
     GIT_DEPTH: 0
+    REQUIRE_TOOLCHAIN: "1"
   script:
+    - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
     - RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
 
