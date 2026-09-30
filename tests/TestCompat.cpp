@@ -49,6 +49,9 @@ static_assert(std::is_same_v<art::remove_cvref_t<volatile int &&>, int>);
 static_assert(std::is_same_v<art::remove_cvref_t<const int *const>, const int *>);
 static_assert(std::is_same_v<art::remove_cvref_t<int[3]>, int[3]>);
 static_assert(std::is_same_v<art::remove_cvref<const long &>::type, long>);
+#if defined(__cpp_lib_remove_cvref)
+static_assert(std::is_same_v<art::remove_cvref_t<const volatile Error &>, std::remove_cvref_t<const volatile Error &>>);
+#endif
 
 // ---------- bit.h ----------
 
