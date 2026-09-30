@@ -554,35 +554,42 @@ TEST_CASE("[compat] expected of a copy constructible, non-assignable value") {
 
 #if ART_TEST_EXPECTED_TRAP
 // value() on an error must trap (__builtin_trap(): SIGILL on x86, SIGTRAP on Arm), never return and never throw. A
-// child process calls it; the parent checks that the child was killed by a signal instead of exiting. Only for the
-// own type: std::expected throws here (the tests build with exceptions).
+// child process calls it; the parent checks that the child was killed by SIGILL or SIGTRAP. Any other end fails the
+// test: another fatal signal (abort(), a null-pointer write), a normal exit, or a hang (the alarm raises SIGALRM after
+// 5 s). Only for the own type: std::expected throws here (the tests build with exceptions).
 TEST_CASE("[compat] expected: value() on an error traps") {
-   const auto trapsIn = [](auto call) {
+   // The signal that ended the child, or 0 if it exited.
+   const auto terminatingSignal = [](auto call) {
       const pid_t child = fork();
       REQUIRE(child >= 0);
       if(child == 0) {
          // doctest's crash handler would report the trap as a failed test in the child; die by the signal instead.
          std::signal(SIGILL, SIG_DFL);
          std::signal(SIGTRAP, SIG_DFL);
+         alarm(5);
          call();
          _exit(0);
       }
       int status = 0;
       REQUIRE(waitpid(child, &status, 0) == child);
-      return WIFSIGNALED(status);
+      return WIFSIGNALED(status) ? WTERMSIG(status) : 0;
    };
+   const auto isTrap = [](int signal) { return signal == SIGILL || signal == SIGTRAP; };
 
-   CHECK(trapsIn([] {
+   const int valueSignal = terminatingSignal([] {
       art::expected<int, Error> error = art::unexpected(Error::Io);
       static_cast<void>(error.value());
-   }));
-   CHECK(trapsIn([] {
+   });
+   CHECK(isTrap(valueSignal));
+   const int voidSignal = terminatingSignal([] {
       const art::expected<void, Error> error = art::unexpected(Error::Io);
       error.value();
-   }));
-   CHECK(trapsIn([] { static_cast<void>(open(-1).value()); }));
+   });
+   CHECK(isTrap(voidSignal));
+   const int moveOnlySignal = terminatingSignal([] { static_cast<void>(open(-1).value()); });
+   CHECK(isTrap(moveOnlySignal));
    // The check itself: value() on a value returns normally.
-   CHECK_FALSE(trapsIn([] { static_cast<void>(open(1).value()); }));
+   CHECK(terminatingSignal([] { static_cast<void>(open(1).value()); }) == 0);
 }
 #endif
 
