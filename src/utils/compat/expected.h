@@ -316,11 +316,17 @@ struct expected_enable_assign<false, false> {
    expected_enable_assign &operator=(expected_enable_assign &&) = delete;
 };
 
-// Assignment between the two states constructs the new member, so it needs construction as well (as std does).
+// Assignment between the two states constructs the new member, so it needs construction as well. Like
+// std::expected, it also needs T or E to have a nothrow move constructor (std needs that for its exception
+// guarantee). The own type has no such guarantee, but keeps the condition so that code which compiles here also
+// compiles with std::expected. For expected<void, E> the condition always holds.
 template <typename T>
 inline constexpr bool expected_copy_assignable_v = std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>;
 template <typename T>
 inline constexpr bool expected_move_assignable_v = std::is_move_constructible_v<T> && std::is_move_assignable_v<T>;
+template <typename T, typename E>
+inline constexpr bool expected_nothrow_move_one_of_v =
+std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>;
 
 template <typename T, typename E>
 using expected_enable_construct_for =
@@ -329,7 +335,8 @@ expected_enable_construct<std::is_copy_constructible_v<T> && std::is_copy_constr
 
 template <typename T, typename E>
 using expected_enable_assign_for =
-expected_enable_assign<expected_copy_assignable_v<T> && expected_copy_assignable_v<E>, expected_move_assignable_v<T> && expected_move_assignable_v<E> >;
+expected_enable_assign<expected_copy_assignable_v<T> && expected_copy_assignable_v<E> && expected_nothrow_move_one_of_v<T, E>,
+                       expected_move_assignable_v<T> && expected_move_assignable_v<E> && expected_nothrow_move_one_of_v<T, E> >;
 
 /** A value argument U of expected<T, E>: not a tag, not an expected and not an unexpected. */
 template <typename T, typename U>

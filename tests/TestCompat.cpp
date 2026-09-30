@@ -292,6 +292,26 @@ static_assert(std::is_move_constructible_v<art::expected<ConstCounted, Error>>);
 static_assert(!std::is_copy_assignable_v<art::expected<ConstCounted, Error>>);
 static_assert(!std::is_move_assignable_v<art::expected<ConstCounted, Error>>);
 
+// T and E with potentially-throwing move constructors: like std::expected, expected can be constructed but not
+// assigned, so that code that compiles at C++17 also compiles at C++23.
+struct ThrowingMove {
+   ThrowingMove() = default;
+   ThrowingMove(const ThrowingMove &) noexcept(false) {}
+   ThrowingMove(ThrowingMove &&) noexcept(false) {}
+   ThrowingMove &operator=(const ThrowingMove &) = default;
+   ThrowingMove &operator=(ThrowingMove &&) = default;
+};
+
+static_assert(std::is_copy_constructible_v<art::expected<ThrowingMove, ThrowingMove>>);
+static_assert(std::is_move_constructible_v<art::expected<ThrowingMove, ThrowingMove>>);
+static_assert(!std::is_copy_assignable_v<art::expected<ThrowingMove, ThrowingMove>>);
+static_assert(!std::is_move_assignable_v<art::expected<ThrowingMove, ThrowingMove>>);
+// One nothrow move constructor (here the error enum) is enough.
+static_assert(std::is_copy_assignable_v<art::expected<ThrowingMove, Error>>);
+static_assert(std::is_move_assignable_v<art::expected<ThrowingMove, Error>>);
+static_assert(std::is_copy_assignable_v<art::expected<void, ThrowingMove>>);
+static_assert(std::is_move_assignable_v<art::expected<void, ThrowingMove>>);
+
 // Readable::read(): a virtual function that returns expected<char, E>, with error propagation through a caller.
 class Source {
    public:
