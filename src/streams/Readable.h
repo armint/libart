@@ -49,7 +49,7 @@ class Readable {
       uint8_t buffer[sizeof(T)];
       auto r = read(buffer);
       if(!r) {
-         return r;
+         return art::unexpected(r.error());
       }
       T tmp{};
       std::memcpy(&tmp, buffer, sizeof(T));
