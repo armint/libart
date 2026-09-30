@@ -62,7 +62,9 @@ test:
     - ./build/tests/libArT-compat-tests-cpp23-own
     - ./build/tests/libArT-compat-tests-cpp23-own --reporters=junit --out=build/junit-compat-cpp23-own.xml
     # ART_USE_STD_EXPECTED_SPAN=1 in a C++17 translation unit must stop the build (#error in utils/compat/config.h).
-    - 'echo "#include \"utils/compat/expected.h\"" | g++ -std=c++17 -DART_USE_STD_EXPECTED_SPAN=1 -Isrc -fsyntax-only -x c++ - 2>&1 | grep -q "error: #error \"ART_USE_STD_EXPECTED_SPAN is 1"'
+    # The job shell uses pipefail, so capture the compiler output first; the failing g++ must not end the job.
+    - 'cpp17_std_output=$(echo "#include \"utils/compat/expected.h\"" | g++ -std=c++17 -DART_USE_STD_EXPECTED_SPAN=1 -Isrc -fsyntax-only -x c++ - 2>&1 || true)'
+    - 'echo "$cpp17_std_output" | grep -q "#error \"ART_USE_STD_EXPECTED_SPAN is 1, but"'
   artifacts:
     when: always
     reports:
