@@ -18,6 +18,10 @@
 
 #if !ART_USE_STD_EXPECTED_SPAN && defined(__unix__)
 #include <csignal>
+#include <sys/resource.h>
+#if defined(__linux__)
+#include <sys/prctl.h>
+#endif
 #include <sys/wait.h>
 #include <unistd.h>
 #define ART_TEST_EXPECTED_TRAP 1
@@ -566,6 +570,14 @@ TEST_CASE("[compat] expected: value() on an error traps") {
          // doctest's crash handler would report the trap as a failed test in the child; die by the signal instead.
          std::signal(SIGILL, SIG_DFL);
          std::signal(SIGTRAP, SIG_DFL);
+         // SIGILL and SIGTRAP dump core by default; the expected trap must leave no core file. With a core_pattern that
+         // pipes to a handler (systemd-coredump), the kernel still starts the handler and leaves RLIMIT_CORE to it, so
+         // on Linux the child is also made non-dumpable, which skips the core dump completely.
+         const rlimit noCore{ 0, 0 };
+         setrlimit(RLIMIT_CORE, &noCore);
+#if defined(__linux__)
+         prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+#endif
          alarm(5);
          call();
          _exit(0);
