@@ -56,7 +56,8 @@ test:
     - ./build/tests/libArT-tests-float --reporters=junit --out=build/junit-float.xml
     - ./build/tests/libArT-tests-float-64bit
     - ./build/tests/libArT-tests-float-64bit --reporters=junit --out=build/junit-float-64bit.xml
-    # The compat headers (src/utils/compat/) at C++17 and with the own types at C++23, see tests/CMakeLists.txt.
+    # The compat headers (src/utils/compat/) and the ported src/streams/ tests at C++17 and with the own types at
+    # C++23, see tests/CMakeLists.txt.
     - ./build/tests/libArT-compat-tests-cpp17
     - ./build/tests/libArT-compat-tests-cpp17 --reporters=junit --out=build/junit-compat-cpp17.xml
     - ./build/tests/libArT-compat-tests-cpp23-own
