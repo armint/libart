@@ -226,6 +226,26 @@ int Counted::live = 0;
 static_assert(std::is_copy_constructible_v<art::expected<Counted, Error>>);
 static_assert(!std::is_trivially_copyable_v<art::expected<Counted, Error>>);
 
+// Copy constructible but not assignable (a const member), trivially copyable and not. Like std::expected, expected
+// keeps its copy and move constructors for such a T and loses only the assignments.
+struct ConstMember {
+   const int id;
+};
+
+struct ConstCounted {
+   const int id;
+   Counted counted;
+};
+
+static_assert(std::is_copy_constructible_v<art::expected<ConstMember, Error>>);
+static_assert(std::is_move_constructible_v<art::expected<ConstMember, Error>>);
+static_assert(!std::is_copy_assignable_v<art::expected<ConstMember, Error>>);
+static_assert(!std::is_move_assignable_v<art::expected<ConstMember, Error>>);
+static_assert(std::is_copy_constructible_v<art::expected<ConstCounted, Error>>);
+static_assert(std::is_move_constructible_v<art::expected<ConstCounted, Error>>);
+static_assert(!std::is_copy_assignable_v<art::expected<ConstCounted, Error>>);
+static_assert(!std::is_move_assignable_v<art::expected<ConstCounted, Error>>);
+
 // Readable::read(): a virtual function that returns expected<char, E>, with error propagation through a caller.
 class Source {
    public:
@@ -469,6 +489,27 @@ TEST_CASE("[compat] expected: copy assignment between value and error states") {
       CHECK(small.error() == Error::Full);
       small = 2;
       CHECK(*small == 2);
+   }
+   CHECK(Counted::live == 0);
+}
+
+TEST_CASE("[compat] expected of a copy constructible, non-assignable value") {
+   {
+      const art::expected<ConstMember, Error> original(std::in_place, ConstMember{ 5 });
+      art::expected<ConstMember, Error> copy = original;
+      CHECK(copy->id == 5);
+      art::expected<ConstMember, Error> moved = std::move(copy);
+      CHECK(moved->id == 5);
+
+      const art::expected<ConstCounted, Error> counted(std::in_place, ConstCounted{ 7, Counted(1) });
+      CHECK(Counted::live == 1);
+      art::expected<ConstCounted, Error> countedCopy = counted;
+      CHECK(countedCopy->id == 7);
+      CHECK(Counted::live == 2);
+      const art::expected<ConstCounted, Error> error = art::unexpected(Error::Io);
+      art::expected<ConstCounted, Error> errorCopy = error;
+      CHECK(errorCopy.error() == Error::Io);
+      CHECK(Counted::live == 2);
    }
    CHECK(Counted::live == 0);
 }

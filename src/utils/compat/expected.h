@@ -169,7 +169,7 @@ struct expected_storage {
 /**
  * T or E is not trivially copyable: the union members have to be constructed, assigned and destroyed by hand. A
  * copy or move operation of this struct fails to compile only when it is used; expected deletes the ones that T or
- * E does not support (expected_enable_copy_move), so that type traits report them correctly.
+ * E does not support (expected_enable_construct, expected_enable_assign), so that type traits report them correctly.
  */
 template <typename T, typename E>
 struct expected_storage<T, E, false> {
@@ -267,38 +267,67 @@ void assignError(Storage &storage, G &&error) {
 }
 
 /**
- * Empty base that deletes the copy and move operations of expected that T or E do not support. expected defaults
- * its own, and a defaulted operation is deleted when the one of a base is.
+ * Empty bases that delete the copy and move operations of expected that T or E do not support. expected defaults
+ * its own, and a defaulted operation is deleted when the one of a base is. Constructors and assignments are
+ * separate bases, as in std::expected: a T that can be copy constructed but not assigned (a struct with a const
+ * member) keeps the copy and move constructors of expected and loses only its assignments.
  */
 template <bool Copy, bool Move>
-struct expected_enable_copy_move {};
+struct expected_enable_construct {};
 
 template <>
-struct expected_enable_copy_move<false, true> {
-   expected_enable_copy_move() = default;
-   expected_enable_copy_move(const expected_enable_copy_move &) = delete;
-   expected_enable_copy_move(expected_enable_copy_move &&) = default;
-   expected_enable_copy_move &operator=(const expected_enable_copy_move &) = delete;
-   expected_enable_copy_move &operator=(expected_enable_copy_move &&) = default;
+struct expected_enable_construct<false, true> {
+   expected_enable_construct() = default;
+   expected_enable_construct(const expected_enable_construct &) = delete;
+   expected_enable_construct(expected_enable_construct &&) = default;
+   expected_enable_construct &operator=(const expected_enable_construct &) = default;
+   expected_enable_construct &operator=(expected_enable_construct &&) = default;
 };
 
 template <>
-struct expected_enable_copy_move<false, false> {
-   expected_enable_copy_move() = default;
-   expected_enable_copy_move(const expected_enable_copy_move &) = delete;
-   expected_enable_copy_move(expected_enable_copy_move &&) = delete;
-   expected_enable_copy_move &operator=(const expected_enable_copy_move &) = delete;
-   expected_enable_copy_move &operator=(expected_enable_copy_move &&) = delete;
+struct expected_enable_construct<false, false> {
+   expected_enable_construct() = default;
+   expected_enable_construct(const expected_enable_construct &) = delete;
+   expected_enable_construct(expected_enable_construct &&) = delete;
+   expected_enable_construct &operator=(const expected_enable_construct &) = default;
+   expected_enable_construct &operator=(expected_enable_construct &&) = default;
 };
 
+template <bool Copy, bool Move>
+struct expected_enable_assign {};
+
+template <>
+struct expected_enable_assign<false, true> {
+   expected_enable_assign() = default;
+   expected_enable_assign(const expected_enable_assign &) = default;
+   expected_enable_assign(expected_enable_assign &&) = default;
+   expected_enable_assign &operator=(const expected_enable_assign &) = delete;
+   expected_enable_assign &operator=(expected_enable_assign &&) = default;
+};
+
+template <>
+struct expected_enable_assign<false, false> {
+   expected_enable_assign() = default;
+   expected_enable_assign(const expected_enable_assign &) = default;
+   expected_enable_assign(expected_enable_assign &&) = default;
+   expected_enable_assign &operator=(const expected_enable_assign &) = delete;
+   expected_enable_assign &operator=(expected_enable_assign &&) = delete;
+};
+
+// Assignment between the two states constructs the new member, so it needs construction as well (as std does).
 template <typename T>
-inline constexpr bool expected_copyable_v = std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>;
+inline constexpr bool expected_copy_assignable_v = std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T>;
 template <typename T>
-inline constexpr bool expected_movable_v = std::is_move_constructible_v<T> && std::is_move_assignable_v<T>;
+inline constexpr bool expected_move_assignable_v = std::is_move_constructible_v<T> && std::is_move_assignable_v<T>;
 
 template <typename T, typename E>
-using expected_enable_copy_move_for =
-expected_enable_copy_move<expected_copyable_v<T> && expected_copyable_v<E>, expected_movable_v<T> && expected_movable_v<E> >;
+using expected_enable_construct_for =
+expected_enable_construct<std::is_copy_constructible_v<T> && std::is_copy_constructible_v<E>,
+                          std::is_move_constructible_v<T> && std::is_move_constructible_v<E> >;
+
+template <typename T, typename E>
+using expected_enable_assign_for =
+expected_enable_assign<expected_copy_assignable_v<T> && expected_copy_assignable_v<E>, expected_move_assignable_v<T> && expected_move_assignable_v<E> >;
 
 /** A value argument U of expected<T, E>: not a tag, not an expected and not an unexpected. */
 template <typename T, typename U>
@@ -313,7 +342,9 @@ inline constexpr bool expected_value_argument_v =
  * supported subset.
  */
 template <typename T, typename E>
-class expected : private detail::expected_storage<T, E>, private detail::expected_enable_copy_move_for<T, E> {
+class expected : private detail::expected_storage<T, E>,
+                 private detail::expected_enable_construct_for<T, E>,
+                 private detail::expected_enable_assign_for<T, E> {
    using Storage = detail::expected_storage<T, E>;
 
    static_assert(std::is_object_v<T> && !std::is_array_v<T> && !std::is_reference_v<T>,
@@ -518,7 +549,8 @@ class expected : private detail::expected_storage<T, E>, private detail::expecte
  */
 template <typename E>
 class expected<void, E> : private detail::expected_storage<detail::expected_void_value, E>,
-                          private detail::expected_enable_copy_move_for<detail::expected_void_value, E> {
+                          private detail::expected_enable_construct_for<detail::expected_void_value, E>,
+                          private detail::expected_enable_assign_for<detail::expected_void_value, E> {
    using Storage = detail::expected_storage<detail::expected_void_value, E>;
 
    public:
