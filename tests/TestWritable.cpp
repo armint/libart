@@ -11,7 +11,7 @@
 // A small mock Writable to control flush behavior and optionally inject write errors
 class MockWritable : public Writable {
    public:
-   explicit MockWritable(std::span<uint8_t> buffer)
+   explicit MockWritable(art::span<uint8_t> buffer)
       : _buffer(buffer) {}
 
    // Configure write to fail after N successful bytes (optional)
@@ -24,14 +24,14 @@ class MockWritable : public Writable {
       _flushError = err;
    }
 
-   std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
+   art::expected<size_t, Error> write(art::span<const uint8_t> data) override {
       size_t written = 0;
       for(size_t i = 0; i < data.size(); ++i) {
          if(_position >= _buffer.size()) {
-            return std::unexpected(Overflow);
+            return art::unexpected(Overflow);
          }
          if(_failAfter.has_value() && _bytesSucceeded >= *_failAfter) {
-            return std::unexpected(_failError.value_or(CouldNotWrite));
+            return art::unexpected(_failError.value_or(CouldNotWrite));
          }
          _buffer[_position++] = data[i];
          ++written;
@@ -40,14 +40,14 @@ class MockWritable : public Writable {
       return written;
    }
 
-   std::expected<void, Error> flush() override {
+   art::expected<void, Error> flush() override {
       if(_flushError.has_value()) {
-         return std::unexpected(*_flushError);
+         return art::unexpected(*_flushError);
       }
       return {};
    }
 
-   std::span<uint8_t> span() {
+   art::span<uint8_t> span() {
       return _buffer.first(_position);
    }
    size_t position() const {
@@ -55,7 +55,7 @@ class MockWritable : public Writable {
    }
 
    private:
-   std::span<uint8_t> _buffer;
+   art::span<uint8_t> _buffer;
    size_t _position{ 0 };
    std::optional<size_t> _failAfter{};
    std::optional<Error> _failError{};
@@ -65,7 +65,7 @@ class MockWritable : public Writable {
 
 TEST_CASE("[Writable] write single byte and span [Writable]") {
    uint8_t buf[8]{};
-   ArrayWritable w{ std::span<uint8_t>(buf) };
+   ArrayWritable w{ art::span<uint8_t>(buf) };
 
    // write single byte (call base overload explicitly to avoid name hiding)
    auto r1 = static_cast<Writable &>(w).write(static_cast<uint8_t>('A'));
@@ -75,7 +75,7 @@ TEST_CASE("[Writable] write single byte and span [Writable]") {
 
    // write a span
    const uint8_t more[] = { 'B', 'C', 'D' };
-   auto r2 = w.write(std::span<const uint8_t>(more, sizeof(more)));
+   auto r2 = w.write(art::span<const uint8_t>(more, sizeof(more)));
    REQUIRE(r2);
    REQUIRE(r2.value() == 3);
    REQUIRE(buf[1] == 'B');
@@ -86,7 +86,7 @@ TEST_CASE("[Writable] write single byte and span [Writable]") {
 TEST_CASE("[Writable] writeNumber endianness for integers [Writable]") {
    // Use a buffer large enough to test different sizes
    uint8_t buf[16]{};
-   ArrayWritable w{ std::span<uint8_t>(buf) };
+   ArrayWritable w{ art::span<uint8_t>(buf) };
 
    // 16-bit
    {
@@ -132,7 +132,7 @@ TEST_CASE("[Writable] writeNumber endianness for integers [Writable]") {
 
 TEST_CASE("[Writable] printf and println formatting and counts [Writable]") {
    uint8_t buf[128]{};
-   MockWritable w{ std::span<uint8_t>(buf) };
+   MockWritable w{ art::span<uint8_t>(buf) };
 
    // printf basic formatting
    auto r = w.printf("Hello %s %d 0x%x", "World", -7, 0xABCD);
@@ -159,7 +159,7 @@ TEST_CASE("[Writable] printf and println formatting and counts [Writable]") {
 
 TEST_CASE("[Writable] printf_va path (va_list helper) [Writable]") {
    uint8_t buf[64]{};
-   MockWritable w{ std::span<uint8_t>(buf) };
+   MockWritable w{ art::span<uint8_t>(buf) };
 
    // Use printf_va to drive the va_list-based implementation internally
    auto r = w.printf_va("%s %u", "abc", 99u);
@@ -170,7 +170,7 @@ TEST_CASE("[Writable] printf_va path (va_list helper) [Writable]") {
 TEST_CASE("[Writable] error propagation on overflow during printf [Writable]") {
    // Use a tiny buffer so that printf cannot fit
    uint8_t buf[4]{};
-   ArrayWritable w{ std::span<uint8_t>(buf) };
+   ArrayWritable w{ art::span<uint8_t>(buf) };
    auto res = w.printf("This is too long %d", 12);
    REQUIRE_FALSE(res.has_value());
    REQUIRE(res.error() == Writable::Overflow);
@@ -179,21 +179,21 @@ TEST_CASE("[Writable] error propagation on overflow during printf [Writable]") {
 // A Writable that records begin/end write session calls, to verify session bracketing.
 class SessionTrackingWritable : public Writable {
    public:
-   explicit SessionTrackingWritable(std::span<uint8_t> buffer)
+   explicit SessionTrackingWritable(art::span<uint8_t> buffer)
       : _buffer(buffer) {}
 
-   std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
+   art::expected<size_t, Error> write(art::span<const uint8_t> data) override {
       size_t written = 0;
       for(size_t i = 0; i < data.size() && _position < _buffer.size(); ++i, ++_position, ++written) {
          _buffer[_position] = data[i];
       }
       if(written != data.size()) {
-         return std::unexpected(Overflow);
+         return art::unexpected(Overflow);
       }
       return written;
    }
 
-   std::expected<void, Error> flush() override {
+   art::expected<void, Error> flush() override {
       return {};
    }
 
@@ -209,7 +209,7 @@ class SessionTrackingWritable : public Writable {
    }
 
    private:
-   std::span<uint8_t> _buffer;
+   art::span<uint8_t> _buffer;
    size_t _position{ 0 };
 };
 
@@ -217,7 +217,7 @@ TEST_CASE("[Writable] default beginWriteSession/endWriteSession are no-ops [Writ
    // A sink that does not override the hooks (MockWritable) must behave exactly as before:
    // printf/println still work, and there is nothing to observe about session state.
    uint8_t buf[64]{};
-   MockWritable w{ std::span<uint8_t>(buf) };
+   MockWritable w{ art::span<uint8_t>(buf) };
    auto r = w.printf("%s=%d", "x", 5);
    REQUIRE(r);
    REQUIRE(std::string_view(reinterpret_cast<char *>(buf), r.value()) == "x=5");
@@ -225,7 +225,7 @@ TEST_CASE("[Writable] default beginWriteSession/endWriteSession are no-ops [Writ
 
 TEST_CASE("[Writable] vprintf (via printf) opens exactly one session per call [Writable]") {
    uint8_t buf[64]{};
-   SessionTrackingWritable w{ std::span<uint8_t>(buf) };
+   SessionTrackingWritable w{ art::span<uint8_t>(buf) };
 
    auto r = w.printf("%s", "hi");
    REQUIRE(r);
@@ -241,7 +241,7 @@ TEST_CASE("[Writable] vprintf (via printf) opens exactly one session per call [W
 
 TEST_CASE("[Writable] a caller-held writeSession() stays open across multiple printf() calls [Writable]") {
    uint8_t buf[64]{};
-   SessionTrackingWritable w{ std::span<uint8_t>(buf) };
+   SessionTrackingWritable w{ art::span<uint8_t>(buf) };
 
    {
       auto outer = w.writeSession();
@@ -262,7 +262,7 @@ TEST_CASE("[Writable] a caller-held writeSession() stays open across multiple pr
 
 TEST_CASE("[Writable] writeSession() is move-only and end fires exactly once [Writable]") {
    uint8_t buf[16]{};
-   SessionTrackingWritable w{ std::span<uint8_t>(buf) };
+   SessionTrackingWritable w{ art::span<uint8_t>(buf) };
 
    {
       auto s1 = w.writeSession();
@@ -278,7 +278,7 @@ TEST_CASE("[Writable] writeSession() is move-only and end fires exactly once [Wr
 
 TEST_CASE("[Writable] flush success and failure [Writable]") {
    uint8_t buf[8]{};
-   MockWritable w{ std::span<uint8_t>(buf) };
+   MockWritable w{ art::span<uint8_t>(buf) };
 
    // success
    auto ok = w.flush();
