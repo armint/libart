@@ -75,7 +75,7 @@ class Readable {
       do {
          auto ch = read();
          if(!ch) {
-            return ch;
+            return art::unexpected(ch.error());
          }
          byte = static_cast<uint8_t>(*ch);
          if(bitIndex >= sizeof(T) * 8) {
