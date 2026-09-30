@@ -16,6 +16,13 @@
 #include <expected>
 #endif
 
+#if !ART_USE_STD_EXPECTED_SPAN && defined(__unix__)
+#include <csignal>
+#include <sys/wait.h>
+#include <unistd.h>
+#define ART_TEST_EXPECTED_TRAP 1
+#endif
+
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -168,6 +175,33 @@ static_assert(sizeof(art::expected<size_t, Error>) == sizeof(std::expected<size_
 static_assert(sizeof(art::expected<uint64_t, Error>) == sizeof(std::expected<uint64_t, Error>));
 static_assert(alignof(art::expected<uint64_t, Error>) == alignof(std::expected<uint64_t, Error>));
 #endif
+
+// Usable in constant expressions (construction, copy, observers, comparison), with std and with the own type.
+struct Point {
+   int x;
+   int y;
+};
+constexpr art::expected<int, Error> kValue = 4;
+constexpr art::expected<int, Error> kError = art::unexpected(Error::Io);
+constexpr art::expected<Point, Error> kPoint(std::in_place, Point{ 1, 2 });
+constexpr art::expected<void, Error> kVoid;
+constexpr art::expected<void, Error> kVoidError(art::unexpect, Error::Full);
+
+constexpr art::expected<char, Error> narrow(art::expected<int, Error> in) {
+   if(!in) {
+      return art::unexpected(in.error());
+   }
+   return static_cast<char>(*in);
+}
+
+static_assert(kValue.has_value() && static_cast<bool>(kValue));
+static_assert(*kValue == 4 && kValue.value() == 4 && kValue.value_or(9) == 4);
+static_assert(!kError.has_value() && kError.error() == Error::Io && kError.value_or(9) == 9);
+static_assert(kPoint->y == 2 && (*kPoint).x == 1);
+static_assert(kVoid.has_value() && !kVoidError.has_value() && kVoidError.error() == Error::Full);
+static_assert(*narrow(kValue) == 4 && narrow(kError).error() == Error::Io);
+static_assert(kValue == 4 && kError == art::unexpected(Error::Io) && kValue != kError);
+static_assert(art::unexpected(Error::Io).error() == Error::Io);
 
 // A move-only resource with a non-trivial destructor, like storage::File. It counts the live instances, so that the
 // tests see that every state change destroys the old member.
@@ -399,10 +433,6 @@ TEST_CASE("[compat] expected: construction forms") {
    art::expected<int, int> widened = art::unexpected<uint8_t>(uint8_t{ 200 });
    CHECK(widened.error() == 200);
 
-   struct Point {
-      int x;
-      int y;
-   };
    art::expected<Point, Error> point(std::in_place, Point{ 3, 4 });
    CHECK(point->x == 3);
    CHECK((*point).y == 4);
@@ -518,6 +548,40 @@ TEST_CASE("[compat] expected of a copy constructible, non-assignable value") {
    }
    CHECK(Counted::live == 0);
 }
+
+#if ART_TEST_EXPECTED_TRAP
+// value() on an error must trap (__builtin_trap(): SIGILL on x86, SIGTRAP on Arm), never return and never throw. A
+// child process calls it; the parent checks that the child was killed by a signal instead of exiting. Only for the
+// own type: std::expected throws here (the tests build with exceptions).
+TEST_CASE("[compat] expected: value() on an error traps") {
+   const auto trapsIn = [](auto call) {
+      const pid_t child = fork();
+      REQUIRE(child >= 0);
+      if(child == 0) {
+         // doctest's crash handler would report the trap as a failed test in the child; die by the signal instead.
+         std::signal(SIGILL, SIG_DFL);
+         std::signal(SIGTRAP, SIG_DFL);
+         call();
+         _exit(0);
+      }
+      int status = 0;
+      REQUIRE(waitpid(child, &status, 0) == child);
+      return WIFSIGNALED(status);
+   };
+
+   CHECK(trapsIn([] {
+      art::expected<int, Error> error = art::unexpected(Error::Io);
+      static_cast<void>(error.value());
+   }));
+   CHECK(trapsIn([] {
+      const art::expected<void, Error> error = art::unexpected(Error::Io);
+      error.value();
+   }));
+   CHECK(trapsIn([] { static_cast<void>(open(-1).value()); }));
+   // The check itself: value() on a value returns normally.
+   CHECK_FALSE(trapsIn([] { static_cast<void>(open(1).value()); }));
+}
+#endif
 
 TEST_CASE("[compat] expected in a template") {
    CHECK(*twice(art::expected<int, Error>(21)) == 42);
