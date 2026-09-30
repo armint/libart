@@ -1,4 +1,6 @@
 # ---------- ESP-IDF component build ----------
+# ETL is exported PUBLIC below (utils/compat/span.h aliases etl::span). There is no CMAKE_CXX_STANDARD here, so
+# ART_USE_STD_EXPECTED_SPAN is not defined and utils/compat/config.h derives it from the language standard.
 if(ESP_PLATFORM)
     idf_component_register(
             SRC_DIRS "src" "src/logging" "src/modbus" "src/settings" "src/streams" "src/utils" "src/storage" "src/storage/fatfs"
@@ -83,6 +85,24 @@ else ()
     set(_ART_LITTLEFS_NO_ASSERT_DEFAULT OFF)
 endif ()
 option(ART_LITTLEFS_NO_ASSERT "Build littlefs with LFS_NO_ASSERT" ${_ART_LITTLEFS_NO_ASSERT_DEFAULT})
+
+# art::expected, art::unexpected and art::span (src/utils/compat/) alias the std types when this is ON, and are
+# libArT's own expected and etl::span when it is OFF. The choice is exported as a PUBLIC compile definition, so that
+# libArT, libArT-proto and the application agree on it: Readable/Writable have virtual functions that take and return
+# these types, and mixing both in one program is a silent ODR violation. Default: ON unless the superproject asks
+# for a standard below C++23 (art-core itself still requires C++23, see cxx_std_23 below).
+if (DEFINED CMAKE_CXX_STANDARD AND CMAKE_CXX_STANDARD LESS 23)
+    set(_ART_USE_STD_EXPECTED_SPAN_DEFAULT OFF)
+else ()
+    set(_ART_USE_STD_EXPECTED_SPAN_DEFAULT ON)
+endif ()
+option(ART_USE_STD_EXPECTED_SPAN "Use std::expected/std::span for art::expected/art::span (needs C++23 everywhere)"
+        ${_ART_USE_STD_EXPECTED_SPAN_DEFAULT})
+if (ART_USE_STD_EXPECTED_SPAN)
+    set(_ART_USE_STD_EXPECTED_SPAN_VALUE 1)
+else ()
+    set(_ART_USE_STD_EXPECTED_SPAN_VALUE 0)
+endif ()
 if (ART_STORAGE_LITTLEFS OR NOT CMAKE_CROSSCOMPILING)
     set(_ART_NEED_LITTLEFS ON)
 else ()
@@ -123,6 +143,7 @@ target_include_directories(art-core
 )
 
 target_compile_features(art-core PUBLIC cxx_std_23)
+target_compile_definitions(art-core PUBLIC ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
 
 # Private: only ryu_float.c and FloatText.cpp include ryu/*, never a public libArT header.
 target_include_directories(art-core PRIVATE $<BUILD_INTERFACE:${ryu_SOURCE_DIR}>)
@@ -151,6 +172,7 @@ target_include_directories(art-rtos INTERFACE
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(art-rtos INTERFACE cxx_std_23)
+target_compile_definitions(art-rtos INTERFACE ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
 if (TARGET freertos)
     target_link_libraries(art-rtos INTERFACE $<BUILD_INTERFACE:freertos>)
 elseif (TARGET freertos_kernel)
@@ -229,6 +251,9 @@ endif ()
 
 # Ensure the exported interface does not pull non-exported targets.
 set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
+# ETL is a PUBLIC dependency: the compat header utils/compat/span.h aliases etl::span. It is added after the reset above
+# and only for the build tree; the installed package config finds ETL itself (find_dependency(etl)).
+target_link_libraries(art-core INTERFACE $<BUILD_INTERFACE:etl::etl>)
 
 install(TARGETS art-core art-rtos
         EXPORT art-core-targets

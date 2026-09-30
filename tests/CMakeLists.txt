@@ -60,6 +60,7 @@ file(GLOB TEST_SOURCES
         TestCompensatedThermocoupleSensor.cpp
         TestRingBuffer.cpp
         TestFloatText.cpp
+        TestCompat.cpp
         storage/TestBlockDeviceDecorator.cpp
         storage/BlockDeviceContract.cpp
         storage/TestBlockDevice.cpp
@@ -205,6 +206,29 @@ set_source_files_properties(
         ../src/utils/ryu_float.c
         PROPERTIES COMPILE_OPTIONS "-O2"
 )
+
+# The compat headers (src/utils/compat/) must work at C++17, where the rest of libArT does not compile yet, so
+# TestCompat.cpp is built into two more binaries of its own, besides libArT-tests (C++23, std::expected/std::span):
+# - libArT-compat-tests-cpp17: C++17, so the own art::expected and etl::span.
+# - libArT-compat-tests-cpp23-own: C++23 with ART_USE_STD_EXPECTED_SPAN=0, the setting of an application that
+#   builds at C++17 while libArT builds at C++23; it also compares the sizes of the own and the std types.
+# Both use strict warnings, as a C++17 consumer may.
+foreach(_art_compat_standard 17 23)
+    if (_art_compat_standard EQUAL 17)
+        set(_art_compat_target libArT-compat-tests-cpp17)
+    else ()
+        set(_art_compat_target libArT-compat-tests-cpp23-own)
+    endif ()
+    add_executable(${_art_compat_target} TestCompat.cpp compat_main.cpp)
+    set_target_properties(${_art_compat_target} PROPERTIES
+            CXX_STANDARD ${_art_compat_standard}
+            CXX_STANDARD_REQUIRED ON
+            CXX_EXTENSIONS OFF)
+    target_compile_options(${_art_compat_target} PRIVATE -O0 -g -Wall -Wextra -Wpedantic -Werror)
+    target_include_directories(${_art_compat_target} PRIVATE ../src)
+    target_link_libraries(${_art_compat_target} PRIVATE etl::etl doctest::doctest)
+endforeach()
+target_compile_definitions(libArT-compat-tests-cpp23-own PRIVATE ART_USE_STD_EXPECTED_SPAN=0)
 
 # Discover all libArT-tests
 # catch_discover_tests(libArT-tests)

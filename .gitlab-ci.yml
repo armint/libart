@@ -43,7 +43,7 @@ test:
     GIT_DEPTH: 0
   script:
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug
-    - cmake --build build --target libArT-tests libArT-tests-64bit libArT-tests-float libArT-tests-float-64bit -j$(nproc)
+    - cmake --build build --target libArT-tests libArT-tests-64bit libArT-tests-float libArT-tests-float-64bit libArT-compat-tests-cpp17 libArT-compat-tests-cpp23-own -j$(nproc)
     # doctest writes every active reporter's output to the same --out file,
     # which corrupts the XML if the console reporter is also active; run
     # twice instead — console output determines job pass/fail, the second
@@ -56,6 +56,15 @@ test:
     - ./build/tests/libArT-tests-float --reporters=junit --out=build/junit-float.xml
     - ./build/tests/libArT-tests-float-64bit
     - ./build/tests/libArT-tests-float-64bit --reporters=junit --out=build/junit-float-64bit.xml
+    # The compat headers (src/utils/compat/) at C++17 and with the own types at C++23, see tests/CMakeLists.txt.
+    - ./build/tests/libArT-compat-tests-cpp17
+    - ./build/tests/libArT-compat-tests-cpp17 --reporters=junit --out=build/junit-compat-cpp17.xml
+    - ./build/tests/libArT-compat-tests-cpp23-own
+    - ./build/tests/libArT-compat-tests-cpp23-own --reporters=junit --out=build/junit-compat-cpp23-own.xml
+    # ART_USE_STD_EXPECTED_SPAN=1 in a C++17 translation unit must stop the build (#error in utils/compat/config.h).
+    # The job shell uses pipefail, so capture the compiler output first; the failing g++ must not end the job.
+    - 'cpp17_std_output=$(echo "#include \"utils/compat/expected.h\"" | g++ -std=c++17 -DART_USE_STD_EXPECTED_SPAN=1 -Isrc -fsyntax-only -x c++ - 2>&1 || true)'
+    - 'echo "$cpp17_std_output" | grep -q "#error \"ART_USE_STD_EXPECTED_SPAN is 1, but"'
   artifacts:
     when: always
     reports:
@@ -64,6 +73,8 @@ test:
         - build/junit-64bit.xml
         - build/junit-float.xml
         - build/junit-float-64bit.xml
+        - build/junit-compat-cpp17.xml
+        - build/junit-compat-cpp23-own.xml
 
 # FloatText's exhaustive round-trip test (TestFloatText.cpp) formats and parses all 2^32 float
 # bit patterns and checks the result is bit-identical to the original (NaN is only checked as
