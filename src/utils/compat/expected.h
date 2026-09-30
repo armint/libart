@@ -67,6 +67,28 @@ struct unexpect_t {
 /** @brief Tag to construct an expected in the error state, like std::unexpect. */
 inline constexpr unexpect_t unexpect{};
 
+namespace detail {
+
+/**
+ * a == b for the comparisons of expected and unexpected. std::expected writes a == b as well; its -Wsign-compare
+ * warnings (expected<size_t, E> == 0) never reach the user because libstdc++ is a system header. For two arithmetic
+ * operands this converts both to their common type explicitly: std::common_type_t of two arithmetic types is the
+ * type that the usual arithmetic conversions of the built-in == give, so the result is the same (-1 is still equal to
+ * 0xFFFFFFFFu, and not equal to uint8_t{ 255 }) and only the implicit conversion that the warning is about becomes
+ * explicit. Every other operand pair uses its own operator==.
+ */
+template <typename A, typename B>
+constexpr bool expected_equal(const A &a, const B &b) {
+   if constexpr(std::is_arithmetic_v<A> && std::is_arithmetic_v<B>) {
+      using Common = std::common_type_t<A, B>;
+      return static_cast<Common>(a) == static_cast<Common>(b);
+   } else {
+      return a == b;
+   }
+}
+
+} // namespace detail
+
 /**
  * @brief Holds the error that an expected is constructed or assigned from, like std::unexpected.
  */
@@ -106,12 +128,12 @@ class unexpected {
 
    template <typename E2>
    friend constexpr bool operator==(const unexpected &x, const unexpected<E2> &y) {
-      return x.error() == y.error();
+      return detail::expected_equal(x.error(), y.error());
    }
 #if !defined(__cpp_impl_three_way_comparison)
    template <typename E2>
    friend constexpr bool operator!=(const unexpected &x, const unexpected<E2> &y) {
-      return !(x.error() == y.error());
+      return !detail::expected_equal(x.error(), y.error());
    }
 #endif
 
@@ -506,17 +528,17 @@ class expected : private detail::expected_storage<T, E>,
       if(x.has_value() != y.has_value()) {
          return false;
       }
-      return x.has_value() ? *x == *y : x.error() == y.error();
+      return x.has_value() ? detail::expected_equal(*x, *y) : detail::expected_equal(x.error(), y.error());
    }
 
    template <typename T2, std::enable_if_t<!detail::is_expected<T2>::value && !detail::is_unexpected<T2>::value, int> = 0>
    friend constexpr bool operator==(const expected &x, const T2 &value) {
-      return x.has_value() && *x == value;
+      return x.has_value() && detail::expected_equal(*x, value);
    }
 
    template <typename E2>
    friend constexpr bool operator==(const expected &x, const unexpected<E2> &error) {
-      return !x.has_value() && x.error() == error.error();
+      return !x.has_value() && detail::expected_equal(x.error(), error.error());
    }
 
 #if !defined(__cpp_impl_three_way_comparison)
@@ -645,12 +667,12 @@ class expected<void, E> : private detail::expected_storage<detail::expected_void
       if(x.has_value() != y.has_value()) {
          return false;
       }
-      return x.has_value() || x.error() == y.error();
+      return x.has_value() || detail::expected_equal(x.error(), y.error());
    }
 
    template <typename E2>
    friend constexpr bool operator==(const expected &x, const unexpected<E2> &error) {
-      return !x.has_value() && x.error() == error.error();
+      return !x.has_value() && detail::expected_equal(x.error(), error.error());
    }
 
 #if !defined(__cpp_impl_three_way_comparison)
