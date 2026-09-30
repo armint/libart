@@ -4,41 +4,32 @@
  * @file
  * @brief art::bit_cast (std::bit_cast, C++20) and art::is_little_endian (instead of std::endian, C++20) for C++17.
  *
- * art::bit_cast is std::bit_cast when the standard library has it. Otherwise it is a memcpy-based function
- * template that is not constexpr: do not use art::bit_cast in a constant expression. The compiler removes the
- * memcpy of such a small, fixed size, so the generated code is the same as with std::bit_cast. Both are function
- * templates without an ABI of their own, so choosing per translation unit is safe; it does not follow
- * ART_USE_STD_EXPECTED_SPAN.
+ * art::bit_cast is one constexpr function template on the compiler builtin __builtin_bit_cast (GCC 11, Clang 9 and
+ * later, at every language standard). It is the same entity in every translation unit, whatever the language
+ * standard. An alias of std::bit_cast in C++20 translation units and an own template in C++17 ones would give an
+ * inline function or template in a libArT header that calls it two different definitions (an ODR violation), for
+ * example when libArT builds at C++23 and the application at C++17.
  */
 
-#include <cstring>
 #include <type_traits>
-#if __has_include(<version>)
-#include <version>
-#endif
-#if defined(__cpp_lib_bit_cast)
-#include <bit>
+
+#if !defined(__has_builtin)
+#error "art::bit_cast needs __builtin_bit_cast (GCC 11 or Clang 9 and later)"
+#elif !__has_builtin(__builtin_bit_cast)
+#error "art::bit_cast needs __builtin_bit_cast (GCC 11 or Clang 9 and later)"
 #endif
 
 namespace art {
 
-#if defined(__cpp_lib_bit_cast)
-using std::bit_cast;
-#else
 /**
- * @brief Reinterpret the object representation of @p from as a To, like std::bit_cast, but not constexpr.
- *
- * Needs the same constraints as std::bit_cast, and in addition a trivially default constructible To (every
- * arithmetic type and every plain struct is).
+ * @brief Reinterpret the object representation of @p from as a To, like std::bit_cast. Usable in constant
+ * expressions under the same conditions as std::bit_cast (no pointers, unions or references in To or From).
  */
 template <typename To, typename From>
-std::enable_if_t<sizeof(To) == sizeof(From) && std::is_trivially_copyable_v<To> && std::is_trivially_copyable_v<From> && std::is_trivially_default_constructible_v<To>, To>
+constexpr std::enable_if_t<sizeof(To) == sizeof(From) && std::is_trivially_copyable_v<To> && std::is_trivially_copyable_v<From>, To>
 bit_cast(const From &from) noexcept {
-   To to;
-   std::memcpy(&to, &from, sizeof(To));
-   return to;
+   return __builtin_bit_cast(To, from);
 }
-#endif
 
 #if !defined(__BYTE_ORDER__) || !defined(__ORDER_LITTLE_ENDIAN__) || !defined(__ORDER_BIG_ENDIAN__)
 #error "art::is_little_endian needs the GCC/Clang macros __BYTE_ORDER__, __ORDER_LITTLE_ENDIAN__ and __ORDER_BIG_ENDIAN__"

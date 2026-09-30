@@ -38,7 +38,7 @@ The headers in `src/utils/compat/` let the same code compile at C++17 and at C++
 |---|---|---|---|
 | `utils/compat/expected.h` | `art::expected`, `art::unexpected`, `art::unexpect` | `std::expected`, ... | libArT's own minimal implementation |
 | `utils/compat/span.h` | `art::span`, `art::dynamic_extent` | `std::span` | `etl::span` |
-| `utils/compat/bit.h` | `art::bit_cast`, `art::is_little_endian` | `std::bit_cast` if the library has it, otherwise a `memcpy`-based `bit_cast` (not `constexpr`) | same |
+| `utils/compat/bit.h` | `art::bit_cast`, `art::is_little_endian` | a `constexpr` `bit_cast` on `__builtin_bit_cast` (GCC 11, Clang 9 and later), the same entity at every standard | same |
 | `utils/compat/type_traits.h` | `art::remove_cvref_t` | `std::remove_cvref_t` if the library has it, otherwise an own alias | same |
 
 The option is exported as the **PUBLIC** compile definition `ART_USE_STD_EXPECTED_SPAN=1` or `=0` of `art-core`

@@ -45,6 +45,11 @@ static_assert(std::is_same_v<art::remove_cvref<const long &>::type, long>);
 
 // ---------- bit.h ----------
 
+// art::bit_cast is constexpr at every standard (__builtin_bit_cast).
+static_assert(art::bit_cast<uint32_t>(1.0f) == 0x3F800000u);
+static_assert(art::bit_cast<float>(uint32_t{ 0x40000000u }) == 2.0f);
+static_assert(art::bit_cast<int32_t>(uint32_t{ 0xFFFFFFFFu }) == -1);
+
 TEST_CASE("[compat] bit_cast reinterprets the object representation") {
    CHECK(art::bit_cast<uint32_t>(1.0f) == 0x3F800000u);
    CHECK(art::bit_cast<float>(uint32_t{ 0xC0490FDBu }) == -3.14159274f);
