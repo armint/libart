@@ -29,18 +29,18 @@ TEST_CASE("[Readable] Read beyond the end [Readable]") {
 TEST_CASE("[Readable] String match [Readable]") {
    StringReadable readable(testString);
    // Test string match find
-   REQUIRE(readable.readUntil({ "test" }) == 0);
+   REQUIRE(readable.readUntil({ "test" }) == 0u);
    readable.reset();
    size_t nread;
    // Test string match position
-   REQUIRE(readable.readUntil({ "test" }, art::span<char>(), &nread) == 0);
+   REQUIRE(readable.readUntil({ "test" }, art::span<char>(), &nread) == 0u);
    REQUIRE(nread == 16);
 }
 
 TEST_CASE("[Readable] String match repeated character [Readable]") {
    StringReadable readable(testString);
    size_t nread;
-   REQUIRE(readable.readUntil({ ":read" }, art::span<char>(), &nread) == 0);
+   REQUIRE(readable.readUntil({ ":read" }, art::span<char>(), &nread) == 0u);
    REQUIRE(nread == 31);
 }
 
@@ -48,7 +48,7 @@ TEST_CASE("[Readable] readUntil match with buffer [Readable]") {
    StringReadable readable(testString);
    size_t nread;
    char buffer[32]{};
-   REQUIRE(readable.readUntil({ ":read" }, buffer, &nread) == 0);
+   REQUIRE(readable.readUntil({ ":read" }, buffer, &nread) == 0u);
    REQUIRE(nread == 31);
    REQUIRE(std::string_view(buffer) == "A string to test Readable::read");
 }
@@ -56,14 +56,14 @@ TEST_CASE("[Readable] readUntil match with buffer [Readable]") {
 TEST_CASE("[Readable] readUntil multiple match [Readable]") {
    StringReadable readable(testString);
    size_t nread;
-   REQUIRE(readable.readUntil({ "test", ":read" }, art::span<char>(), &nread) == 0);
+   REQUIRE(readable.readUntil({ "test", ":read" }, art::span<char>(), &nread) == 0u);
    REQUIRE(nread == 16);
 }
 
 TEST_CASE("[Readable] readUntil multiple match 2 [Readable]") {
    StringReadable readable(testString);
    size_t nread;
-   REQUIRE(readable.readUntil({ ":read", "test" }, art::span<char>(), &nread) == 1);
+   REQUIRE(readable.readUntil({ ":read", "test" }, art::span<char>(), &nread) == 1u);
    REQUIRE(nread == 16);
 }
 
@@ -75,7 +75,7 @@ TEST_CASE("[Readable] scanf [Readable]") {
    int32_t snum;
    char buffer[10];
    auto count = readable.scanf("Parse the number %u or %s 0x%x binary 0b%b and %d", &unum, buffer, &hexnum, &bnum, &snum);
-   REQUIRE(count == 5);
+   REQUIRE(count == 5u);
    REQUIRE(unum == 334);
    REQUIRE(hexnum == 0x15e2);
    REQUIRE(std::string_view(buffer) == "hex");
@@ -90,7 +90,7 @@ TEST_CASE("[Readable] scanf skipped [Readable]") {
    int32_t snum;
    char buffer[10];
    auto count = readable.scanf("Parse the number %u or %s 0x%*x binary 0b%b and %d", &unum, buffer, &bnum, &snum);
-   REQUIRE(count == 4);
+   REQUIRE(count == 4u);
    REQUIRE(unum == 334);
    REQUIRE(std::string_view(buffer) == "hex");
    REQUIRE(bnum == 0b1110101);
@@ -101,7 +101,7 @@ TEST_CASE("[Readable] scanf not found [Readable]") {
    StringReadable readable(testScanf);
    uint32_t unum = 0;
    auto count = readable.scanf("Parse the %u ", &unum);
-   REQUIRE(count == 0);
+   REQUIRE(count == 0u);
    REQUIRE(unum == 0);
 }
 
@@ -110,7 +110,7 @@ TEST_CASE("[Readable] scanf not found 2 [Readable]") {
    uint32_t unum = 0;
    uint32_t unum2 = 0;
    auto count = readable.scanf("Parse the number %u %u", &unum, &unum2);
-   REQUIRE(count == 1);
+   REQUIRE(count == 1u);
    REQUIRE(unum == 334);
    REQUIRE(unum2 == 0);
 }
@@ -120,7 +120,7 @@ TEST_CASE("[Readable] scanf chars limit [Readable]") {
    int32_t num = 0;
    uint32_t unum = 0;
    auto count = readable.scanf("testScanf %5d%*s %5u", &num, &unum);
-   REQUIRE(count == 2);
+   REQUIRE(count == 2u);
    REQUIRE(num == -4123);
    REQUIRE(unum == 41234);
 }
@@ -130,7 +130,7 @@ TEST_CASE("[Readable] scanf chars limit 2 [Readable]") {
    uint32_t unum = 0;
    char buffer[10];
    auto count = readable.scanf("testScanf %5s%*s %5u", buffer, &unum);
-   REQUIRE(count == 2);
+   REQUIRE(count == 2u);
    REQUIRE(std::string_view(buffer) == "-4123");
    REQUIRE(unum == 41234);
 }

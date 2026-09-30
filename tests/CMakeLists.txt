@@ -230,12 +230,10 @@ set(_ART_COMPAT_STREAM_SOURCES
         ../src/utils/tfp_printf.cpp
 )
 # These files have warnings that are older than the compat binaries and that the strict flags below make fatal.
-# Keep them as warnings, for these files only: the variable length array in Readable::readUntil(), the unused
-# putstr() in tfp_printf.cpp, and the tests' comparisons of an expected<size_t, E> with an int literal.
+# Keep them as warnings, for these files only: the variable length array in Readable::readUntil() and the unused
+# putstr() in tfp_printf.cpp.
 set_source_files_properties(../src/streams/Readable.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=vla")
 set_source_files_properties(../src/utils/tfp_printf.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-function")
-set_source_files_properties(TestReadable.cpp TestWritable.cpp TestBufferedWritable.cpp TestStringWritable.cpp
-        PROPERTIES COMPILE_OPTIONS "-Wno-error=sign-compare")
 foreach(_art_compat_standard 17 23)
     if (_art_compat_standard EQUAL 17)
         set(_art_compat_target libArT-compat-tests-cpp17)
