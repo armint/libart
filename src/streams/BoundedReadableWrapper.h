@@ -19,7 +19,7 @@ class BoundedReadableWrapper : public BoundedReadable {
    BoundedReadableWrapper& operator=(const BoundedReadableWrapper&) = delete;
 
    using Readable::read;
-   std::expected<char, Error> read() override;
+   art::expected<char, Error> read() override;
    bool available() override;
    size_t bytesLeft() override;
    size_t position() override;

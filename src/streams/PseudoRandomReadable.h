@@ -11,6 +11,6 @@ class PseudoRandomReadable : public Readable {
    uint8_t idx_ = 0;
    public:
    PseudoRandomReadable(uint64_t seed);
-   std::expected<char, Error> read() override;
+   art::expected<char, Error> read() override;
    bool available() override;
 };

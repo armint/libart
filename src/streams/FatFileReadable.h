@@ -12,17 +12,17 @@
  */
 class FatFileReadable : public RandomAccessReadable {
    FatFile &file;
-   std::span<uint8_t> _buffer;
+   art::span<uint8_t> _buffer;
    size_t bufferIndex = 0;
    size_t bytesBuffered = 0;
    FRESULT _lastError = FR_OK;
 
    public:
-   FatFileReadable(FatFile &file, std::span<uint8_t> buffer)
+   FatFileReadable(FatFile &file, art::span<uint8_t> buffer)
       : file(file)
       , _buffer(buffer) {}
 
-   virtual std::expected<char, Error> read() override;
+   virtual art::expected<char, Error> read() override;
 
    virtual bool available() override {
       return bufferIndex < bytesBuffered || file.tell() < file.size();

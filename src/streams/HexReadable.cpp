@@ -2,11 +2,11 @@
 
 #include <cctype>
 
-std::expected<char, Readable::Error> HexReadable::read() {
+art::expected<char, Readable::Error> HexReadable::read() {
    auto res = source_.read();
    auto strchr1 = strchr(digits, tolower(res.value()));
    if(!strchr1) {
-      return std::unexpected(InvalidCharacter);
+      return art::unexpected(InvalidCharacter);
    }
    res = source_.read();
    if(!res) {
@@ -14,7 +14,7 @@ std::expected<char, Readable::Error> HexReadable::read() {
    }
    auto strchr2 = strchr(digits, tolower(res.value()));
    if(!strchr2) {
-      return std::unexpected(InvalidCharacter);
+      return art::unexpected(InvalidCharacter);
    }
 
    auto val = (strchr1 - digits) * 16 + (strchr2 - digits);

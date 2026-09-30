@@ -59,10 +59,10 @@ class FileWritable : public BoundedWritable {
       return (error == Error::NoSpace || error == Error::TooBig) ? Writable::Overflow : Writable::CouldNotWrite;
    }
 
-   std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
+   art::expected<size_t, Error> write(art::span<const uint8_t> data) override;
 
    /** Syncs the file to the medium (File::sync()). */
-   std::expected<void, Error> flush() override;
+   art::expected<void, Error> flush() override;
 
    /**
     * Moves the write position, in bytes from the start of the file. On failure the position is left

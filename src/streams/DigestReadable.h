@@ -17,7 +17,7 @@ class DigestReadable : public Readable {
    DigestReadable& operator=(const DigestReadable&) = delete;
 
    using Readable::read;
-   std::expected<char, Error> read() override;
+   art::expected<char, Error> read() override;
    bool available() override;
    [[nodiscard]] Digest &digest() const {
       return digest_;

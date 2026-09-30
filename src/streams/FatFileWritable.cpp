@@ -2,7 +2,7 @@
 #include "FatFileWritable.h"
 #include <cstring>
 
-std::expected<size_t, Writable::Error> FatFileWritable::write(std::span<const uint8_t> data) {
+art::expected<size_t, Writable::Error> FatFileWritable::write(art::span<const uint8_t> data) {
    size_t writeCount = data.size();
    size_t dataIndex = 0;
    do {
@@ -17,7 +17,7 @@ std::expected<size_t, Writable::Error> FatFileWritable::write(std::span<const ui
       if(index_ == buffer_.size()) {
          auto result = file_.write(buffer_);
          if(!result) {
-            return std::unexpected(static_cast<Writable::Error>(result.error()));
+            return art::unexpected(static_cast<Writable::Error>(result.error()));
          }
          index_ = 0;
       }
@@ -25,17 +25,17 @@ std::expected<size_t, Writable::Error> FatFileWritable::write(std::span<const ui
    return data.size();
 }
 
-std::expected<void, Writable::Error> FatFileWritable::flush() {
+art::expected<void, Writable::Error> FatFileWritable::flush() {
    if(index_ > 0) {
       auto result = file_.write(buffer_.subspan(0, index_));
       if(!result) {
-         return std::unexpected(static_cast<Writable::Error>(result.error()));
+         return art::unexpected(static_cast<Writable::Error>(result.error()));
       }
       index_ = 0;
    }
    auto result = file_.flush();
    if(!result) {
-      return std::unexpected(static_cast<Writable::Error>(result.error()));
+      return art::unexpected(static_cast<Writable::Error>(result.error()));
    }
    return {};
 }

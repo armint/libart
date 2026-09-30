@@ -1,6 +1,6 @@
 #include "HexBoundedReadable.h"
 
-std::expected<char, Readable::Error> HexBoundedReadable::read() {
+art::expected<char, Readable::Error> HexBoundedReadable::read() {
    return hex_.read();
 }
 

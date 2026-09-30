@@ -2,8 +2,8 @@
 
 #include "storage/File.h"
 #include "streams/RandomAccessReadable.h"
+#include "utils/compat/span.h"
 #include <optional>
-#include <span>
 
 /**
  * A RandomAccessReadable over an art::storage::File, so that the stream utilities (DigestReadable,
@@ -11,7 +11,7 @@
  *
  * Every File::read() goes through the file system, which takes its lock, so reading one byte per call would be
  * slow. The caller therefore provides a buffer; the stream fills it with one File::read() and serves read()
- * from it. Readable::read(std::span) is not virtual and reads byte by byte, so the buffer is what makes bulk
+ * from it. Readable::read(art::span) is not virtual and reads byte by byte, so the buffer is what makes bulk
  * reads efficient. The buffer must stay valid for the lifetime of the stream, and the file must not be read,
  * written or seeked through another handle while the stream is in use, because the stream tracks the file
  * position. It starts reading at the current position of the file.
@@ -24,7 +24,7 @@
  */
 class FileReadable : public RandomAccessReadable {
    art::storage::File &file_;
-   std::span<uint8_t> buffer_;
+   art::span<uint8_t> buffer_;
    size_t bufferIndex_ = 0;
    size_t bytesBuffered_ = 0;
    std::optional<art::storage::Error> lastError_;
@@ -39,7 +39,7 @@ class FileReadable : public RandomAccessReadable {
     * @param file the open file to read from; it must outlive the stream
     * @param buffer read buffer; an empty buffer makes every read() fail with ReadError
     */
-   FileReadable(art::storage::File &file, std::span<uint8_t> buffer)
+   FileReadable(art::storage::File &file, art::span<uint8_t> buffer)
       : file_(file)
       , buffer_(buffer) {}
 
@@ -55,7 +55,7 @@ class FileReadable : public RandomAccessReadable {
    }
 
    using RandomAccessReadable::read;
-   std::expected<char, Error> read() override;
+   art::expected<char, Error> read() override;
 
    /**
     * True if read() returns a byte: buffered data is left, or the file has data beyond its position. False at

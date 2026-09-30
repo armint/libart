@@ -15,14 +15,14 @@ void Writable::writeCharacter(void *ptr, char c) {
    }
 }
 
-std::expected<size_t, Writable::Error> Writable::printf_va(const char *format, ...) {
+art::expected<size_t, Writable::Error> Writable::printf_va(const char *format, ...) {
    va_list ap;
    va_start(ap, format);
    auto ret = vprintf(format, ap);
    va_end(ap);
    return ret;
 }
-std::expected<size_t, Writable::Error> Writable::vprintf(const char *format, va_list va_l) {
+art::expected<size_t, Writable::Error> Writable::vprintf(const char *format, va_list va_l) {
    auto session = writeSession();
    TfpHelper helper{ this, 0 };
    tfp_format(&helper, &writeCharacter, format, va_l);

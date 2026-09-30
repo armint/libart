@@ -11,21 +11,21 @@ size_t saturatingSize(art::storage::offset_t value) {
 
 } // namespace
 
-std::expected<char, Readable::Error> FileReadable::read() {
+art::expected<char, Readable::Error> FileReadable::read() {
    if(bufferIndex_ >= bytesBuffered_) {
       bufferIndex_ = 0;
       bytesBuffered_ = 0;
       if(buffer_.empty()) {
-         return std::unexpected(ReadError);
+         return art::unexpected(ReadError);
       }
       // File::read() returns 0 at the end of the file, so no size() call is needed to detect it.
       const auto result = file_.read(buffer_);
       if(!result) {
          lastError_ = result.error();
-         return std::unexpected(toReadableError(result.error()));
+         return art::unexpected(toReadableError(result.error()));
       }
       if(*result == 0) {
-         return std::unexpected(EndOfStream);
+         return art::unexpected(EndOfStream);
       }
       bytesBuffered_ = *result;
    }

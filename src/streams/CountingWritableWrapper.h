@@ -18,11 +18,11 @@ class CountingWritableWrapper : public CountingWritable {
    CountingWritableWrapper(const CountingWritableWrapper&) = delete;
    CountingWritableWrapper& operator=(const CountingWritableWrapper&) = delete;
 
-   virtual std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
+   virtual art::expected<size_t, Error> write(art::span<const uint8_t> data) override;
 
    virtual size_t written() override {
       return _written;
    }
 
-   virtual std::expected<void, Error> flush() override;
+   virtual art::expected<void, Error> flush() override;
 };
