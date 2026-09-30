@@ -19,6 +19,6 @@ class CharacterSkippingReadable : public Readable {
    CharacterSkippingReadable(const CharacterSkippingReadable&) = delete;
    CharacterSkippingReadable& operator=(const CharacterSkippingReadable&) = delete;
 
-   virtual std::expected<char, Error> read() override;
+   virtual art::expected<char, Error> read() override;
    virtual bool available() override;
 };

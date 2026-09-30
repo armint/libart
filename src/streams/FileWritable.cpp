@@ -1,20 +1,20 @@
 #include "FileWritable.h"
 #include <algorithm>
 
-std::expected<size_t, Writable::Error> FileWritable::write(std::span<const uint8_t> data) {
+art::expected<size_t, Writable::Error> FileWritable::write(art::span<const uint8_t> data) {
    const auto result = file_.write(data);
    if(!result) {
       lastError_ = result.error();
-      return std::unexpected(toWritableError(result.error()));
+      return art::unexpected(toWritableError(result.error()));
    }
    return data.size();
 }
 
-std::expected<void, Writable::Error> FileWritable::flush() {
+art::expected<void, Writable::Error> FileWritable::flush() {
    const auto result = file_.sync();
    if(!result) {
       lastError_ = result.error();
-      return std::unexpected(toWritableError(result.error()));
+      return art::unexpected(toWritableError(result.error()));
    }
    return {};
 }

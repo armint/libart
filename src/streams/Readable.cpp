@@ -6,19 +6,19 @@
 #include "Readable.h"
 
 
-std::expected<size_t, Readable::Error> Readable::read(std::span<uint8_t> target) {
+art::expected<size_t, Readable::Error> Readable::read(art::span<uint8_t> target) {
    for(auto i = target.begin(); i < target.end(); ++i) {
       auto res = read();
       if(!res) {
-         return std::unexpected(res.error());
+         return art::unexpected(res.error());
       }
       *i = res.value();
    }
    return target.size();
 }
 
-std::expected<size_t, Readable::Error>
-Readable::readUntil(std::initializer_list<const char *> toFind, std::span<char> buffer, size_t *charsRead) {
+art::expected<size_t, Readable::Error>
+Readable::readUntil(std::initializer_list<const char *> toFind, art::span<char> buffer, size_t *charsRead) {
    size_t _charsRead = 0;
    size_t result = toFind.size();
    // Create an array of indexes pointing to where we are in matching the strings
@@ -34,7 +34,7 @@ Readable::readUntil(std::initializer_list<const char *> toFind, std::span<char> 
          if(charsRead != nullptr) {
             *charsRead = _charsRead;
          }
-         return r;
+         return art::unexpected(r.error());
       }
       // Copy the data to the output buffer if possible
       if(_charsRead < buffer.size()) {
@@ -70,7 +70,7 @@ Readable::readUntil(std::initializer_list<const char *> toFind, std::span<char> 
    return result;
 }
 
-std::expected<size_t, Readable::Error> Readable::scanf(const char *format, ...) {
+art::expected<size_t, Readable::Error> Readable::scanf(const char *format, ...) {
    va_list args;
    va_start(args, format);
    auto ret = this->vscanf(format, args);
@@ -78,7 +78,7 @@ std::expected<size_t, Readable::Error> Readable::scanf(const char *format, ...) 
    return ret;
 }
 
-std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_list args) {
+art::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_list args) {
    char formatChar;
    size_t matches = 0;
    std::optional<char> nextChar;
@@ -88,7 +88,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
       if(!nextChar) {
          auto r = read();
          if(!r) {
-            return r;
+            return art::unexpected(r.error());
          }
          nextChar = r.value();
       }
@@ -102,7 +102,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
             while(isspace(nextChar.value())) {
                auto r = read();
                if(!r) {
-                  return r;
+                  return art::unexpected(r.error());
                }
                nextChar = r.value();
             }
@@ -144,7 +144,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
                if(value.error() == NotFound) {
                   return matches;
                }
-               return value;
+               return art::unexpected(value.error());
             }
             if(keep) {
                matches++;
@@ -163,7 +163,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
                if(value.error() == NotFound) {
                   return matches;
                }
-               return value;
+               return art::unexpected(value.error());
             }
             if(keep) {
                matches++;
@@ -184,7 +184,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
                if(value.error() == NotFound) {
                   return matches;
                }
-               return value;
+               return art::unexpected(value.error());
             }
             if(keep) {
                matches++;
@@ -209,7 +209,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
                if(value.error() == NotFound) {
                   return matches;
                }
-               return value;
+               return art::unexpected(value.error());
             }
             if(keep) {
                matches++;
@@ -242,7 +242,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
                matches++;
                maxChars--;
             }
-            std::expected<char, Error> streamChar;
+            art::expected<char, Error> streamChar;
             do {
                if(maxChars-- <= 0) {
                   // We have read the maximum amount of characters
@@ -250,7 +250,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
                }
                streamChar = read();
                if(!streamChar) {
-                  return streamChar;
+                  return art::unexpected(streamChar.error());
                }
                nextChar = streamChar.value();
                if(keep) {
@@ -290,7 +290,7 @@ std::expected<size_t, Readable::Error> Readable::vscanf(const char *format, va_l
    return matches;
 }
 
-std::expected<char, Readable::Error> Readable::scanfRead() {
+art::expected<char, Readable::Error> Readable::scanfRead() {
    auto r = read();
    if(r && r.value() == 0) {
       return NotFound;
@@ -298,12 +298,12 @@ std::expected<char, Readable::Error> Readable::scanfRead() {
    return r;
 }
 
-std::expected<big_int_t, Readable::Error> Readable::readSigned(std::optional<char> firstChar, int base, size_t maxDigits) {
+art::expected<big_int_t, Readable::Error> Readable::readSigned(std::optional<char> firstChar, int base, size_t maxDigits) {
    bool negative = false;
    if(!firstChar.has_value()) {
       auto r = scanfRead();
       if(!r) {
-         return r;
+         return art::unexpected(r.error());
       }
       firstChar = r.value();
    }
@@ -318,19 +318,19 @@ std::expected<big_int_t, Readable::Error> Readable::readSigned(std::optional<cha
    }
    auto number = readUnsigned(firstChar, base, maxDigits);
    if(!number) {
-      return number;
+      return art::unexpected(number.error());
    }
    return negative ? -number.value() : number.value();
 }
 
-std::expected<big_uint_t, Readable::Error> Readable::readUnsigned(std::optional<char> firstChar, int base, size_t maxDigits) {
+art::expected<big_uint_t, Readable::Error> Readable::readUnsigned(std::optional<char> firstChar, int base, size_t maxDigits) {
    big_uint_t number = 0;
    bool haveNumber = false;
    // Read the first character if needed
-   std::expected<char, Error> r = firstChar ? firstChar.value() : scanfRead();
+   art::expected<char, Error> r = firstChar ? firstChar.value() : scanfRead();
    do {
       if(!r) {
-         return r;
+         return art::unexpected(r.error());
       }
       // Convert the character into a possible digit
       int digit = get_numeric_value(r.value());
@@ -344,7 +344,7 @@ std::expected<big_uint_t, Readable::Error> Readable::readUnsigned(std::optional<
       r = read();
    } while(r && --maxDigits > 0);
    if(!haveNumber) {
-      return std::unexpected<Error>(NotFound);
+      return art::unexpected<Error>(NotFound);
    }
    return number;
 }

@@ -26,7 +26,7 @@ class HexBoundedReadable : public RandomAccessReadable {
    HexBoundedReadable& operator=(const HexBoundedReadable&) = delete;
 
    // Readable
-   std::expected<char, Error> read() override;
+   art::expected<char, Error> read() override;
    bool available() override;
 
    // BoundedReadable

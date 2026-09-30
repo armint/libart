@@ -4,7 +4,7 @@
 PseudoRandomReadable::PseudoRandomReadable(uint64_t seed)
    : rng_(seed, 1) {}
 
-std::expected<char, Readable::Error> PseudoRandomReadable::read() {
+art::expected<char, Readable::Error> PseudoRandomReadable::read() {
    if(idx_ == 0) {
       last_ = rng_.next();
       idx_ = sizeof(last_);

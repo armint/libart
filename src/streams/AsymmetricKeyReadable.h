@@ -23,7 +23,7 @@ class AsymmetricKeyReadable : public Readable {
    AsymmetricKeyReadable& operator=(const AsymmetricKeyReadable&) = delete;
 
    using Readable::read;
-   std::expected<char, Error> read() override;
+   art::expected<char, Error> read() override;
    bool available() override;
 
    /**
@@ -31,7 +31,7 @@ class AsymmetricKeyReadable : public Readable {
     * @param signature The signature to verify.
     * @return true if valid, false otherwise, or an error.
     */
-   inline std::expected<bool, Writable::Error> verify(std::span<const uint8_t> signature) {
+   inline art::expected<bool, Writable::Error> verify(art::span<const uint8_t> signature) {
       return key_.verify(signature);
    }
 
@@ -40,7 +40,7 @@ class AsymmetricKeyReadable : public Readable {
     * @param plaintext The buffer for the plaintext.
     * @return The number of bytes written, or an error.
     */
-   inline std::expected<size_t, Writable::Error> decrypt(std::span<uint8_t> plaintext) {
+   inline art::expected<size_t, Writable::Error> decrypt(art::span<uint8_t> plaintext) {
       return key_.decrypt(plaintext);
    }
 

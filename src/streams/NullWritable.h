@@ -12,11 +12,11 @@ class NullWritable : public CountingWritable {
    NullWritable(const NullWritable&) = default;
    NullWritable& operator=(const NullWritable&) = default;
 
-   std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
+   art::expected<size_t, Error> write(art::span<const uint8_t> data) override;
 
    size_t written() override {
       return _written;
    }
 
-   virtual std::expected<void, Error> flush() override;
+   virtual art::expected<void, Error> flush() override;
 };

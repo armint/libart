@@ -6,10 +6,10 @@
  */
 class ArrayReadable : public RandomAccessReadable {
    size_t index = 0;
-   std::span<const uint8_t> data;
+   art::span<const uint8_t> data;
 
    public:
-   explicit ArrayReadable(std::span<const uint8_t> data)
+   explicit ArrayReadable(art::span<const uint8_t> data)
       : data(data) {}
 
    ArrayReadable(ArrayReadable&&) = default;
@@ -17,9 +17,9 @@ class ArrayReadable : public RandomAccessReadable {
    ArrayReadable(const ArrayReadable&) = default;
    ArrayReadable& operator=(const ArrayReadable&) = default;
 
-   std::expected<char, Error> read() override {
+   art::expected<char, Error> read() override {
       if(index >= data.size()) {
-         return std::unexpected(EndOfStream);
+         return art::unexpected(EndOfStream);
       }
       return data[index++];
    }

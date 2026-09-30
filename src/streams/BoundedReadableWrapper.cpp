@@ -1,8 +1,8 @@
 #include "BoundedReadableWrapper.h"
 
-std::expected<char, Readable::Error> BoundedReadableWrapper::read() {
+art::expected<char, Readable::Error> BoundedReadableWrapper::read() {
    if(position_ >= limit_) {
-      return std::unexpected(EndOfStream);
+      return art::unexpected(EndOfStream);
    }
    auto ch = source_.read();
    if(ch) {

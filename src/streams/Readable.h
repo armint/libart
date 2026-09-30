@@ -1,13 +1,13 @@
 #pragma once
 
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #include <array>
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
-#include <expected>
 #include <limits>
 #include <optional>
-#include <span>
 
 #include <art_types.h>
 #include <utils/endian.h>
@@ -27,29 +27,29 @@ class Readable {
    /**
     * Read a single character from this stream. This method should be implemented by all derived classes
     *
-    * @return An std::expected<char, Error> containing the read character, or an error on failure
+    * @return An art::expected<char, Error> containing the read character, or an error on failure
     */
-   virtual std::expected<char, Error> read() = 0;
+   virtual art::expected<char, Error> read() = 0;
 
-   std::expected<size_t, Error> read(std::span<char> target) {
-      auto bytes = std::span(reinterpret_cast<uint8_t *>(target.data()), target.size());
+   art::expected<size_t, Error> read(art::span<char> target) {
+      auto bytes = art::span(reinterpret_cast<uint8_t *>(target.data()), target.size());
       return read(bytes);
    }
 
-   std::expected<size_t, Error> read(std::span<uint8_t> target);
+   art::expected<size_t, Error> read(art::span<uint8_t> target);
 
    /** Read a number from the readable, converting endianness if requested
     *  \tparam T the type to read
     *  \tparam E the expected endianness of the incoming bytes
-    *  \return an std::expected containing the read value, or a Readable::Error if something went wrong
+    *  \return an art::expected containing the read value, or a Readable::Error if something went wrong
     */
    template <typename T, Endian E = SystemEndian>
-   std::expected<T, Error> readNumber() {
+   art::expected<T, Error> readNumber() {
       static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
       uint8_t buffer[sizeof(T)];
       auto r = read(buffer);
       if(!r) {
-         return r;
+         return art::unexpected(r.error());
       }
       T tmp{};
       std::memcpy(&tmp, buffer, sizeof(T));
@@ -66,7 +66,7 @@ class Readable {
     * @return The number of bytes consumed on success; otherwise a DecodeError.
     */
    template <typename T, typename = std::enable_if_t<std::is_integral_v<T>, T>>
-   std::expected<size_t, Error> readRLE(T &dest) {
+   art::expected<size_t, Error> readRLE(T &dest) {
       using UnsignedT = std::make_unsigned_t<T>;
       UnsignedT uDest = 0;
       size_t index = 0;
@@ -75,11 +75,11 @@ class Readable {
       do {
          auto ch = read();
          if(!ch) {
-            return ch;
+            return art::unexpected(ch.error());
          }
          byte = static_cast<uint8_t>(*ch);
          if(bitIndex >= sizeof(T) * 8) {
-            return std::unexpected(NumberTooBig);
+            return art::unexpected(NumberTooBig);
          }
          uDest |= static_cast<UnsignedT>(byte & 0x7F) << bitIndex;
          index++;
@@ -105,10 +105,10 @@ class Readable {
     *               until the buffer is full or  the method exits
     * @param charsRead an optional pointer to a size_t where the total number of characters read will be stored
     *
-    * @return A std::expected<size_t, Error> containing the index of the matched string, or an error on failure
+    * @return A art::expected<size_t, Error> containing the index of the matched string, or an error on failure
     */
-   std::expected<size_t, Error>
-   readUntil(std::initializer_list<const char *> toFind, std::span<char> buffer = std::span<char>(), size_t *charsRead = nullptr);
+   art::expected<size_t, Error>
+   readUntil(std::initializer_list<const char *> toFind, art::span<char> buffer = art::span<char>(), size_t *charsRead = nullptr);
 
    /**
     * See C scanf for documentation.
@@ -140,8 +140,8 @@ class Readable {
     *
     * @return The number of matches read from the string and stored
     */
-   std::expected<size_t, Error> scanf(const char *format, ...);
-   std::expected<size_t, Error> vscanf(const char *format, va_list args);
+   art::expected<size_t, Error> scanf(const char *format, ...);
+   art::expected<size_t, Error> vscanf(const char *format, va_list args);
 
    [[nodiscard]] uint32_t getTimeout() const {
       return timeout_;
@@ -159,7 +159,7 @@ class Readable {
    Readable& operator=(const Readable&) = default;
 
    protected:
-   std::expected<char, Error> scanfRead();
+   art::expected<char, Error> scanfRead();
    /**
     * Reads a signed integer from this readable source.
     *
@@ -168,9 +168,9 @@ class Readable {
     * @param base      The numerical base (e.g., 10 for decimal, 16 for hexadecimal) used for reading the integer.
     * @param maxDigits Maximum number of digits to read for the integer.
     *
-    * @return A std::expected<int64_t, Readable::Error> containing the read signed integer value, or an error on failure.
+    * @return A art::expected<int64_t, Readable::Error> containing the read signed integer value, or an error on failure.
     */
-   std::expected<big_int_t, Error>
+   art::expected<big_int_t, Error>
    readSigned(std::optional<char> firstChar, int base, size_t maxDigits = std::numeric_limits<size_t>::max());
    /**
     * Reads an unsigned integer from the stream. The reading process starts with the provided first character
@@ -181,8 +181,8 @@ class Readable {
     * @param base The base to use for parsing the digits, which should be between 2 and 36 inclusive.
     * @param maxDigits The maximum number of digits to read.
     *
-    * @return A std::expected containing the parsed unsigned integer if successful, or an error code of type Readable::Error.
+    * @return A art::expected containing the parsed unsigned integer if successful, or an error code of type Readable::Error.
     */
-   std::expected<big_uint_t, Error>
+   art::expected<big_uint_t, Error>
    readUnsigned(std::optional<char> firstChar, int base, size_t maxDigits = std::numeric_limits<size_t>::max());
 };

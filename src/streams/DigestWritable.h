@@ -20,6 +20,6 @@ class DigestWritable : public Writable {
    DigestWritable& operator=(const DigestWritable&) = delete;
 
    using Writable::write;
-   std::expected<size_t, Error> write(std::span<const uint8_t> data) override;
-   std::expected<void, Error> flush() override;
+   art::expected<size_t, Error> write(art::span<const uint8_t> data) override;
+   art::expected<void, Error> flush() override;
 };

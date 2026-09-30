@@ -9,7 +9,7 @@ TEST_CASE("[StringWritable] normal write [StringWritable]") {
     char buf[10];
     StringWritable sw(buf);
 
-    auto res = sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Hello"), 5));
+    auto res = sw.write(art::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Hello"), 5));
     REQUIRE(res);
     REQUIRE(res.value() == 5);
     REQUIRE(sw.position() == 5);
@@ -22,7 +22,7 @@ TEST_CASE("[StringWritable] exactly fill buffer [StringWritable]") {
 
     // Writing 6 bytes into 6 byte buffer.
     // StringWritable should overwrite the 6th byte with \0.
-    auto res = sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Hello!"), 6));
+    auto res = sw.write(art::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Hello!"), 6));
     REQUIRE(res);
     REQUIRE(res.value() == 6);
     REQUIRE(sw.position() == 6);
@@ -35,7 +35,7 @@ TEST_CASE("[StringWritable] overflow buffer [StringWritable]") {
     StringWritable sw(buf);
 
     // Writing 10 bytes into 5 byte buffer.
-    auto res = sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Hello World"), 11));
+    auto res = sw.write(art::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Hello World"), 11));
     REQUIRE_FALSE(res);
     REQUIRE(res.error() == Writable::Overflow);
     REQUIRE(sw.position() == 5);
@@ -47,16 +47,16 @@ TEST_CASE("[StringWritable] multiple writes [StringWritable]") {
     char buf[10];
     StringWritable sw(buf);
 
-    sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Abc"), 3));
+    sw.write(art::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Abc"), 3));
     REQUIRE(sw.position() == 3);
     
-    sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Def"), 3));
+    sw.write(art::span<const uint8_t>(reinterpret_cast<const uint8_t *>("Def"), 3));
     REQUIRE(sw.position() == 6);
     
     REQUIRE(std::string_view(buf, 6) == "AbcDef");
 
     // Fill it up
-    sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("GHIJ"), 4));
+    sw.write(art::span<const uint8_t>(reinterpret_cast<const uint8_t *>("GHIJ"), 4));
     REQUIRE(sw.position() == 10);
     REQUIRE(buf[9] == '\0');
     REQUIRE(std::string_view(buf) == "AbcDefGHI");
@@ -82,11 +82,11 @@ TEST_CASE("[StringWritable] ensure zero-termination when full [StringWritable]")
     memset(buf, 'X', sizeof(buf));
     StringWritable sw(buf);
 
-    sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("ABCD"), 4));
+    sw.write(art::span<const uint8_t>(reinterpret_cast<const uint8_t *>("ABCD"), 4));
     REQUIRE(sw.position() == 4);
     REQUIRE(buf[4] == 'X'); // Not full yet
 
-    sw.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>("E"), 1));
+    sw.write(art::span<const uint8_t>(reinterpret_cast<const uint8_t *>("E"), 1));
     REQUIRE(sw.position() == 5);
     REQUIRE(buf[4] == '\0'); // Now it's full, should be zero-terminated (overwriting 'E')
     REQUIRE(std::string_view(buf) == "ABCD");

@@ -38,6 +38,7 @@ include(CTest)
 
 # Find all test files
 file(GLOB TEST_SOURCES
+        test_main.cpp
         TestNumberUtils.cpp
         TestReadable.cpp
         TestSettings.cpp
@@ -208,18 +209,38 @@ set_source_files_properties(
 )
 
 # The compat headers (src/utils/compat/) must work at C++17, where the rest of libArT does not compile yet, so
-# TestCompat.cpp is built into two more binaries of its own, besides libArT-tests (C++23, std::expected/std::span):
+# TestCompat.cpp is built into two more binaries of its own, besides libArT-tests (C++23, std::expected/std::span),
+# together with the tests of src/streams/ (see below):
 # - libArT-compat-tests-cpp17: C++17, so the own art::expected and etl::span.
 # - libArT-compat-tests-cpp23-own: C++23 with ART_USE_STD_EXPECTED_SPAN=0, the setting of an application that
 #   builds at C++17 while libArT builds at C++23; it also compares the sizes of the own and the std types.
 # Both use strict warnings, as a C++17 consumer may.
+# The tests of src/streams/ and the stream sources they need are built into both binaries as well, so that
+# src/streams/ and the templates the tests instantiate (for example Readable::readNumber<T>()) are compiled with
+# the own types, at C++17 and at C++23.
+set(_ART_COMPAT_STREAM_SOURCES
+        TestReadable.cpp
+        TestWritable.cpp
+        TestBufferedWritable.cpp
+        TestStringWritable.cpp
+        ../src/streams/Readable.cpp
+        ../src/streams/Writable.cpp
+        ../src/streams/ArrayWritable.cpp
+        ../src/streams/BufferedWritable.cpp
+        ../src/utils/tfp_printf.cpp
+)
+# These files have warnings that are older than the compat binaries and that the strict flags below make fatal.
+# Keep them as warnings, for these files only: the variable length array in Readable::readUntil() and the unused
+# putstr() in tfp_printf.cpp.
+set_source_files_properties(../src/streams/Readable.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=vla")
+set_source_files_properties(../src/utils/tfp_printf.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-function")
 foreach(_art_compat_standard 17 23)
     if (_art_compat_standard EQUAL 17)
         set(_art_compat_target libArT-compat-tests-cpp17)
     else ()
         set(_art_compat_target libArT-compat-tests-cpp23-own)
     endif ()
-    add_executable(${_art_compat_target} TestCompat.cpp compat_main.cpp)
+    add_executable(${_art_compat_target} TestCompat.cpp test_main.cpp ${_ART_COMPAT_STREAM_SOURCES})
     set_target_properties(${_art_compat_target} PROPERTIES
             CXX_STANDARD ${_art_compat_standard}
             CXX_STANDARD_REQUIRED ON

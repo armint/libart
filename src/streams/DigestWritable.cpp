@@ -1,7 +1,7 @@
 
 #include "DigestWritable.h"
 
-std::expected<size_t, Writable::Error> DigestWritable::write(std::span<const uint8_t> data) {
+art::expected<size_t, Writable::Error> DigestWritable::write(art::span<const uint8_t> data) {
    auto res = sink_.write(data);
    if(res) {
       digest_.update(data);
@@ -9,6 +9,6 @@ std::expected<size_t, Writable::Error> DigestWritable::write(std::span<const uin
    return res;
 }
 
-std::expected<void, Writable::Error> DigestWritable::flush() {
+art::expected<void, Writable::Error> DigestWritable::flush() {
    return sink_.flush();
 }
