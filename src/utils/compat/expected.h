@@ -26,7 +26,9 @@
  * or moved; a move-only T (for example storage::File) gives a move-only expected.
  *
  * Differences to std::expected, because libArT is built without exceptions:
- * - value() on an error calls __builtin_trap() instead of throwing bad_expected_access.
+ * - value() on an error calls __builtin_trap() instead of throwing bad_expected_access. The two build modes
+ *   therefore fail differently: with ART_USE_STD_EXPECTED_SPAN=1 and -fno-exceptions, libstdc++'s std::expected
+ *   calls abort() instead (and throws if exceptions are on). Do not rely on either; check has_value() first.
  * - Assignment between the two states is not exception safe. It destroys the old member before it constructs the
  *   new one.
  * As in std::expected, operator*, operator-> and error() do not check the state.
@@ -139,7 +141,7 @@ template <typename T, typename E>
 struct is_expected<expected<T, E> > : std::true_type {};
 
 [[noreturn]] inline void expected_bad_access() noexcept {
-   // value() on an expected that holds an error. std::expected would throw; libArT has no exceptions.
+   // value() on an expected that holds an error. std::expected throws, or calls abort() without exceptions.
    __builtin_trap();
 }
 
@@ -444,7 +446,7 @@ class expected : private detail::expected_storage<T, E>,
       return std::move(this->value_);
    }
 
-   /** The value. Traps (__builtin_trap()) if this holds an error; std::expected would throw. */
+   /** The value. Traps (__builtin_trap()) if this holds an error; see the file comment for std::expected. */
    constexpr const T &value() const & {
       if(!this->hasValue_) {
          detail::expected_bad_access();
@@ -611,7 +613,7 @@ class expected<void, E> : private detail::expected_storage<detail::expected_void
    /** Does nothing, like std::expected<void, E>::operator*(). */
    constexpr void operator*() const noexcept {}
 
-   /** Traps (__builtin_trap()) if this holds an error; std::expected would throw. */
+   /** Traps (__builtin_trap()) if this holds an error; see the file comment for std::expected. */
    constexpr void value() const {
       if(!this->hasValue_) {
          detail::expected_bad_access();

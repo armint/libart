@@ -59,6 +59,13 @@ The own `art::expected` is used instead of `etl::expected` because `etl::expecte
 typical call chain grows by 69 %. The own type has the same size and code size as `std::expected`. It implements
 the subset that libArT uses: construction from a value, from `unexpected` and with `unexpect`, `expected<void, E>`,
 `has_value()`, `operator bool`, `*`, `->`, `value()`, `error()`, `value_or()` and comparison. It is trivially
-copyable when `T` and `E` are, and it supports move-only `T` (for example `storage::File`). The code is built
-without exceptions, so `value()` on an error calls `__builtin_trap()` instead of throwing; `*`, `->` and `error()`
-do not check the state, like `std::expected`.
+copyable when `T` and `E` are, and it supports move-only `T` (for example `storage::File`). `*`, `->` and
+`error()` do not check the state, like `std::expected`.
+
+`value()` on an error fails differently in the two modes. Do not rely on either behaviour; check `has_value()`
+first:
+
+- Own `art::expected` (`OFF`): `value()` calls `__builtin_trap()`, which raises an illegal-instruction or
+  breakpoint fault.
+- `std::expected` (`ON`): `value()` throws `std::bad_expected_access`. In a build with `-fno-exceptions`,
+  libstdc++ calls `abort()` instead.
