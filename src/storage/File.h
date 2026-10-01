@@ -2,10 +2,10 @@
 
 #include "storage/StorageError.h"
 #include "storage/StorageTypes.h"
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #include <cstddef>
 #include <cstdint>
-#include <expected>
-#include <span>
 
 namespace art::storage {
 
@@ -94,7 +94,7 @@ class File {
     * reached, and 0 at or beyond the end. Otherwise the error, for example Error::InvalidArgument if the file
     * was opened write-only. The buffer content is unspecified after an error.
     */
-   std::expected<size_t, Error> read(std::span<uint8_t> buffer);
+   art::expected<size_t, Error> read(art::span<uint8_t> buffer);
 
    /**
     * @brief Writes at the current position (at the end for OpenMode::Append) and advances it.
@@ -108,7 +108,7 @@ class File {
     * @return Nothing on success, otherwise the error, for example Error::NoSpace, or Error::InvalidArgument if
     * the file was opened read-only.
     */
-   std::expected<void, Error> write(std::span<const uint8_t> data);
+   art::expected<void, Error> write(art::span<const uint8_t> data);
 
    /**
     * @brief Moves the position to an absolute byte offset from the start of the file.
@@ -121,13 +121,13 @@ class File {
     * @return Nothing on success, otherwise the error, for example Error::TooBig if the file system cannot
     * represent the position.
     */
-   std::expected<void, Error> seek(offset_t position);
+   art::expected<void, Error> seek(offset_t position);
 
    /// Returns the current position in bytes.
-   std::expected<offset_t, Error> tell() const;
+   art::expected<offset_t, Error> tell() const;
 
    /// Returns the size of the file in bytes, including data that was written but not yet synced.
-   std::expected<offset_t, Error> size() const;
+   art::expected<offset_t, Error> size() const;
 
    /**
     * @brief Flushes buffered data of this file to the medium without closing it.
@@ -135,7 +135,7 @@ class File {
     * @return Nothing on success, otherwise the error. After a failure the data since the last successful sync
     * may be lost.
     */
-   std::expected<void, Error> sync();
+   art::expected<void, Error> sync();
 
    /**
     * @brief Flushes and closes the file, and reports whether that succeeded.
@@ -147,7 +147,7 @@ class File {
     * @return Nothing on success, otherwise the error of the final flush (for example Error::Io or
     * Error::NoSpace) or Error::BadHandle.
     */
-   std::expected<void, Error> close();
+   art::expected<void, Error> close();
 
    private:
    friend class FileSystem;

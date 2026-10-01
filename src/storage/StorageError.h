@@ -11,7 +11,7 @@ namespace art::storage {
  * values (LittleFS, FatFs, HAL status codes, ...) into this enum, so code above the adapter never depends
  * on a specific driver.
  *
- * Fallible storage operations return `std::expected<T, Error>`.
+ * Fallible storage operations return `art::expected<T, Error>`.
  *
  * Adapters should keep the distinctions a caller can act on: NotReady, Timeout and Busy are transient and may
  * be retried or backed off, WriteProtected is permanent until the user intervenes, Io is a hard failure.

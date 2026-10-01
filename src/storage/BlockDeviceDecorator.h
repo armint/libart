@@ -18,8 +18,8 @@ namespace art::storage {
  *    public:
  *    using BlockDeviceDecorator::BlockDeviceDecorator;
  *
- *    std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override;
- *    std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override;
+ *    art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override;
+ *    art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) override;
  *    Geometry geometry() const override;
  * };
  * @endcode
@@ -41,27 +41,27 @@ class BlockDeviceDecorator : public BlockDevice {
       : lower_(lower) {}
 
    /// Forwards to the lower device.
-   std::expected<void, Error> init() override {
+   art::expected<void, Error> init() override {
       return lower_.init();
    }
 
    /// Forwards to the lower device.
-   std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
+   art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override {
       return lower_.read(offset, buffer);
    }
 
    /// Forwards to the lower device.
-   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+   art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) override {
       return lower_.program(offset, data);
    }
 
    /// Forwards to the lower device.
-   std::expected<void, Error> erase(offset_t offset, offset_t length) override {
+   art::expected<void, Error> erase(offset_t offset, offset_t length) override {
       return lower_.erase(offset, length);
    }
 
    /// Forwards to the lower device.
-   std::expected<void, Error> sync() override {
+   art::expected<void, Error> sync() override {
       return lower_.sync();
    }
 

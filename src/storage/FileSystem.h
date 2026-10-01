@@ -3,11 +3,11 @@
 #include "storage/File.h"
 #include "storage/StorageError.h"
 #include "storage/StorageTypes.h"
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #include <cstddef>
 #include <cstdint>
 #include <etl/delegate.h>
-#include <expected>
-#include <span>
 
 namespace art::storage {
 
@@ -86,7 +86,7 @@ using DirectoryVisitor = etl::delegate<bool(const char *name, const FileInfo &in
  * there are no relative paths.
  *
  * @par Errors
- * Every fallible call returns `std::expected<T, Error>` with the codes of StorageError.h; backend specific
+ * Every fallible call returns `art::expected<T, Error>` with the codes of StorageError.h; backend specific
  * codes never escape the implementation. Calls other than mount() and format() fail with Error::NotMounted
  * while the file system is not mounted.
  *
@@ -124,7 +124,7 @@ class FileSystem {
     * first. What happens to a medium without a valid file system is up to the implementation: it either fails with
     * Error::Corrupt or formats it (see the documentation of the implementation). A failure never aborts the caller.
     */
-   virtual std::expected<void, Error> mount() = 0;
+   virtual art::expected<void, Error> mount() = 0;
 
    /**
     * @brief Unmounts the file system.
@@ -137,14 +137,14 @@ class FileSystem {
     * @return Nothing on success, otherwise the error of flushing (for example Error::Io). The file system is
     * unmounted in every case.
     */
-   virtual std::expected<void, Error> unmount() = 0;
+   virtual art::expected<void, Error> unmount() = 0;
 
    /**
     * @brief Creates an empty file system on the medium, destroying its previous content.
     *
     * The file system must not be mounted (Error::Busy otherwise) and stays unmounted; call mount() next.
     */
-   virtual std::expected<void, Error> format() = 0;
+   virtual art::expected<void, Error> format() = 0;
 
    /// True between a successful mount() and the next unmount().
    [[nodiscard]] virtual bool isMounted() const = 0;
@@ -158,7 +158,7 @@ class FileSystem {
     * a directory), Error::NotDirectory (a path component is a file), Error::NoMemory (all file slots are in
     * use), Error::NoSpace (a file that must be created cannot be) or another error.
     */
-   virtual std::expected<File, Error> open(const char *path, OpenMode mode) = 0;
+   virtual art::expected<File, Error> open(const char *path, OpenMode mode) = 0;
 
    /**
     * @brief Removes a file or an empty directory.
@@ -171,7 +171,7 @@ class FileSystem {
     * succeeds and the open handle keeps working on the orphaned data or fails with an error (typically
     * Error::BadHandle). It must not leave a handle that crashes on use. A portable caller closes first.
     */
-   virtual std::expected<void, Error> remove(const char *path) = 0;
+   virtual art::expected<void, Error> remove(const char *path) = 0;
 
    /**
     * @brief Renames or moves a file or directory.
@@ -183,13 +183,13 @@ class FileSystem {
     * when a directory is involved). If both paths name the same entry the call changes nothing and succeeds
     * (Error::NoEntry if it does not exist), as rename(2) and lfs_rename() do. For open files see remove().
     */
-   virtual std::expected<void, Error> rename(const char *oldPath, const char *newPath) = 0;
+   virtual art::expected<void, Error> rename(const char *oldPath, const char *newPath) = 0;
 
    /// Creates a directory. Its parent must exist. Error::Exists if the path is already taken.
-   virtual std::expected<void, Error> mkdir(const char *path) = 0;
+   virtual art::expected<void, Error> mkdir(const char *path) = 0;
 
    /// Reports type and size of a file or directory. Error::NoEntry if it does not exist.
-   virtual std::expected<FileInfo, Error> stat(const char *path) = 0;
+   virtual art::expected<FileInfo, Error> stat(const char *path) = 0;
 
    /**
     * @brief Calls `visitor` for every entry of a directory, in an unspecified order.
@@ -202,7 +202,7 @@ class FileSystem {
     * @param visitor Called per entry, see DirectoryVisitor.
     * @return The number of entries the visitor was called for, including the one it stopped at.
     */
-   virtual std::expected<size_t, Error> visitDirectory(const char *path, DirectoryVisitor visitor) = 0;
+   virtual art::expected<size_t, Error> visitDirectory(const char *path, DirectoryVisitor visitor) = 0;
 
    /**
     * @brief Reports the free space of the file system in bytes.
@@ -210,7 +210,7 @@ class FileSystem {
     * This is an estimate for capacity planning, not a promise that a write of that size succeeds: metadata,
     * block granularity and wear levelling all take their share. On some backends computing it is costly.
     */
-   virtual std::expected<offset_t, Error> freeSpace() = 0;
+   virtual art::expected<offset_t, Error> freeSpace() = 0;
 
    /**
     * @brief Reads a whole file into `buffer`.
@@ -224,7 +224,7 @@ class FileSystem {
     * fewer bytes than its reported size the result is Error::Io, never a short count. Otherwise the error of
     * open() or read().
     */
-   std::expected<size_t, Error> readFile(const char *path, std::span<uint8_t> buffer);
+   art::expected<size_t, Error> readFile(const char *path, art::span<uint8_t> buffer);
 
    /**
     * @brief Creates or replaces a file with the given content and reports whether it was stored.
@@ -236,7 +236,7 @@ class FileSystem {
     * can leave the file truncated or partially written, and a concurrent reader can see it in that state. A
     * caller that must never lose the old content writes a temporary file and rename()s it over the target.
     */
-   std::expected<void, Error> writeFile(const char *path, std::span<const uint8_t> data);
+   art::expected<void, Error> writeFile(const char *path, art::span<const uint8_t> data);
 
    protected:
    FileSystem() = default;
@@ -252,13 +252,13 @@ class FileSystem {
     *   handle with Error::BadHandle. File relies on both.
     * @{
     */
-   virtual std::expected<size_t, Error> fileRead(FileHandle handle, std::span<uint8_t> buffer) = 0;
-   virtual std::expected<void, Error> fileWrite(FileHandle handle, std::span<const uint8_t> data) = 0;
-   virtual std::expected<void, Error> fileSeek(FileHandle handle, offset_t position) = 0;
-   virtual std::expected<offset_t, Error> fileTell(FileHandle handle) = 0;
-   virtual std::expected<offset_t, Error> fileSize(FileHandle handle) = 0;
-   virtual std::expected<void, Error> fileSync(FileHandle handle) = 0;
-   virtual std::expected<void, Error> fileClose(FileHandle handle) = 0;
+   virtual art::expected<size_t, Error> fileRead(FileHandle handle, art::span<uint8_t> buffer) = 0;
+   virtual art::expected<void, Error> fileWrite(FileHandle handle, art::span<const uint8_t> data) = 0;
+   virtual art::expected<void, Error> fileSeek(FileHandle handle, offset_t position) = 0;
+   virtual art::expected<offset_t, Error> fileTell(FileHandle handle) = 0;
+   virtual art::expected<offset_t, Error> fileSize(FileHandle handle) = 0;
+   virtual art::expected<void, Error> fileSync(FileHandle handle) = 0;
+   virtual art::expected<void, Error> fileClose(FileHandle handle) = 0;
    /// @}
 
    /// Wraps a handle from the implementation's pool into the File that open() returns. Only an

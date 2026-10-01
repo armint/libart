@@ -1,5 +1,5 @@
+#include "utils/compat/span.h"
 #include <limits>
-#include <span>
 
 #include "FatFileSystem.h"
 
@@ -34,7 +34,7 @@ DRESULT toDresult(Error error) {
 // Maps the outcome of a device call and, for a device that says it is gone (no medium, not initialised),
 // clears `initialised`. FatFs then runs disk_initialize() again on the next f_mount(), the way it does for a
 // removable medium.
-DRESULT finish(const std::expected<void, Error> &result, bool &initialised) {
+DRESULT finish(const art::expected<void, Error> &result, bool &initialised) {
    if(result) {
       return RES_OK;
    }
@@ -87,7 +87,7 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count) {
    if(!drive->initialised) {
       return RES_NOTRDY;
    }
-   const std::span<uint8_t> data(buff, bytes);
+   const art::span<uint8_t> data(buff, bytes);
    return finish(drive->device->read(sectorOffset(sector), data), drive->initialised);
 }
 
@@ -100,7 +100,7 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count) {
    if(!drive->initialised) {
       return RES_NOTRDY;
    }
-   const std::span<const uint8_t> data(buff, bytes);
+   const art::span<const uint8_t> data(buff, bytes);
    return finish(drive->device->program(sectorOffset(sector), data), drive->initialised);
 }
 

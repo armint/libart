@@ -12,51 +12,51 @@ bool File::isOpen() const {
    return position.has_value() || position.error() != Error::BadHandle;
 }
 
-std::expected<size_t, Error> File::read(std::span<uint8_t> buffer) {
+art::expected<size_t, Error> File::read(art::span<uint8_t> buffer) {
    if(fileSystem_ == nullptr) {
-      return std::unexpected(Error::BadHandle);
+      return art::unexpected(Error::BadHandle);
    }
    return fileSystem_->fileRead(handle_, buffer);
 }
 
-std::expected<void, Error> File::write(std::span<const uint8_t> data) {
+art::expected<void, Error> File::write(art::span<const uint8_t> data) {
    if(fileSystem_ == nullptr) {
-      return std::unexpected(Error::BadHandle);
+      return art::unexpected(Error::BadHandle);
    }
    return fileSystem_->fileWrite(handle_, data);
 }
 
-std::expected<void, Error> File::seek(offset_t position) {
+art::expected<void, Error> File::seek(offset_t position) {
    if(fileSystem_ == nullptr) {
-      return std::unexpected(Error::BadHandle);
+      return art::unexpected(Error::BadHandle);
    }
    return fileSystem_->fileSeek(handle_, position);
 }
 
-std::expected<offset_t, Error> File::tell() const {
+art::expected<offset_t, Error> File::tell() const {
    if(fileSystem_ == nullptr) {
-      return std::unexpected(Error::BadHandle);
+      return art::unexpected(Error::BadHandle);
    }
    return fileSystem_->fileTell(handle_);
 }
 
-std::expected<offset_t, Error> File::size() const {
+art::expected<offset_t, Error> File::size() const {
    if(fileSystem_ == nullptr) {
-      return std::unexpected(Error::BadHandle);
+      return art::unexpected(Error::BadHandle);
    }
    return fileSystem_->fileSize(handle_);
 }
 
-std::expected<void, Error> File::sync() {
+art::expected<void, Error> File::sync() {
    if(fileSystem_ == nullptr) {
-      return std::unexpected(Error::BadHandle);
+      return art::unexpected(Error::BadHandle);
    }
    return fileSystem_->fileSync(handle_);
 }
 
-std::expected<void, Error> File::close() {
+art::expected<void, Error> File::close() {
    if(fileSystem_ == nullptr) {
-      return std::unexpected(Error::BadHandle);
+      return art::unexpected(Error::BadHandle);
    }
    FileSystem *const fileSystem = fileSystem_;
    fileSystem_ = nullptr;
