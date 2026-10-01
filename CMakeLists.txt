@@ -267,7 +267,9 @@ endif ()
 # Ensure the exported interface does not pull non-exported targets.
 set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
 # ETL is a PUBLIC dependency: the compat header utils/compat/span.h aliases etl::span. It is added after the reset above
-# and only for the build tree; the installed package config finds ETL itself (find_dependency(etl)).
+# and only for the build tree: the etl target of FetchContent is not in an export set, and CMake refuses to export a
+# link to it (also inside $<INSTALL_INTERFACE:...>). The installed art-coreConfig.cmake finds the installed ETL package
+# (find_dependency(etl)) and links etl::etl to art::core itself.
 target_link_libraries(art-core INTERFACE $<BUILD_INTERFACE:etl::etl>)
 
 # Export the targets as art::core and art::rtos, the names of the aliases that add_subdirectory() consumers link.
