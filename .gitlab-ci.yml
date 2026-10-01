@@ -123,6 +123,20 @@ floattext-zero-cost:
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
     - RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
 
+# Compiles the compat headers (src/utils/compat/) like firmware: arm-none-eabi-g++ with -fno-exceptions and -fno-rtti,
+# at C++17 with the own types and at C++23 with the own and the std types (see tests/check-compat-firmware-build.sh).
+# The native test binaries build with exceptions and RTTI, so they cannot notice a throw or a typeid in these
+# headers. The configure step only fetches ETL. Same toolchain path and REQUIRE_TOOLCHAIN as floattext-zero-cost.
+compat-firmware:
+  stage: build
+  variables:
+    GIT_DEPTH: 0
+    REQUIRE_TOOLCHAIN: "1"
+  script:
+    - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
+    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
+    - ETL_INCLUDE_DIR="$(pwd)/build/_deps/etl-src/include" ./tests/check-compat-firmware-build.sh
+
 # Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
 # optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the
 # FreeRTOS host stubs of the unit tests; a cross build of it needs a FreeRTOS target from a superproject
