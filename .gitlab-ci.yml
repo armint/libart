@@ -65,8 +65,11 @@ build:
 #   libArT-compat-tests-cpp17 and libArT-compat-tests-cpp23-own.
 # - C++20 (GCC): the own art::expected and etl::span (ART_USE_STD_EXPECTED_SPAN=OFF, C++20 has std::span but not
 #   std::expected), with all tests.
-# - C++17 (GCC, Clang): the own types, without the storage tests that need C++20 (tests/CMakeLists.txt). Built
-#   with CMAKE_CXX_EXTENSIONS=OFF and -Wpedantic -Werror=pedantic, so that a GNU extension cannot hide C++20 code.
+# - C++17 (GCC, Clang): the own types, without the storage tests that need C++20 (tests/CMakeLists.txt).
+# The C++17 and C++20 cells build with CMAKE_CXX_EXTENSIONS=OFF, -Wpedantic -Werror=pedantic and
+# -Werror=c++20-extensions -Werror=c++23-extensions. GCC and Clang accept code of a newer standard in an older mode
+# and only warn (for example a range-for with an initializer, a designated initializer, a template lambda or an
+# uninitialized variable in a constexpr function at C++17, or if consteval at C++20); these flags make that an error.
 # Clang at C++20 is left out: the C++20 language features are already compiled by Clang in the C++23 cells, and
 # the own types by Clang in the C++17 cell and in libArT-compat-tests-cpp23-own.
 test:
@@ -84,7 +87,7 @@ test:
   script:
     - if [ "$COMPILER" = clang ]; then export CC=clang CXX=clang++; else export CC=gcc CXX=g++; fi
     - $CXX --version
-    - 'if [ "$CXX_STANDARD" = 17 ]; then cxx_extensions=OFF; strict_cxx_flags="-Wpedantic -Werror=pedantic"; else cxx_extensions=ON; strict_cxx_flags=""; fi'
+    - 'if [ "$CXX_STANDARD" -lt 23 ]; then cxx_extensions=OFF; strict_cxx_flags="-Wpedantic -Werror=pedantic -Werror=c++20-extensions -Werror=c++23-extensions"; else cxx_extensions=ON; strict_cxx_flags=""; fi'
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug -D CMAKE_CXX_STANDARD=$CXX_STANDARD -D CMAKE_CXX_EXTENSIONS=$cxx_extensions -D CMAKE_CXX_FLAGS="$strict_cxx_flags" -D ART_STORAGE_LITTLEFS=ON
     # The default of ART_USE_STD_EXPECTED_SPAN: ON at C++23, OFF below.
     - if [ "$CXX_STANDARD" -ge 23 ]; then expected_option=ON; else expected_option=OFF; fi
