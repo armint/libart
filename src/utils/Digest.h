@@ -1,8 +1,8 @@
 #pragma once
 
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #include <cstdint>
-#include <expected>
-#include <span>
 
 class Digest {
    public:
@@ -10,7 +10,7 @@ class Digest {
    static constexpr Error ArrayTooSmall = 100;
 
    void update(const uint8_t data) {
-      update(std::span(&data, 1));
+      update(art::span(&data, 1));
    }
    /**
     * Updates the digest computation with a sequence of bytes.
@@ -21,7 +21,7 @@ class Digest {
     *
     * @param data A span containing the bytes to be incorporated into the digest computation.
     */
-   virtual void update(std::span<const uint8_t> data) = 0;
+   virtual void update(art::span<const uint8_t> data) = 0;
    /**
     * Retrieves the current digest value into the specified target buffer.
     *
@@ -32,11 +32,11 @@ class Digest {
     *
     * @param target A span representing the buffer where the digest value
     *               will be written. Its size must be sufficient to hold the digest.
-    * @return A std::expected containing either the size in bytes of the
+    * @return An art::expected containing either the size in bytes of the
     *         written digest or an error code indicating a failure (e.g., if
     *         the buffer is too small).
     */
-   virtual std::expected<size_t, Error> getDigest(std::span<uint8_t> target) = 0;
+   virtual art::expected<size_t, Error> getDigest(art::span<uint8_t> target) = 0;
    /**
     * Resets the internal state of the digest computation to its initial state.
     *

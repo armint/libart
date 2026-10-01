@@ -1,8 +1,8 @@
 #pragma once
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #include <cstddef>
-#include <expected>
 #include <limits>
-#include <span>
 #include <string_view>
 #include <utils/numberutils.h>
 
@@ -36,7 +36,7 @@ inline constexpr size_t kMaxTextLength = 15;
  * @param dest the buffer to write into. kMaxTextLength bytes is always enough.
  * @return the number of characters written, or 0 if dest is too small.
  */
-size_t formatFloat(float value, std::span<char> dest);
+size_t formatFloat(float value, art::span<char> dest);
 
 /**
  * Parses text produced by formatFloat(), or a reasonable hand-written literal, into a float in a
@@ -67,6 +67,6 @@ size_t formatFloat(float value, std::span<char> dest);
  * @param text the text to parse.
  * @return the parsed value, or a DecodeError.
  */
-std::expected<float, DecodeError> parseFloat(std::string_view text);
+art::expected<float, DecodeError> parseFloat(std::string_view text);
 
 } // namespace utils::FloatText

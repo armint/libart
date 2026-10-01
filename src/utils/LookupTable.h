@@ -1,10 +1,10 @@
 #pragma once
 #include "art_types.h"
+#include "utils/compat/span.h"
 #include <cstdint>
-#include <span>
 
 template <typename R, typename T, typename V>
-R getInterpolatedValueFromLookupTable(V lookupValue, std::span<const T> lookupTable, R startValue, R stepValue) {
+R getInterpolatedValueFromLookupTable(V lookupValue, art::span<const T> lookupTable, R startValue, R stepValue) {
    if(lookupValue < static_cast<V>(lookupTable[0]) || lookupValue > static_cast<V>(lookupTable[lookupTable.size() - 1])) {
       return NoTemperature;
    }

@@ -1,10 +1,10 @@
 #pragma once
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
-#include <expected>
 #include <limits>
-#include <span>
 #include <string_view>
 #include <type_traits>
 
@@ -57,7 +57,7 @@ int numDecimals(T number) {
  *         destination span is too small, returns 0.
  */
 template <typename T, typename = std::enable_if_t<std::is_unsigned_v<T>, T>>
-size_t encodeRLE(T value, std::span<uint8_t> dest) {
+size_t encodeRLE(T value, art::span<uint8_t> dest) {
    if(dest.empty()) {
       return 0;
    }
@@ -88,7 +88,7 @@ size_t encodeRLE(T value, std::span<uint8_t> dest) {
  *         destination span is too small, returns 0.
  */
 template <typename T, typename = std::enable_if_t<std::is_signed_v<T>, T>>
-size_t encodeRLEZigZag(T value, std::span<uint8_t> dest) {
+size_t encodeRLEZigZag(T value, art::span<uint8_t> dest) {
    using unsigned_type = typename std::make_unsigned<T>::type;
    unsigned_type zigzag;
    if(value < 0) {
@@ -104,21 +104,21 @@ size_t encodeRLEZigZag(T value, std::span<uint8_t> dest) {
  *
  * @param dest A reference to the variable where the decoded value will be stored.
  * @param src A span of bytes representing the RLE encoded data.
- * @return A std::expected containing the number of bytes processed from the input span if decoding was successful.
- *         If an error occurs, a std::unexpected containing a DecodeError enum value is returned.
+ * @return An art::expected containing the number of bytes processed from the input span if decoding was successful.
+ *         If an error occurs, an art::unexpected containing a DecodeError enum value is returned.
  */
 template <typename T, typename = std::enable_if_t<std::is_unsigned_v<T>, T>>
-std::expected<size_t, DecodeError> decodeRLE(T &dest, std::span<uint8_t> src) {
+art::expected<size_t, DecodeError> decodeRLE(T &dest, art::span<uint8_t> src) {
    dest = 0;
    size_t index = 0;
    size_t bitIndex = 0;
    uint8_t byte;
    do {
       if(index >= src.size()) {
-         return std::unexpected(DecodeError::MalformedInput);
+         return art::unexpected(DecodeError::MalformedInput);
       }
       if(bitIndex >= std::numeric_limits<T>::digits) {
-         return std::unexpected(DecodeError::NumberTooBig);
+         return art::unexpected(DecodeError::NumberTooBig);
       }
       byte = src[index];
       dest |= static_cast<T>(byte & 0x7F) << bitIndex;
@@ -133,11 +133,11 @@ std::expected<size_t, DecodeError> decodeRLE(T &dest, std::span<uint8_t> src) {
  *
  * @param dest A reference to the variable where the decoded value will be stored.
  * @param src A span of bytes representing the RLE encoded data.
- * @return A std::expected containing the number of bytes processed from the input span if decoding was successful.
- *         If an error occurs, a std::unexpected containing a DecodeError enum value is returned.
+ * @return An art::expected containing the number of bytes processed from the input span if decoding was successful.
+ *         If an error occurs, an art::unexpected containing a DecodeError enum value is returned.
  */
 template <typename T, typename = std::enable_if_t<std::is_signed_v<T>, T>>
-std::expected<size_t, DecodeError> decodeRLEZigZag(T &dest, std::span<uint8_t> src) {
+art::expected<size_t, DecodeError> decodeRLEZigZag(T &dest, art::span<uint8_t> src) {
    using unsigned_type = typename std::make_unsigned<T>::type;
    unsigned_type value = 0;
    auto result = decodeRLE(value, src);
@@ -157,12 +157,12 @@ std::expected<size_t, DecodeError> decodeRLEZigZag(T &dest, std::span<uint8_t> s
  * @tparam T The integer type to convert to.
  * @param str The string view to convert.
  * @param base The base to use for conversion (default is 10).
- * @return A std::expected containing the converted value or a DecodeError.
+ * @return An art::expected containing the converted value or a DecodeError.
  */
 template <typename T>
-std::expected<T, DecodeError> stringToInteger(std::string_view str, int base = 10) {
+art::expected<T, DecodeError> stringToInteger(std::string_view str, int base = 10) {
    if(str.empty()) {
-      return std::unexpected(DecodeError::MalformedInput);
+      return art::unexpected(DecodeError::MalformedInput);
    }
 
    bool negative = false;
@@ -178,7 +178,7 @@ std::expected<T, DecodeError> stringToInteger(std::string_view str, int base = 1
    }
 
    if(i == str.size()) {
-      return std::unexpected(DecodeError::MalformedInput);
+      return art::unexpected(DecodeError::MalformedInput);
    }
 
    using UnsignedT = std::make_unsigned_t<T>;
@@ -192,30 +192,30 @@ std::expected<T, DecodeError> stringToInteger(std::string_view str, int base = 1
       } else if(str[i] >= 'A' && str[i] <= 'Z') {
          digit = str[i] - 'A' + 10;
       } else {
-         return std::unexpected(DecodeError::MalformedInput);
+         return art::unexpected(DecodeError::MalformedInput);
       }
 
       if(digit >= base) {
-         return std::unexpected(DecodeError::MalformedInput);
+         return art::unexpected(DecodeError::MalformedInput);
       }
 
       if(__builtin_mul_overflow(result, static_cast<UnsignedT>(base), &result)) {
-         return std::unexpected(DecodeError::NumberTooBig);
+         return art::unexpected(DecodeError::NumberTooBig);
       }
       if(__builtin_add_overflow(result, static_cast<UnsignedT>(digit), &result)) {
-         return std::unexpected(DecodeError::NumberTooBig);
+         return art::unexpected(DecodeError::NumberTooBig);
       }
    }
 
    if constexpr(std::is_signed_v<T>) {
       if(negative) {
          if(result > static_cast<UnsignedT>(std::numeric_limits<T>::max()) + 1) {
-            return std::unexpected(DecodeError::NumberTooBig);
+            return art::unexpected(DecodeError::NumberTooBig);
          }
          return static_cast<T>(~result + 1);
       }
       if(result > static_cast<UnsignedT>(std::numeric_limits<T>::max())) {
-         return std::unexpected(DecodeError::NumberTooBig);
+         return art::unexpected(DecodeError::NumberTooBig);
       }
    }
 

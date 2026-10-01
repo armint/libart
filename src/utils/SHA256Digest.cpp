@@ -64,7 +64,7 @@ void SHA256Digest::reset() {
    isFinalized_ = false;
 }
 
-void SHA256Digest::processBlock(std::span<const uint8_t, 64> data) {
+void SHA256Digest::processBlock(art::span<const uint8_t, 64> data) {
    uint32_t workingA, workingB, workingC, workingD, workingE, workingF, workingG, workingH, temp1, temp2;
 
    /*
@@ -124,14 +124,14 @@ void SHA256Digest::processBlock(std::span<const uint8_t, 64> data) {
    intermediateHash_[7] += workingH;
 }
 
-void SHA256Digest::update(std::span<const uint8_t> data) {
+void SHA256Digest::update(art::span<const uint8_t> data) {
    if(isFinalized_) {
       return;
    }
    for(auto byte : data) {
       dataBlock_[bufferIndex_++] = byte;
       if(bufferIndex_ == 64) {
-         processBlock(std::span<const uint8_t, 64>(dataBlock_));
+         processBlock(art::span<const uint8_t, 64>(dataBlock_));
          totalBitLength_ += 512;
          bufferIndex_ = 0;
       }
@@ -154,7 +154,7 @@ void SHA256Digest::finalize() {
       while(currentOffset < 64) {
          dataBlock_[currentOffset++] = 0x00;
       }
-      processBlock(std::span<const uint8_t, 64>(dataBlock_));
+      processBlock(art::span<const uint8_t, 64>(dataBlock_));
       currentOffset = 0;
    }
 
@@ -173,13 +173,13 @@ void SHA256Digest::finalize() {
    dataBlock_[62] = static_cast<uint8_t>(totalBitLength_ >> 8);
    dataBlock_[63] = static_cast<uint8_t>(totalBitLength_);
 
-   processBlock(std::span<const uint8_t, 64>(dataBlock_));
+   processBlock(art::span<const uint8_t, 64>(dataBlock_));
    isFinalized_ = true;
 }
 
-std::expected<size_t, Digest::Error> SHA256Digest::getDigest(std::span<uint8_t> target) {
+art::expected<size_t, Digest::Error> SHA256Digest::getDigest(art::span<uint8_t> target) {
    if(target.size() < 32) {
-      return std::unexpected(ArrayTooSmall);
+      return art::unexpected(ArrayTooSmall);
    }
    finalize();
    // Copy intermediate hash to target buffer (big-endian).

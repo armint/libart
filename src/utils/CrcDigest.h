@@ -2,9 +2,9 @@
 #pragma once
 
 #include "Digest.h"
+#include "utils/compat/span.h"
 #include <array>
 #include <cstdint>
-#include <span>
 #include <type_traits>
 
 /**
@@ -91,7 +91,7 @@ class CrcDigest : public Digest {
  public:
    CrcDigest() : crc_(INIT_VAL) {}
 
-   void update(std::span<const uint8_t> data) override {
+   void update(art::span<const uint8_t> data) override {
       for (uint8_t byte : data) {
          if constexpr (ReflectIn) {
             // LSB-first CRC update — POLY is *already reflected* (e.g., 0x8005)
@@ -112,9 +112,9 @@ class CrcDigest : public Digest {
       }
    }
 
-   std::expected<size_t, Error> getDigest(std::span<uint8_t> target) override {
+   art::expected<size_t, Error> getDigest(art::span<uint8_t> target) override {
       if (target.size() < (Width + 7) / 8) {
-         return std::unexpected(ArrayTooSmall);
+         return art::unexpected(ArrayTooSmall);
       }
 
       CrcType finalCrc = finalize(crc_);

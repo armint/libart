@@ -1,7 +1,7 @@
 #pragma once
 #include "streams/Writable.h"
-#include <expected>
-#include <span>
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 
 /**
  * Base interface for asymmetric cryptographic operations.
@@ -28,28 +28,28 @@ class AsymmetricKey : public Writable {
     * @param signature The buffer where the signature will be stored.
     * @return The number of bytes written to the signature buffer, or an error.
     */
-   virtual std::expected<size_t, Error> sign(std::span<uint8_t> signature) = 0;
+   virtual art::expected<size_t, Error> sign(art::span<uint8_t> signature) = 0;
 
    /**
     * Verifies the signature against the data that has been written to the key.
     * @param signature The signature to verify.
     * @return true if the signature is valid, false otherwise, or an error.
     */
-   virtual std::expected<bool, Error> verify(std::span<const uint8_t> signature) = 0;
+   virtual art::expected<bool, Error> verify(art::span<const uint8_t> signature) = 0;
 
    /**
     * Encrypts the data (plaintext) that has been written to the key.
     * @param ciphertext The buffer where the ciphertext will be stored.
     * @return The number of bytes written to the ciphertext buffer, or an error.
     */
-   virtual std::expected<size_t, Error> encrypt(std::span<uint8_t> ciphertext) = 0;
+   virtual art::expected<size_t, Error> encrypt(art::span<uint8_t> ciphertext) = 0;
 
    /**
     * Decrypts the data (ciphertext) that has been written to the key.
     * @param plaintext The buffer where the plaintext will be stored.
     * @return The number of bytes written to the plaintext buffer, or an error.
     */
-   virtual std::expected<size_t, Error> decrypt(std::span<uint8_t> plaintext) = 0;
+   virtual art::expected<size_t, Error> decrypt(art::span<uint8_t> plaintext) = 0;
 
    using Writable::write;
 };
