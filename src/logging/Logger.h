@@ -34,7 +34,8 @@ class Logger {
    Logger(const Logger &) = delete;
    Logger &operator=(const Logger &) = delete;
 
-   // Leaves the LogManager list, so findLogger() never returns a destroyed Logger.
+   // Leaves the LogManager list, so findLogger() never returns a destroyed Logger. Like registering, this is not
+   // synchronised: destroying a Logger while another thread logs through it or calls findLogger() is a data race.
    ~Logger() {
       LogManager::getInstance().unregisterLogger(this);
    }
