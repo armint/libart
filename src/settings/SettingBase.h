@@ -68,12 +68,12 @@ class SettingBase {
     * @param parent the JsonObject this setting is a child of
     * @return An error if the setting could not be loaded
     */
-   virtual std::expected<void, Readable::Error> load(JsonObject &parent) = 0;
+   virtual art::expected<void, Readable::Error> load(JsonObject &parent) = 0;
    /**
     * Store this setting as a child of the provided JsonObject
     *
     * @param parent the JsonObject this setting is a child of
     * @return An error if the setting could not be saved
     */
-   virtual std::expected<size_t, Writable::Error> save(JsonObject &parent) = 0;
+   virtual art::expected<size_t, Writable::Error> save(JsonObject &parent) = 0;
 };

@@ -66,18 +66,18 @@ class Setting : public SettingBase {
     * @param parent the JsonObject this setting is a child of
     * @return An error if the setting could not be loaded
     */
-   virtual std::expected<void, Readable::Error> load(JsonObject &parent) override;
+   virtual art::expected<void, Readable::Error> load(JsonObject &parent) override;
    /**
     * Store this setting as a child of the provided JsonObject
     *
     * @param parent the JsonObject this setting is a child of
     * @return An error if the setting could not be saved
     */
-   virtual std::expected<size_t, Writable::Error> save(JsonObject &parent) override;
+   virtual art::expected<size_t, Writable::Error> save(JsonObject &parent) override;
 };
 
 template <typename T>
-std::expected<size_t, Writable::Error> Setting<T>::save(JsonObject &parent) {
+art::expected<size_t, Writable::Error> Setting<T>::save(JsonObject &parent) {
    if(getSection() != nullptr) {
       parent[getSection()][getName()] = _value;
    } else {
@@ -88,7 +88,7 @@ std::expected<size_t, Writable::Error> Setting<T>::save(JsonObject &parent) {
 }
 
 template <typename T>
-std::expected<void, Readable::Error> Setting<T>::load(JsonObject &parent) {
+art::expected<void, Readable::Error> Setting<T>::load(JsonObject &parent) {
    _modified = false;
    if(getSection() != nullptr) {
       if(parent.containsKey(getSection()) && parent[getSection()].containsKey(getName())) {
@@ -149,11 +149,11 @@ class Setting<const char *> : public SettingBase {
       _buffer[MAX_LENGTH - 1] = '\0';
    };
 
-   virtual std::expected<void, Readable::Error> load(JsonObject &parent) override;
-   virtual std::expected<size_t, Writable::Error> save(JsonObject &parent) override;
+   virtual art::expected<void, Readable::Error> load(JsonObject &parent) override;
+   virtual art::expected<size_t, Writable::Error> save(JsonObject &parent) override;
 };
 
-inline std::expected<size_t, Writable::Error> Setting<const char *>::save(JsonObject &parent) {
+inline art::expected<size_t, Writable::Error> Setting<const char *>::save(JsonObject &parent) {
    if(getSection() != nullptr) {
       parent[getSection()][getName()] = _buffer;
    } else {
@@ -163,7 +163,7 @@ inline std::expected<size_t, Writable::Error> Setting<const char *>::save(JsonOb
    return {};
 }
 
-inline std::expected<void, Readable::Error> Setting<const char *>::load(JsonObject &parent) {
+inline art::expected<void, Readable::Error> Setting<const char *>::load(JsonObject &parent) {
    _modified = false;
    const char *val = nullptr;
    if(getSection() != nullptr) {

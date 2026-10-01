@@ -9,39 +9,39 @@ SettingsManager &SettingsManager::getInstance() {
    return instance;
 }
 
-std::expected<void, Readable::Error> SettingsManager::load(Readable &readable) {
+art::expected<void, Readable::Error> SettingsManager::load(Readable &readable) {
    StaticJsonDocument<3000> doc;
    JSONReader reader(readable);
    auto r = deserializeJson(doc, reader);
    if(r != DeserializationError::Ok) {
-      return std::unexpected(Readable::ReadError);
+      return art::unexpected(Readable::ReadError);
    }
    auto root = doc.as<JsonObject>();
    for(auto &setting : _settings) {
       auto result = setting.load(root);
       if(!result) {
-         return std::unexpected<Readable::Error>(result.error());
+         return art::unexpected<Readable::Error>(result.error());
       }
    }
    return {};
 }
-std::expected<size_t, Writable::Error> SettingsManager::save(Writable &writable) {
+art::expected<size_t, Writable::Error> SettingsManager::save(Writable &writable) {
    StaticJsonDocument<3000> doc;
    auto root = doc.to<JsonObject>();
    for(auto &setting : _settings) {
       auto result = setting.save(root);
       if(!result) {
-         return std::unexpected(result.error());
+         return art::unexpected(result.error());
       }
       if(doc.overflowed()) {
-         return std::unexpected(Writable::CouldNotWrite);
+         return art::unexpected(Writable::CouldNotWrite);
       }
    }
    CountingWritableWrapper cww(writable);
    JSONWriter jsonWriter(cww);
    size_t written = serializeJsonPretty(doc, jsonWriter);
    if(written != cww.written()) {
-      return std::unexpected(Writable::CouldNotWrite);
+      return art::unexpected(Writable::CouldNotWrite);
    }
    return written;
 }
