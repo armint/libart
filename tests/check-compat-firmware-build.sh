@@ -8,7 +8,8 @@
 #
 # The native unit tests build with exceptions and RTTI on, so they would not notice a throw, a typeid or a
 # dynamic_cast in the compat headers. Here these fail the build, and the object file must not reference the
-# exception or RTTI runtime (__cxa_throw, __cxa_begin_catch, the type_info vtables, ...).
+# exception or RTTI runtime (__cxa_throw, __cxa_begin_catch, std::__throw_out_of_range_fmt(), _Unwind_*,
+# __aeabi_unwind_cpp_pr*, the type_info vtables, ...).
 #
 # Needs arm-none-eabi-g++ and arm-none-eabi-nm (override with CROSS_CXX/CROSS_NM) and the ETL include directory
 # (ETL_INCLUDE_DIR, e.g. <build>/_deps/etl-src/include after configuring this project once). Like
@@ -54,7 +55,9 @@ for config in "17 0" "23 0" "23 1"; do
    echo "== C++$std, ART_USE_STD_EXPECTED_SPAN=$use_std =="
    "$CXX" -c -std=c++$std -DART_USE_STD_EXPECTED_SPAN=$use_std $CXXFLAGS -o "$object" \
       "$ROOT/tests/firmware/CompatFirmwareBuild.cpp"
-   if "$NM" -u "$object" | grep -E "__cxa_(throw|begin_catch|end_catch|allocate_exception|rethrow)|__gxx_personality|_ZTV.*type_info|__dynamic_cast|_ZTI"; then
+   # The exception runtime (__cxa_*, the personality routines, the unwinder, and libstdc++'s std::__throw_*()
+   # helpers that a checked accessor such as std::array::at() calls even with -fno-exceptions) and the RTTI runtime.
+   if "$NM" -u "$object" | grep -E "__cxa_(throw|begin_catch|end_catch|allocate_exception|rethrow)|__gxx_personality|_ZSt[0-9]+__throw_|_Unwind_|__aeabi_unwind_cpp_pr|_ZTV.*type_info|__dynamic_cast|_ZTI"; then
       echo "FAIL: the compat headers reference the exception or RTTI runtime." >&2
       status=1
    else
