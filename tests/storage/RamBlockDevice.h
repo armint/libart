@@ -52,7 +52,7 @@ class RamBlockDevice : public BlockDevice {
    RamBlockDevice(const Geometry &geometry, art::span<uint8_t> backing)
       : geometry_(geometry)
       , backing_(backing) {
-      std::ranges::fill(backing_, kErasedByte);
+      std::fill(backing_.begin(), backing_.end(), kErasedByte);
    }
 
    art::expected<void, Error> init() override {

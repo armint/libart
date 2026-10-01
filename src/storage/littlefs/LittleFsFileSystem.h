@@ -3,12 +3,13 @@
 #include "freertos/Mutex.h"
 #include "storage/BlockDevice.h"
 #include "storage/FileSystem.h"
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <lfs.h>
 #include <optional>
-#include <span>
 
 namespace art::storage {
 
@@ -25,17 +26,17 @@ class LittleFsFileSystemBase : public FileSystem {
    /// is 100 to 1000).
    static constexpr int32_t kBlockCycles = 500;
 
-   std::expected<void, Error> mount() override;
-   std::expected<void, Error> unmount() override;
-   std::expected<void, Error> format() override;
+   art::expected<void, Error> mount() override;
+   art::expected<void, Error> unmount() override;
+   art::expected<void, Error> format() override;
    [[nodiscard]] bool isMounted() const override;
-   std::expected<File, Error> open(const char *path, OpenMode mode) override;
-   std::expected<void, Error> remove(const char *path) override;
-   std::expected<void, Error> rename(const char *oldPath, const char *newPath) override;
-   std::expected<void, Error> mkdir(const char *path) override;
-   std::expected<FileInfo, Error> stat(const char *path) override;
-   std::expected<size_t, Error> visitDirectory(const char *path, DirectoryVisitor visitor) override;
-   std::expected<offset_t, Error> freeSpace() override;
+   art::expected<File, Error> open(const char *path, OpenMode mode) override;
+   art::expected<void, Error> remove(const char *path) override;
+   art::expected<void, Error> rename(const char *oldPath, const char *newPath) override;
+   art::expected<void, Error> mkdir(const char *path) override;
+   art::expected<FileInfo, Error> stat(const char *path) override;
+   art::expected<size_t, Error> visitDirectory(const char *path, DirectoryVisitor visitor) override;
+   art::expected<offset_t, Error> freeSpace() override;
 
    /**
     * @brief Completes the changes littlefs left pending on the medium, so that reads see every entry.
@@ -48,7 +49,7 @@ class LittleFsFileSystemBase : public FileSystem {
     * any other and poisons the mount: unmount() and mount(), and go on without the repair (the volume is readable) or
     * try it once more later. Do not retry in a loop, see "Boot sequence" in "Consistency after a remount".
     */
-   std::expected<void, Error> makeConsistent();
+   art::expected<void, Error> makeConsistent();
 
    protected:
    /// State of one entry of the static open-file pool.
@@ -67,12 +68,12 @@ class LittleFsFileSystemBase : public FileSystem {
 
    /// The static memory the derived template provides. Only its addresses are used during construction.
    struct Buffers {
-      std::span<uint8_t> readCache;
-      std::span<uint8_t> programCache;
-      std::span<uint8_t> lookahead;
-      std::span<FileSlot> slots;
+      art::span<uint8_t> readCache;
+      art::span<uint8_t> programCache;
+      art::span<uint8_t> lookahead;
+      art::span<FileSlot> slots;
       /// slots.size() consecutive caches of readCache.size() bytes each.
-      std::span<uint8_t> fileCaches;
+      art::span<uint8_t> fileCaches;
    };
 
    LittleFsFileSystemBase(BlockDevice &device, const Buffers &buffers);
@@ -80,22 +81,22 @@ class LittleFsFileSystemBase : public FileSystem {
    /// Closes all files and unmounts. The derived destructor calls it while its buffers are still alive.
    void shutdown();
 
-   std::expected<size_t, Error> fileRead(FileHandle handle, std::span<uint8_t> buffer) override;
-   std::expected<void, Error> fileWrite(FileHandle handle, std::span<const uint8_t> data) override;
-   std::expected<void, Error> fileSeek(FileHandle handle, offset_t position) override;
-   std::expected<offset_t, Error> fileTell(FileHandle handle) override;
-   std::expected<offset_t, Error> fileSize(FileHandle handle) override;
-   std::expected<void, Error> fileSync(FileHandle handle) override;
-   std::expected<void, Error> fileClose(FileHandle handle) override;
+   art::expected<size_t, Error> fileRead(FileHandle handle, art::span<uint8_t> buffer) override;
+   art::expected<void, Error> fileWrite(FileHandle handle, art::span<const uint8_t> data) override;
+   art::expected<void, Error> fileSeek(FileHandle handle, offset_t position) override;
+   art::expected<offset_t, Error> fileTell(FileHandle handle) override;
+   art::expected<offset_t, Error> fileSize(FileHandle handle) override;
+   art::expected<void, Error> fileSync(FileHandle handle) override;
+   art::expected<void, Error> fileClose(FileHandle handle) override;
 
    private:
-   std::expected<void, Error> mountLocked();
-   std::expected<void, Error> unmountLocked();
-   std::expected<void, Error> configure();
+   art::expected<void, Error> mountLocked();
+   art::expected<void, Error> unmountLocked();
+   art::expected<void, Error> configure();
    FileSlot *lookup(FileHandle handle);
    FileHandle handleOf(size_t index) const;
    uint8_t *cacheOf(size_t index) const;
-   std::expected<void, Error> closeSlot(FileSlot &slot);
+   art::expected<void, Error> closeSlot(FileSlot &slot);
    void releaseSlot(FileSlot &slot);
    Error noteFailure(FileSlot &slot, int lfsError, bool mutating);
    static bool isErrored(const FileSlot &slot);
@@ -327,18 +328,24 @@ class LittleFsFileSystem final : public LittleFsFileSystemBase {
    /// @param device The device to keep the volume on. It must outlive this object. It does not have to be
    /// initialised: mount() and format() call init().
    explicit LittleFsFileSystem(BlockDevice &device)
-      : LittleFsFileSystemBase(device,
-                               Buffers{ .readCache = readCache_,
-                                        .programCache = programCache_,
-                                        .lookahead = lookahead_,
-                                        .slots = slots_,
-                                        .fileCaches = fileCaches_ }) {}
+      : LittleFsFileSystemBase(device, buffersOf(*this)) {}
 
    ~LittleFsFileSystem() override {
       shutdown();
    }
 
    private:
+   /// Static, because it runs before the base is constructed: it takes only the addresses of the arrays of `self`.
+   static Buffers buffersOf(LittleFsFileSystem &self) {
+      Buffers buffers{};
+      buffers.readCache = self.readCache_;
+      buffers.programCache = self.programCache_;
+      buffers.lookahead = self.lookahead_;
+      buffers.slots = self.slots_;
+      buffers.fileCaches = self.fileCaches_;
+      return buffers;
+   }
+
    std::array<uint8_t, CacheSize> readCache_{};
    std::array<uint8_t, CacheSize> programCache_{};
    std::array<uint8_t, LookaheadSize> lookahead_{};

@@ -229,8 +229,8 @@ set(_ART_COMPAT_STREAM_SOURCES
         ../src/streams/BufferedWritable.cpp
         ../src/utils/tfp_printf.cpp
 )
-# The same holds for src/storage/ without the LittleFS binding, which is not ported yet, and the file streams on
-# top of it: their sources are built into both binaries, so that they compile with the own types at C++17.
+# The same holds for src/storage/ and the file streams on top of it: their sources are built into both binaries, so
+# that they compile with the own types at C++17. The LittleFS binding is added below, with littlefs.
 set(_ART_COMPAT_STORAGE_SOURCES
         ../src/streams/FatFileReadable.cpp
         ../src/streams/FatFileWritable.cpp
@@ -305,6 +305,22 @@ set(_ART_COMPAT_MODULE_SOURCES
         ../src/utils/FloatText.cpp
         ../src/utils/ryu_float.c
 )
+# The LittleFS binding (with littlefs) and its tests, if the littlefs target exists (see libArT-tests above).
+# TestLittleFsCompat.cpp runs in both binaries, so that LittleFsFileSystem<> is instantiated and run at C++17. The
+# other LittleFS tests and TestFileStreams.cpp use C++20 (designated initializers, std::ranges), so they are built
+# into libArT-compat-tests-cpp23-own only.
+set(_ART_COMPAT_LITTLEFS_SOURCES
+        ../src/storage/littlefs/LittleFsFileSystem.cpp
+        storage/TestLittleFsCompat.cpp
+)
+set(_ART_COMPAT_LITTLEFS_TESTS
+        storage/TestLittleFsFileSystem.cpp
+        storage/TestLittleFsReadCache.cpp
+        storage/TestLittleFsProgramCache.cpp
+        storage/TestLittleFsPoison.cpp
+        storage/TestLittleFsConsistency.cpp
+        storage/TestFileStreams.cpp
+)
 # These files have warnings that are older than the compat binaries and that the strict flags below make fatal.
 # Keep them as warnings, for these files only: the variable length array in Readable::readUntil(), the unused
 # putstr() in tfp_printf.cpp, the unused parameter of FatDir::read(), the unused parameters of mocks in
@@ -337,9 +353,18 @@ foreach(_art_compat_standard 17 23)
     # Ryu (FloatText.cpp, ryu_float.c) as a system include, so that the strict flags do not apply to its headers.
     target_include_directories(${_art_compat_target} SYSTEM PRIVATE ${ryu_SOURCE_DIR})
     target_link_libraries(${_art_compat_target} PRIVATE etl::etl doctest::doctest ArduinoJson)
+    if (_ART_NEED_LITTLEFS)
+        target_sources(${_art_compat_target} PRIVATE ${_ART_COMPAT_LITTLEFS_SOURCES})
+        target_link_libraries(${_art_compat_target} PRIVATE littlefs)
+        target_compile_definitions(${_art_compat_target} PRIVATE
+                LITTLEFS_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/storage/fixtures")
+    endif ()
 endforeach()
 target_compile_definitions(libArT-compat-tests-cpp23-own PRIVATE ART_USE_STD_EXPECTED_SPAN=0)
 target_sources(libArT-compat-tests-cpp23-own PRIVATE ${_ART_COMPAT_STORAGE_TESTS})
+if (_ART_NEED_LITTLEFS)
+    target_sources(libArT-compat-tests-cpp23-own PRIVATE ${_ART_COMPAT_LITTLEFS_TESTS})
+endif ()
 
 # Discover all libArT-tests
 # catch_discover_tests(libArT-tests)

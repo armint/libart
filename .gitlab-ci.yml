@@ -58,8 +58,8 @@ test:
     - ./build/tests/libArT-tests-float-64bit --reporters=junit --out=build/junit-float-64bit.xml
     # The compat headers (src/utils/compat/) and the tests of the ported modules (src/streams/, src/modbus/,
     # src/logging/, src/settings/, src/sensors/, src/utils/, src/freertos/) at C++17 and with the own types at
-    # C++23. src/storage/ is compiled into both, its tests (which need C++20) run in the C++23 one only. See
-    # tests/CMakeLists.txt.
+    # C++23. src/storage/ with the LittleFS binding is compiled into both, its tests (which need C++20) run in the
+    # C++23 one only, except TestLittleFsCompat.cpp, which runs in both. See tests/CMakeLists.txt.
     - ./build/tests/libArT-compat-tests-cpp17
     - ./build/tests/libArT-compat-tests-cpp17 --reporters=junit --out=build/junit-compat-cpp17.xml
     - ./build/tests/libArT-compat-tests-cpp23-own

@@ -11,10 +11,10 @@ class FlakyReadDevice final : public BlockDeviceDecorator {
    public:
    using BlockDeviceDecorator::BlockDeviceDecorator;
 
-   std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
+   art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override {
       if(failAfter) {
          if(*failAfter == 0u) {
-            return std::unexpected(Error::Timeout);
+            return art::unexpected(Error::Timeout);
          }
          --*failAfter;
       }

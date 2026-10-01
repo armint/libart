@@ -44,7 +44,7 @@ constexpr Geometry kGeometry{
 // clang-format on
 
 template <typename T>
-bool failedWith(const std::expected<T, Error> &result, Error error) {
+bool failedWith(const art::expected<T, Error> &result, Error error) {
    return !result.has_value() && result.error() == error;
 }
 
@@ -75,10 +75,10 @@ class FailingReadDevice final : public BlockDeviceDecorator {
    public:
    using BlockDeviceDecorator::BlockDeviceDecorator;
 
-   std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
+   art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override {
       if(failWith && failCount > 0u) {
          --failCount;
-         return std::unexpected(*failWith);
+         return art::unexpected(*failWith);
       }
       return BlockDeviceDecorator::read(offset, buffer);
    }
@@ -92,9 +92,9 @@ class FailingProgramDevice final : public BlockDeviceDecorator {
    public:
    using BlockDeviceDecorator::BlockDeviceDecorator;
 
-   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+   art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) override {
       if(failWith) {
-         return std::unexpected(*failWith);
+         return art::unexpected(*failWith);
       }
       return BlockDeviceDecorator::program(offset, data);
    }
@@ -165,13 +165,13 @@ struct EntryCounter {
    }
 };
 
-std::expected<size_t, Error> countEntries(FileSystem &fileSystem, const char *path) {
+art::expected<size_t, Error> countEntries(FileSystem &fileSystem, const char *path) {
    EntryCounter counter;
    return fileSystem.visitDirectory(path, DirectoryVisitor::create<EntryCounter, &EntryCounter::visit>(counter));
 }
 
 // The save pattern the interface recommends: write a temporary file, then rename it over the target.
-std::expected<void, Error> saveViaTmp(FileSystem &fs, const char *to, const char *tmp, std::span<const uint8_t> data) {
+art::expected<void, Error> saveViaTmp(FileSystem &fs, const char *to, const char *tmp, art::span<const uint8_t> data) {
    if(const auto written = fs.writeFile(tmp, data); !written) {
       return written;
    }
@@ -906,7 +906,7 @@ TEST_SUITE("LittleFsFileSystem") {
          for(size_t arrival = firstArrival; arrival < lastArrival; ++arrival) {
             const size_t fragment = fragmentAt(arrival);
             REQUIRE(file.seek(fragment * kFragmentSize).has_value());
-            REQUIRE(file.write(std::span{ image }.subspan(fragment * kFragmentSize, kFragmentSize)).has_value());
+            REQUIRE(file.write(art::span<const uint8_t>{ image }.subspan(fragment * kFragmentSize, kFragmentSize)).has_value());
          }
       };
 

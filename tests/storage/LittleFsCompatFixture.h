@@ -20,11 +20,15 @@ namespace art::storage::test::compat {
 
 // 32 blocks of 512 bytes. The default LittleFsFileSystem cache (256 bytes) divides the erase unit. The volume uses
 // 14 blocks and the compatibility test writes about 5 more, so the volume never gets close to full.
-// clang-format off
-inline constexpr Geometry kGeometry{
-   .readSize = 16u, .programSize = 16u, .eraseSize = 512u, .size = 32u * 512u, .eraseBeforeProgram = true
-};
-// clang-format on
+inline constexpr Geometry kGeometry = [] {
+   Geometry geometry{};
+   geometry.readSize = 16u;
+   geometry.programSize = 16u;
+   geometry.eraseSize = 512u;
+   geometry.size = 32u * 512u;
+   geometry.eraseBeforeProgram = true;
+   return geometry;
+}();
 
 inline std::vector<uint8_t> pattern(size_t size, uint8_t seed) {
    std::vector<uint8_t> data(size);
