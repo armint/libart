@@ -95,15 +95,18 @@ test:
     - test_binaries="libArT-tests libArT-tests-64bit libArT-tests-float libArT-tests-float-64bit"
     - if [ "$CXX_STANDARD" = 23 ]; then test_binaries="$test_binaries libArT-compat-tests-cpp17 libArT-compat-tests-cpp23-own"; fi
     - cmake --build build --target art-core art-storage-littlefs $test_binaries -j$(nproc)
-    # doctest writes every active reporter's output to the same --out file,
-    # which corrupts the XML if the console reporter is also active; run
-    # twice instead — console output determines job pass/fail, the second
-    # run just produces the JUnit artifact for the MR widget.
+    # Each binary runs once, with the JUnit reporter: its exit code determines pass/fail, and its XML feeds the MR
+    # widget. doctest writes every active reporter to the same stream, so the console reporter cannot run alongside
+    # it. Only after a failure does the binary run a second time, with the console reporter, so that the job log
+    # shows the failed checks.
     - |
       for binary in $test_binaries; do
         echo "== $binary (C++$CXX_STANDARD, $COMPILER) =="
-        ./build/tests/$binary || exit 1
-        ./build/tests/$binary --reporters=junit --out=build/junit-$binary.xml || exit 1
+        if ! ./build/tests/$binary --reporters=junit --out=build/junit-$binary.xml; then
+          ./build/tests/$binary
+          exit 1
+        fi
+        grep -o '<testsuite [^>]*>' build/junit-$binary.xml
       done
     # ART_USE_STD_EXPECTED_SPAN=1 must stop the build below C++23 (#error in utils/compat/config.h), and must compile
     # at C++23. The job shell uses pipefail, so capture the compiler output first; a failing compiler must not end
