@@ -16,6 +16,7 @@ if(ESP_PLATFORM)
             etl
             GIT_REPOSITORY https://github.com/ETLCPP/etl.git
             GIT_TAG 20.41.7
+            GIT_SHALLOW TRUE
     )
     FetchContent_GetProperties(etl)
     if(NOT etl_POPULATED)
@@ -25,6 +26,7 @@ if(ESP_PLATFORM)
     FetchContent_Declare(ArduinoJson
             GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git
             GIT_TAG v6.21.5
+            GIT_SHALLOW TRUE
     )
     FetchContent_GetProperties(ArduinoJson)
     if(NOT arduinojson_POPULATED)
@@ -55,10 +57,19 @@ project(art-core VERSION 0.1.0 LANGUAGES C CXX ASM)
 
 include(GNUInstallDirs)
 
+# The littlefs tarball below: give the extracted files the time of the extraction (CMake >= 3.24 warns otherwise). The
+# same setting in cmake/ryu.cmake does not reach this file, because include() opens its own policy scope.
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
+
+# The git dependencies are pinned by tag and cloned shallow (GIT_SHALLOW): only the tagged commit is fetched, not the
+# history (about 40 MB for ETL).
 FetchContent_Declare(
         etl
         GIT_REPOSITORY https://github.com/ETLCPP/etl.git
         GIT_TAG 20.41.7
+        GIT_SHALLOW TRUE
 )
 
 FetchContent_MakeAvailable(etl)
@@ -66,6 +77,7 @@ FetchContent_MakeAvailable(etl)
 FetchContent_Declare(ArduinoJson
         GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git
         GIT_TAG v6.21.5
+        GIT_SHALLOW TRUE
 )
 
 FetchContent_MakeAvailable(ArduinoJson)
@@ -199,9 +211,10 @@ if (_ART_NEED_LITTLEFS)
         # release appears; v3 changes the on-disk format and is out of scope.
         FetchContent_Declare(
                 littlefs
-                GIT_REPOSITORY https://github.com/littlefs-project/littlefs.git
-                # Tag v2.11.3. The commit is pinned because a tag can be moved.
-                GIT_TAG 6cb4e86540eca0d9ba62500a298385c9d863c8be
+                # Tag v2.11.3. The commit is pinned because a tag can be moved. A tarball of that commit instead of a
+                # git clone: a clone of a commit cannot be shallow, and the hash makes the download verifiable.
+                URL https://github.com/littlefs-project/littlefs/archive/6cb4e86540eca0d9ba62500a298385c9d863c8be.tar.gz
+                URL_HASH SHA256=4803faf6db6c60093558a315a10c50926d2cfa5668a3f03fa2523fd09b10b747
                 # Populate only: do not add_subdirectory() whatever CMakeLists.txt upstream ships.
                 SOURCE_SUBDIR art-no-cmake
         )
