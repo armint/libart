@@ -6,11 +6,14 @@ streams, logging, Modbus, settings, storage and utilities. `AGENTS.md` describes
 ## Requirements
 
 - C++17 or newer, with GCC 11 or later or Clang 9 or later (`utils/compat/bit.h` needs `__builtin_bit_cast`). CI
-  builds and tests with GCC at C++17, C++20 and C++23, and with Clang at C++17 and C++23.
+  builds and tests with GCC at C++17, C++20 and C++23, and with Clang at C++17 and C++23. These minimum versions are
+  not tested: CI uses GCC 14.2, Clang 20.1 and arm-none-eabi-gcc 14.3 (`firmware-builder:v1.14.0`).
 - With `ART_USE_STD_EXPECTED_SPAN=ON` (the default unless `CMAKE_CXX_STANDARD` is below 23, see below), C++23:
   `art-core`, `art-rtos` and `art-storage-littlefs` then require `cxx_std_23`. With `OFF` they require
   `cxx_std_17`. Both are minimums, not pins: a superproject may build at a newer standard.
   - A build without `CMAKE_CXX_STANDARD` keeps `ON`, so art-core and its consumers build at C++23.
+  - A build without `CMAKE_CXX_STANDARD` that sets `OFF` builds at the default standard of the compiler (for
+    example gnu++17 for GCC 14), not at C++23.
   - A consumer that sets `-DART_USE_STD_EXPECTED_SPAN=OFF` at C++23 gets the minimum `cxx_std_17`. It still builds
     at C++23, but with the own types.
   - The ESP-IDF component build sets no compile feature and does not define the option. `utils/compat/config.h`
