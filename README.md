@@ -27,7 +27,8 @@ ESP-IDF projects use the repository as a component.
 ### Installed package
 
 `cmake --install <build_dir> --prefix <prefix>` installs `libart-core.a`, the CMake package `art-core` and the
-public headers. The headers keep their path below `src/`, so a consumer includes them as with `add_subdirectory()`,
+public headers. After `find_package(art-core)`, link `art::core` and `art::rtos`, the same names as with
+`add_subdirectory()`. The headers keep their path below `src/`, so a consumer includes them as with `add_subdirectory()`,
 for example `#include "streams/Readable.h"` (they are installed to `<prefix>/include/streams/Readable.h`). Only
 the headers (`*.h`, `*.hpp`) of `src/` are installed, and not those of `storage/littlefs/`: the
 `art-storage-littlefs` target is not part of the installed package, so use `add_subdirectory()` for it. The headers

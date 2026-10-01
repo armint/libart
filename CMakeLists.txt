@@ -270,6 +270,9 @@ set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
 # and only for the build tree; the installed package config finds ETL itself (find_dependency(etl)).
 target_link_libraries(art-core INTERFACE $<BUILD_INTERFACE:etl::etl>)
 
+# Export the targets as art::core and art::rtos, the names of the aliases that add_subdirectory() consumers link.
+set_target_properties(art-core PROPERTIES EXPORT_NAME core)
+set_target_properties(art-rtos PROPERTIES EXPORT_NAME rtos)
 install(TARGETS art-core art-rtos
         EXPORT art-core-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
