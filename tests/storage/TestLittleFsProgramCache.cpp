@@ -170,14 +170,14 @@ void sweep(Fixture &fixture,
 
 // A failed rename, remove or mkdir may have taken effect nevertheless: littlefs commits first and can still fail on
 // a read that follows. The retry then reports that the work is already done, which is as good as success.
-void retryOrAlreadyDone(const std::expected<void, Error> &retry, Error alreadyDone) {
+void retryOrAlreadyDone(const art::expected<void, Error> &retry, Error alreadyDone) {
    if(!retry) {
       CHECK((retry.error() == alreadyDone));
    }
 }
 
 // Writes the file through a handle in two chunks and closes it; false on the first error.
-bool writeThroughHandle(FileSystem &fileSystem, const char *path, OpenMode mode, std::span<const uint8_t> data) {
+bool writeThroughHandle(FileSystem &fileSystem, const char *path, OpenMode mode, art::span<const uint8_t> data) {
    auto file = fileSystem.open(path, mode);
    if(!file) {
       return false;
@@ -199,7 +199,7 @@ bool contains(std::initializer_list<const char *> names, const char *name) {
 // attempt, the new must not be.
 void expectWritesWork(FileSystem &fileSystem,
                       const char *path,
-                      std::span<const uint8_t> data,
+                      art::span<const uint8_t> data,
                       bool remount = true,
                       std::initializer_list<const char *> changed = {}) {
    REQUIRE(fileSystem.writeFile(path, data).has_value());

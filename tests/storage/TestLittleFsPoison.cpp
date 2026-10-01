@@ -1,6 +1,7 @@
 #include "FlakyReadDevice.h"
 #include "RamBlockDevice.h"
 #include "storage/littlefs/LittleFsFileSystem.h"
+#include "utils/compat/span.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -9,7 +10,6 @@
 #include <initializer_list>
 #include <memory>
 #include <optional>
-#include <span>
 #include <string>
 #include <vector>
 
@@ -69,12 +69,12 @@ bool isDirectory(FileSystem &fileSystem, const char *path) {
 }
 
 template <typename T>
-bool failsWith(const std::expected<T, Error> &result, Error error) {
+bool failsWith(const art::expected<T, Error> &result, Error error) {
    return !result && result.error() == error;
 }
 
 template <typename T>
-bool refused(const std::expected<T, Error> &result) {
+bool refused(const art::expected<T, Error> &result) {
    return failsWith(result, Error::NeedsRemount);
 }
 

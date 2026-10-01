@@ -59,13 +59,13 @@ struct Fixture {
 };
 
 // Reads the file from the current position to its end, in small chunks so that every block of it is touched.
-std::expected<std::vector<uint8_t>, Error> readToEnd(File &file) {
+art::expected<std::vector<uint8_t>, Error> readToEnd(File &file) {
    std::vector<uint8_t> content;
    std::array<uint8_t, 100> chunk{};
    while(true) {
       const auto count = file.read(chunk);
       if(!count) {
-         return std::unexpected(count.error());
+         return art::unexpected(count.error());
       }
       if(*count == 0u) {
          return content;

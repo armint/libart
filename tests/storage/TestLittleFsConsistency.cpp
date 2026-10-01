@@ -2,13 +2,13 @@
 #include "PowerCutDevice.h"
 #include "RamBlockDevice.h"
 #include "storage/littlefs/LittleFsFileSystem.h"
+#include "utils/compat/span.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <doctest/doctest.h>
 #include <optional>
 #include <set>
-#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -62,7 +62,7 @@ std::optional<Bytes> content(FileSystem &fileSystem, const char *path) {
 }
 
 template <typename T>
-bool failsWith(const std::expected<T, Error> &result, Error error) {
+bool failsWith(const art::expected<T, Error> &result, Error error) {
    return !result && result.error() == error;
 }
 
