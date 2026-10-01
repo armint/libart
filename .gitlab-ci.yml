@@ -108,7 +108,8 @@ float-exhaustive:
 # Verifies, with a real cross-compile and link (arm-none-eabi-gcc/g++, expected on PATH in this
 # image), that FloatText/Ryu (src/utils/FloatText.*, ryu_float.c) are genuinely absent from a
 # program that never calls them, and that a program that does call them does not pull in newlib's
-# assert/printf/malloc chain (see tests/check-floattext-zero-cost.sh). This image
+# assert/printf/malloc chain (see tests/check-floattext-zero-cost.sh), at C++17 (own types) and
+# C++23 (std types). This image
 # (firmware-builder:v1.14.0) has arm-none-eabi-gcc under /opt, not on PATH by default - the same
 # toolchain path other embedded-libraries projects' CI (sentinode-th, universal-oven-controller-
 # firmware) points GCC_TOOLCHAIN_PREFIX at. REQUIRE_TOOLCHAIN=1 turns a missing toolchain or a
@@ -121,7 +122,8 @@ floattext-zero-cost:
   script:
     - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
-    - RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
+    - CXX_STANDARD=17 ETL_INCLUDE_DIR="$(pwd)/build/_deps/etl-src/include" RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
+    - CXX_STANDARD=23 RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
 
 # Compiles the compat headers (src/utils/compat/) like firmware: arm-none-eabi-g++ with -fno-exceptions and -fno-rtti,
 # at C++17 with the own types and at C++23 with the own and the std types (see tests/check-compat-firmware-build.sh).
