@@ -41,7 +41,8 @@ class FileReadable : public RandomAccessReadable {
     */
    FileReadable(art::storage::File &file, art::span<uint8_t> buffer)
       : file_(file)
-      , buffer_(buffer) {}
+      , buffer_(buffer) {
+   }
 
    // Not movable: a moved-from stream would stay live on the same file and position.
    FileReadable(FileReadable &&) = delete;

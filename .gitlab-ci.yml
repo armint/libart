@@ -77,6 +77,17 @@ build:
     - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-default/CMakeFiles/art-core.dir/flags.make
     - '! grep -Eq "std=(gnu|c)\+\+2[0-9]" build-own-default/CMakeFiles/art-core.dir/flags.make'
 
+# Fails if a source in src/ or tests/ is not formatted with the .clang-format of the repository (clangformat-check,
+# see cmake/clang-format.cmake; third-party sources are in .clang-format-ignore). The target only exists when the
+# configure finds clang-format 18 or later, so a missing clang-format in the image fails the build step ("no rule")
+# instead of passing silently. The configure line prints the executable and version that are used.
+format:
+  stage: build
+  script:
+    - cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" | tee configure.log
+    - grep "clangformat targets:" configure.log
+    - cmake --build build --target clangformat-check
+
 # Builds and runs the native unit test suite (doctest; a handful of
 # storage/ tests use Catch2-style TEST_CASE/CHECK/SUBCASE macros, which
 # doctest supports with the same names/semantics).

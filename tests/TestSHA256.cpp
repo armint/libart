@@ -1,14 +1,14 @@
-#include <optional>
-#include <doctest/doctest.h>
-#include "utils/SHA256Digest.h"
-#include "streams/DigestWritable.h"
-#include "streams/DigestReadable.h"
-#include "streams/ArrayWritable.h"
 #include "streams/ArrayReadable.h"
+#include "streams/ArrayWritable.h"
+#include "streams/DigestReadable.h"
+#include "streams/DigestWritable.h"
+#include "utils/SHA256Digest.h"
 #include <array>
 #include <cstring>
+#include <doctest/doctest.h>
 #include <etl/string.h>
 #include <etl/string_view.h>
+#include <optional>
 #include <utils/tfp_printf.h>
 
 static void putf_etl(void *p, char c) {
@@ -18,9 +18,7 @@ static void putf_etl(void *p, char c) {
 
 static etl::string<65> to_hex(art::span<const uint8_t> data) {
    etl::string<65> s;
-   auto hex_digit = [](uint8_t n) -> char {
-      return n < 10 ? '0' + n : 'a' + (n - 10);
-   };
+   auto hex_digit = [](uint8_t n) -> char { return n < 10 ? '0' + n : 'a' + (n - 10); };
    for(auto b : data) {
       s.append(1, hex_digit(b >> 4));
       s.append(1, hex_digit(b & 0x0F));
@@ -65,7 +63,7 @@ TEST_CASE("SHA256Digest chunked updates [sha256]") {
    SHA256Digest sha;
    const char *msg = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
    size_t len = strlen(msg);
-   
+
    for(size_t i = 0; i < len; ++i) {
       sha.update(static_cast<uint8_t>(msg[i]));
    }
@@ -80,7 +78,7 @@ TEST_CASE("SHA256Digest reset [sha256]") {
    SHA256Digest sha;
    sha.update(art::span{ reinterpret_cast<const uint8_t *>("abc"), 3 });
    sha.reset();
-   
+
    std::array<uint8_t, 32> out{};
    auto res = sha.getDigest(out);
    REQUIRE(res.has_value());
@@ -120,7 +118,7 @@ TEST_CASE("SHA256Digest with DigestWritable [sha256][streams]") {
       auto digestRes2 = sha.getDigest(out2);
       REQUIRE(digestRes2.has_value());
       REQUIRE(to_hex(out2) == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
-      
+
       // Verify sink content
       REQUIRE(memcmp(sinkBuffer, "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 56) == 0);
    }

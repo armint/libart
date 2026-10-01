@@ -16,7 +16,8 @@ class JSONWriter {
     * @param writable the writable to wrap
     */
    JSONWriter(Writable &writable)
-      : _writable(writable) {}
+      : _writable(writable) {
+   }
 
    size_t write(uint8_t c) {
       return write(&c, 1);

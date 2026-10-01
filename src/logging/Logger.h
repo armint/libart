@@ -150,39 +150,39 @@ class Logger {
 
 #else
 
-#define LOG_TRACE(LOGGER, ...)                                                                                         \
-   do {                                                                                                                \
-      if(LOG__CT_ENABLED(logging::Level::Trace) && (LOGGER).isEnabled(logging::Level::Trace)) {                        \
-         (LOGGER).trace(__VA_ARGS__);                                                                                  \
-      }                                                                                                                \
+#define LOG_TRACE(LOGGER, ...)                                                                  \
+   do {                                                                                         \
+      if(LOG__CT_ENABLED(logging::Level::Trace) && (LOGGER).isEnabled(logging::Level::Trace)) { \
+         (LOGGER).trace(__VA_ARGS__);                                                           \
+      }                                                                                         \
    } while(0)
 
-#define LOG_DEBUG(LOGGER, ...)                                                                                         \
-   do {                                                                                                                \
-      if(LOG__CT_ENABLED(logging::Level::Debug) && (LOGGER).isEnabled(logging::Level::Debug)) {                        \
-         (LOGGER).debug(__VA_ARGS__);                                                                                  \
-      }                                                                                                                \
+#define LOG_DEBUG(LOGGER, ...)                                                                  \
+   do {                                                                                         \
+      if(LOG__CT_ENABLED(logging::Level::Debug) && (LOGGER).isEnabled(logging::Level::Debug)) { \
+         (LOGGER).debug(__VA_ARGS__);                                                           \
+      }                                                                                         \
    } while(0)
 
-#define LOG_INFO(LOGGER, ...)                                                                                          \
-   do {                                                                                                                \
-      if(LOG__CT_ENABLED(logging::Level::Info) && (LOGGER).isEnabled(logging::Level::Info)) {                          \
-         (LOGGER).info(__VA_ARGS__);                                                                                   \
-      }                                                                                                                \
+#define LOG_INFO(LOGGER, ...)                                                                 \
+   do {                                                                                       \
+      if(LOG__CT_ENABLED(logging::Level::Info) && (LOGGER).isEnabled(logging::Level::Info)) { \
+         (LOGGER).info(__VA_ARGS__);                                                          \
+      }                                                                                       \
    } while(0)
 
-#define LOG_WARN(LOGGER, ...)                                                                                          \
-   do {                                                                                                                \
-      if(LOG__CT_ENABLED(logging::Level::Warning) && (LOGGER).isEnabled(logging::Level::Warning)) {                    \
-         (LOGGER).warn(__VA_ARGS__);                                                                                   \
-      }                                                                                                                \
+#define LOG_WARN(LOGGER, ...)                                                                       \
+   do {                                                                                             \
+      if(LOG__CT_ENABLED(logging::Level::Warning) && (LOGGER).isEnabled(logging::Level::Warning)) { \
+         (LOGGER).warn(__VA_ARGS__);                                                                \
+      }                                                                                             \
    } while(0)
 
-#define LOG_ERROR(LOGGER, ...)                                                                                         \
-   do {                                                                                                                \
-      if(LOG__CT_ENABLED(logging::Level::Error) && (LOGGER).isEnabled(logging::Level::Error)) {                        \
-         (LOGGER).error(__VA_ARGS__);                                                                                  \
-      }                                                                                                                \
+#define LOG_ERROR(LOGGER, ...)                                                                  \
+   do {                                                                                         \
+      if(LOG__CT_ENABLED(logging::Level::Error) && (LOGGER).isEnabled(logging::Level::Error)) { \
+         (LOGGER).error(__VA_ARGS__);                                                           \
+      }                                                                                         \
    } while(0)
 
 #endif

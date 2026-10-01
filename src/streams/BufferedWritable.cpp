@@ -2,7 +2,8 @@
 
 BufferedWritable::BufferedWritable(Writable &sink, art::span<uint8_t> buffer)
    : _sink(sink)
-   , _buffer(buffer) {}
+   , _buffer(buffer) {
+}
 
 art::expected<size_t, Writable::Error> BufferedWritable::write(art::span<const uint8_t> data) {
    size_t dataIndex = 0;

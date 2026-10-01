@@ -20,79 +20,86 @@ namespace art::rtos {
  * @note The RecursiveMutex object must outlive all tasks accessing it.
  */
 class RecursiveMutex {
-public:
-  RecursiveMutex() {
-    handle_ = xSemaphoreCreateRecursiveMutexStatic(&buf_);
-  }
+   public:
+   RecursiveMutex() {
+      handle_ = xSemaphoreCreateRecursiveMutexStatic(&buf_);
+   }
 
-  /**
-   * @brief Destructs the mutex and deletes the FreeRTOS handle.
-   *
-   * @note A RecursiveMutex must not be deleted while held by any task.
-   */
-  ~RecursiveMutex() {
-    if (handle_ != nullptr) {
-      vSemaphoreDelete(handle_);
-      handle_ = nullptr;
-    }
-  }
+   /**
+    * @brief Destructs the mutex and deletes the FreeRTOS handle.
+    *
+    * @note A RecursiveMutex must not be deleted while held by any task.
+    */
+   ~RecursiveMutex() {
+      if(handle_ != nullptr) {
+         vSemaphoreDelete(handle_);
+         handle_ = nullptr;
+      }
+   }
 
-  RecursiveMutex(const RecursiveMutex &) = delete;
-  RecursiveMutex &operator=(const RecursiveMutex &) = delete;
-  RecursiveMutex(RecursiveMutex &&) = delete;
-  RecursiveMutex &operator=(RecursiveMutex &&) = delete;
+   RecursiveMutex(const RecursiveMutex &) = delete;
+   RecursiveMutex &operator=(const RecursiveMutex &) = delete;
+   RecursiveMutex(RecursiveMutex &&) = delete;
+   RecursiveMutex &operator=(RecursiveMutex &&) = delete;
 
-  bool lock() {
-    const BaseType_t res = xSemaphoreTakeRecursive(handle_, portMAX_DELAY);
-    configASSERT(res == pdTRUE);
-    return res == pdTRUE;
-  }
+   bool lock() {
+      const BaseType_t res = xSemaphoreTakeRecursive(handle_, portMAX_DELAY);
+      configASSERT(res == pdTRUE);
+      return res == pdTRUE;
+   }
 
-  bool try_lock() {
-    return xSemaphoreTakeRecursive(handle_, 0) == pdTRUE;
-  }
+   bool try_lock() {
+      return xSemaphoreTakeRecursive(handle_, 0) == pdTRUE;
+   }
 
-  bool lock_for(uint32_t timeoutMs) {
-    const TickType_t ticks = (timeoutMs == UINT32_MAX) ? portMAX_DELAY : pdMS_TO_TICKS(timeoutMs);
-    return xSemaphoreTakeRecursive(handle_, ticks) == pdTRUE;
-  }
+   bool lock_for(uint32_t timeoutMs) {
+      const TickType_t ticks = (timeoutMs == UINT32_MAX) ? portMAX_DELAY : pdMS_TO_TICKS(timeoutMs);
+      return xSemaphoreTakeRecursive(handle_, ticks) == pdTRUE;
+   }
 
-  bool unlock() {
-    const BaseType_t res = xSemaphoreGiveRecursive(handle_);
-    configASSERT(res == pdTRUE);
-    return res == pdTRUE;
-  }
+   bool unlock() {
+      const BaseType_t res = xSemaphoreGiveRecursive(handle_);
+      configASSERT(res == pdTRUE);
+      return res == pdTRUE;
+   }
 
-  SemaphoreHandle_t handle() const { return handle_; }
+   SemaphoreHandle_t handle() const {
+      return handle_;
+   }
 
-private:
-  StaticSemaphore_t buf_{};
-  SemaphoreHandle_t handle_{nullptr};
+   private:
+   StaticSemaphore_t buf_{};
+   SemaphoreHandle_t handle_{ nullptr };
 };
 
 /**
  * @brief RAII scoped lock guard for RecursiveMutex.
  */
 class RecursiveMutexGuard {
-public:
-  explicit RecursiveMutexGuard(RecursiveMutex &mutex) : mutex_(mutex), ownsLock_(mutex_.lock()) {}
+   public:
+   explicit RecursiveMutexGuard(RecursiveMutex &mutex)
+      : mutex_(mutex)
+      , ownsLock_(mutex_.lock()) {
+   }
 
-  ~RecursiveMutexGuard() {
-    if (ownsLock_) {
-      mutex_.unlock();
-    }
-  }
+   ~RecursiveMutexGuard() {
+      if(ownsLock_) {
+         mutex_.unlock();
+      }
+   }
 
-  bool owns_lock() const { return ownsLock_; }
+   bool owns_lock() const {
+      return ownsLock_;
+   }
 
-  RecursiveMutexGuard(const RecursiveMutexGuard &) = delete;
-  RecursiveMutexGuard &operator=(const RecursiveMutexGuard &) = delete;
-  RecursiveMutexGuard(RecursiveMutexGuard &&) = delete;
-  RecursiveMutexGuard &operator=(RecursiveMutexGuard &&) = delete;
+   RecursiveMutexGuard(const RecursiveMutexGuard &) = delete;
+   RecursiveMutexGuard &operator=(const RecursiveMutexGuard &) = delete;
+   RecursiveMutexGuard(RecursiveMutexGuard &&) = delete;
+   RecursiveMutexGuard &operator=(RecursiveMutexGuard &&) = delete;
 
-private:
-  RecursiveMutex &mutex_;
-  bool ownsLock_{false};
+   private:
+   RecursiveMutex &mutex_;
+   bool ownsLock_{ false };
 };
 
 } // namespace art::rtos

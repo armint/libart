@@ -1,5 +1,5 @@
-#include <optional>
 #include <doctest/doctest.h>
+#include <optional>
 #include <string_view>
 
 #include <streams/ArrayWritable.h>
@@ -12,7 +12,8 @@
 class MockWritable : public Writable {
    public:
    explicit MockWritable(art::span<uint8_t> buffer)
-      : _buffer(buffer) {}
+      : _buffer(buffer) {
+   }
 
    // Configure write to fail after N successful bytes (optional)
    void failAfter(size_t nBytes, Error err) {
@@ -180,7 +181,8 @@ TEST_CASE("[Writable] error propagation on overflow during printf [Writable]") {
 class SessionTrackingWritable : public Writable {
    public:
    explicit SessionTrackingWritable(art::span<uint8_t> buffer)
-      : _buffer(buffer) {}
+      : _buffer(buffer) {
+   }
 
    art::expected<size_t, Error> write(art::span<const uint8_t> data) override {
       size_t written = 0;

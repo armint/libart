@@ -20,7 +20,8 @@ class FatFileReadable : public RandomAccessReadable {
    public:
    FatFileReadable(FatFile &file, art::span<uint8_t> buffer)
       : file(file)
-      , _buffer(buffer) {}
+      , _buffer(buffer) {
+   }
 
    virtual art::expected<char, Error> read() override;
 

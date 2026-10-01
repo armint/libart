@@ -10,12 +10,13 @@ class ArrayReadable : public RandomAccessReadable {
 
    public:
    explicit ArrayReadable(art::span<const uint8_t> data)
-      : data(data) {}
+      : data(data) {
+   }
 
-   ArrayReadable(ArrayReadable&&) = default;
-   ArrayReadable& operator=(ArrayReadable&&) = default;
-   ArrayReadable(const ArrayReadable&) = default;
-   ArrayReadable& operator=(const ArrayReadable&) = default;
+   ArrayReadable(ArrayReadable &&) = default;
+   ArrayReadable &operator=(ArrayReadable &&) = default;
+   ArrayReadable(const ArrayReadable &) = default;
+   ArrayReadable &operator=(const ArrayReadable &) = default;
 
    art::expected<char, Error> read() override {
       if(index >= data.size()) {
@@ -24,9 +25,13 @@ class ArrayReadable : public RandomAccessReadable {
       return data[index++];
    }
 
-   bool available() override { return index < data.size(); }
+   bool available() override {
+      return index < data.size();
+   }
 
-   size_t bytesLeft() override { return data.size() - index; }
+   size_t bytesLeft() override {
+      return data.size() - index;
+   }
 
    void reset(size_t position = 0) override {
       if(position > data.size()) {
@@ -35,5 +40,7 @@ class ArrayReadable : public RandomAccessReadable {
       index = position;
    }
 
-   size_t position() override { return index; }
+   size_t position() override {
+      return index;
+   }
 };

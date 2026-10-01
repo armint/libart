@@ -18,7 +18,8 @@ class FatFileWritable : public BoundedWritable {
    FatFileWritable(FatFile &file, art::span<uint8_t> buffer)
       : BoundedWritable(std::numeric_limits<uint32_t>::max())
       , buffer_(buffer)
-      , file_(file) {}
+      , file_(file) {
+   }
 
    virtual ~FatFileWritable() override;
    virtual art::expected<size_t, Error> write(art::span<const uint8_t> data) override;

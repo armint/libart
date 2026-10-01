@@ -4,7 +4,9 @@
 namespace {
 class TestableKType : public KTypeThermocoupleSensor {
    public:
-   Temperature_t getTemperature() override { return 0; }
+   Temperature_t getTemperature() override {
+      return 0;
+   }
 };
 } // namespace
 

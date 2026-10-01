@@ -1,0 +1,11 @@
+# Third-party sources that clang-format must leave alone, so that they stay comparable with their upstream.
+# clang-format 18 and later read this file for every file they are given, so the clangformat targets
+# (cmake/clang-format.cmake), git clang-format and editors skip the same files. Paths are relative to this directory;
+# "*" does not match "/".
+
+# FatFs (ChaN), see src/storage/fatfs/00readme.txt. diskio.cpp in src/storage/ is libArT's own.
+src/storage/fatfs/*
+
+# Intrusive lists, from µOS++ (Liviu Ionescu).
+src/utils/lists.cpp
+src/utils/lists.h

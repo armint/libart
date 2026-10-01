@@ -34,7 +34,8 @@ class FatTestDisk : public RamBlockDevice {
 
    // Checked before the base class fills the shared backing array, which would wipe a live instance.
    FatTestDisk()
-      : RamBlockDevice(kGeometry, claimBacking()) {}
+      : RamBlockDevice(kGeometry, claimBacking()) {
+   }
 
    FatTestDisk(const FatTestDisk &) = delete;
    FatTestDisk &operator=(const FatTestDisk &) = delete;

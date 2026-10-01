@@ -35,7 +35,8 @@ class ContractChecker {
    public:
    ContractChecker(BlockDevice &device, std::optional<uint8_t> erasedByte)
       : device_(device)
-      , erasedByte_(erasedByte) {}
+      , erasedByte_(erasedByte) {
+   }
 
    void run() {
       REQUIRE(device_.init().has_value());

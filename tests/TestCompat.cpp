@@ -296,8 +296,10 @@ static_assert(!std::is_move_assignable_v<art::expected<ConstCounted, Error>>);
 // assigned, so that code that compiles at C++17 also compiles at C++23.
 struct ThrowingMove {
    ThrowingMove() = default;
-   ThrowingMove(const ThrowingMove &) noexcept(false) {}
-   ThrowingMove(ThrowingMove &&) noexcept(false) {}
+   ThrowingMove(const ThrowingMove &) noexcept(false) {
+   }
+   ThrowingMove(ThrowingMove &&) noexcept(false) {
+   }
    ThrowingMove &operator=(const ThrowingMove &) = default;
    ThrowingMove &operator=(ThrowingMove &&) = default;
 };
@@ -323,7 +325,8 @@ class Source {
 class ArraySource : public Source {
    public:
    explicit ArraySource(art::span<const uint8_t> data)
-      : data_(data) {}
+      : data_(data) {
+   }
 
    art::expected<char, Error> read() override {
       if(position_ >= data_.size()) {

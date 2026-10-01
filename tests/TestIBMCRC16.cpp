@@ -7,9 +7,9 @@
 #include <etl/vector.h>
 #include <optional>
 
+#include "utils/CrcDigest.h"
 #include "utils/IBMCRC16Digest.h"
 #include "utils/IBMCRC16FastDigest.h"
-#include "utils/CrcDigest.h"
 
 static uint16_t digest_value(Digest &d) {
    std::array<uint8_t, sizeof(uint16_t)> out{};
@@ -56,8 +56,9 @@ TEST_CASE("ModbusCrc from new implementation matches IBMCRC16Digest [crc16]") {
       IBMCRC16Digest slow_chunk{};
 
       size_t chunk_size = 0;
-      for (size_t i = 0; i < data.size(); ++i) {
-         if (i % 17 == 0) ++chunk_size;
+      for(size_t i = 0; i < data.size(); ++i) {
+         if(i % 17 == 0)
+            ++chunk_size;
          art::span<const uint8_t> part{ &data[i], 1 };
          modbus_chunk.update(part);
          slow_chunk.update(part);

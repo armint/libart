@@ -46,7 +46,8 @@ class ordered_intrusive_list : public micro_os_plus::utils::intrusive_list<T, N,
     * as this is an intrusive list and memory management of nodes is
     * external to the list.
     */
-   ~ordered_intrusive_list() {}
+   ~ordered_intrusive_list() {
+   }
 
    /**
     * @brief Inserts a new node into the list while maintaining sorted order.

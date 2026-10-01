@@ -40,8 +40,7 @@ constexpr double constexprExp(double x) {
  * @tparam StepTenths Temperature step in tenths of degrees (e.g. -50 = -5.0C)
  * @tparam AdcBits Number of ADC bits (determines AdcMax = 2^AdcBits - 1)
  */
-template <uint32_t Rpullup, uint32_t R25, uint32_t Beta, int StartTempTenths, int EndTempTenths, int StepTenths,
-          uint32_t AdcBits = 16>
+template <uint32_t Rpullup, uint32_t R25, uint32_t Beta, int StartTempTenths, int EndTempTenths, int StepTenths, uint32_t AdcBits = 16>
 class ThermistorSensor : public TemperatureSensor {
    static_assert(StepTenths != 0, "Step must be non-zero");
    static_assert((EndTempTenths - StartTempTenths) / StepTenths >= 0, "Temperature range must be consistent with step direction");
@@ -68,7 +67,8 @@ class ThermistorSensor : public TemperatureSensor {
 
    public:
    ThermistorSensor(volatile uint16_t &adcValue)
-      : adcValue(adcValue) {}
+      : adcValue(adcValue) {
+   }
 
    Temperature_t getTemperature() override {
       return getInterpolatedValueFromLookupTable(adcValue, art::span<const uint16_t>(adcTable.data(), adcTable.size()),

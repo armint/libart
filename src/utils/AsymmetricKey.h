@@ -57,11 +57,9 @@ class AsymmetricKey : public Writable {
 /**
  * Interface for asymmetric private keys.
  */
-class PrivateKey : virtual public AsymmetricKey {
-};
+class PrivateKey : virtual public AsymmetricKey {};
 
 /**
  * Interface for asymmetric public keys.
  */
-class PublicKey : virtual public AsymmetricKey {
-};
+class PublicKey : virtual public AsymmetricKey {};

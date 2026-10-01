@@ -153,10 +153,10 @@ class Readable {
 
    Readable() = default;
    virtual ~Readable() = default;
-   Readable(Readable&&) = default;
-   Readable& operator=(Readable&&) = default;
-   Readable(const Readable&) = default;
-   Readable& operator=(const Readable&) = default;
+   Readable(Readable &&) = default;
+   Readable &operator=(Readable &&) = default;
+   Readable(const Readable &) = default;
+   Readable &operator=(const Readable &) = default;
 
    protected:
    art::expected<char, Error> scanfRead();

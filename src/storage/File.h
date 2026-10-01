@@ -154,7 +154,8 @@ class File {
 
    File(FileSystem *fileSystem, FileHandle handle)
       : fileSystem_(fileSystem)
-      , handle_(handle) {}
+      , handle_(handle) {
+   }
 
    void closeSilently();
 

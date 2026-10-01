@@ -38,6 +38,25 @@ CMake fetches all of them with `FetchContent`.
 **`ETL_NO_STL` is not supported.** With `ETL_NO_STL`, ETL defines its own `std::initializer_list`, which conflicts
 with the standard library headers that libArT includes.
 
+## Formatting
+
+The sources in `src/` and `tests/` are formatted with clang-format 20 and the `.clang-format` of the repository.
+Third-party sources are listed in `.clang-format-ignore` and keep the format of their upstream.
+
+- `cmake --build <build_dir> --target clangformat` formats all files in place.
+- `cmake --build <build_dir> --target clangformat-check` changes nothing and fails if a file is not formatted. The CI
+  job `format` runs it.
+- `git clang-format-20 origin/dev` formats only the lines that you changed.
+
+The targets exist only when CMake finds clang-format 18 or later and libArT is the top-level project (see
+`cmake/clang-format.cmake`). Other major versions than 20 can format differently.
+
+The whole tree was reformatted in one commit. To make `git blame` skip that commit, run once per clone:
+
+```sh
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 ## CMake options
 
 | Option | Default | Effect |
@@ -45,6 +64,7 @@ with the standard library headers that libArT includes.
 | `ART_USE_STD_EXPECTED_SPAN` | `ON`, unless `CMAKE_CXX_STANDARD` is below 23 | Selects what `art::expected`, `art::unexpected` and `art::span` are, and the minimum standard of the targets (`ON`: C++23, `OFF`: C++17). See below. |
 | `ART_STORAGE_LITTLEFS` | `OFF` | Builds the LittleFS file system binding (`art-storage-littlefs`). |
 | `ART_LITTLEFS_NO_ASSERT` | `ON` when cross-compiling | Builds littlefs with `LFS_NO_ASSERT`. |
+| `ART_CLANG_FORMAT` | `clang-format-20`, else `clang-format` | The clang-format executable of the `clangformat` and `clangformat-check` targets (see `cmake/clang-format.cmake`). |
 
 ### `ART_USE_STD_EXPECTED_SPAN`: `std` or own vocabulary types
 

@@ -15,7 +15,8 @@ class ThermocoupleSensor : public TemperatureSensor {
    public:
    ThermocoupleSensor(Temperature_t startTemperature, Temperature_t temperatureStep)
       : startTemperature(startTemperature)
-      , temperatureStep(temperatureStep) {}
+      , temperatureStep(temperatureStep) {
+   }
 
    ~ThermocoupleSensor() override = default;
 

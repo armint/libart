@@ -161,7 +161,8 @@ TEST_CASE("[Logging] Logger writes formatted output to sink") {
 class SessionCountingWritable : public Writable {
    public:
    explicit SessionCountingWritable(art::span<uint8_t> buffer)
-      : _buffer(buffer) {}
+      : _buffer(buffer) {
+   }
 
    art::expected<size_t, Error> write(art::span<const uint8_t> data) override {
       // Record the session nesting depth open at the time of this write(): 0 = no session,

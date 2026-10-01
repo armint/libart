@@ -9,6 +9,7 @@ class PseudoRandomReadable : public Readable {
    pcg::pcg32 rng_;
    uint32_t last_ = 0;
    uint8_t idx_ = 0;
+
    public:
    PseudoRandomReadable(uint64_t seed);
    art::expected<char, Error> read() override;

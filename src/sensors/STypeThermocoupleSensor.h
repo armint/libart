@@ -45,7 +45,8 @@ class STypeThermocoupleSensor : public ThermocoupleSensor {
    };
 
    STypeThermocoupleSensor()
-      : ThermocoupleSensor(sTypeStartTemperature, sTypeTemperatureStep) {}
+      : ThermocoupleSensor(sTypeStartTemperature, sTypeTemperatureStep) {
+   }
 
    int32_t getTableValue(size_t index) const override {
       return sTypeVoltageTable[index];

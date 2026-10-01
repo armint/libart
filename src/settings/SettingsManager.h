@@ -15,7 +15,8 @@ class SettingsManager {
    public:
    friend class SettingBase;
    SettingsManager()
-      : _settings(true) {}
+      : _settings(true) {
+   }
 
    static SettingsManager &getInstance();
 

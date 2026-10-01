@@ -9,10 +9,10 @@
 class BoundedReadable : public Readable {
    public:
    BoundedReadable() = default;
-   BoundedReadable(BoundedReadable&&) = default;
-   BoundedReadable& operator=(BoundedReadable&&) = default;
-   BoundedReadable(const BoundedReadable&) = default;
-   BoundedReadable& operator=(const BoundedReadable&) = default;
+   BoundedReadable(BoundedReadable &&) = default;
+   BoundedReadable &operator=(BoundedReadable &&) = default;
+   BoundedReadable(const BoundedReadable &) = default;
+   BoundedReadable &operator=(const BoundedReadable &) = default;
 
    using Readable::read;
    /**

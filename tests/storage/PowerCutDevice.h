@@ -19,7 +19,8 @@ class PowerCutDevice final : public BlockDeviceDecorator {
    public:
    explicit PowerCutDevice(RamBlockDevice &ram)
       : BlockDeviceDecorator(ram)
-      , ram_(ram) {}
+      , ram_(ram) {
+   }
 
    /// The `writeOperation`-th following program or erase (1 is the next one) is torn after `tearBytes`.
    void armCut(uint32_t writeOperation, size_t tearBytes) {
