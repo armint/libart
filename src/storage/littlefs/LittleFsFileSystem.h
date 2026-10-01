@@ -328,18 +328,24 @@ class LittleFsFileSystem final : public LittleFsFileSystemBase {
    /// @param device The device to keep the volume on. It must outlive this object. It does not have to be
    /// initialised: mount() and format() call init().
    explicit LittleFsFileSystem(BlockDevice &device)
-      : LittleFsFileSystemBase(device,
-                               Buffers{ .readCache = readCache_,
-                                        .programCache = programCache_,
-                                        .lookahead = lookahead_,
-                                        .slots = slots_,
-                                        .fileCaches = fileCaches_ }) {}
+      : LittleFsFileSystemBase(device, buffersOf(*this)) {}
 
    ~LittleFsFileSystem() override {
       shutdown();
    }
 
    private:
+   /// Static, because it runs before the base is constructed: it takes only the addresses of the arrays of `self`.
+   static Buffers buffersOf(LittleFsFileSystem &self) {
+      Buffers buffers{};
+      buffers.readCache = self.readCache_;
+      buffers.programCache = self.programCache_;
+      buffers.lookahead = self.lookahead_;
+      buffers.slots = self.slots_;
+      buffers.fileCaches = self.fileCaches_;
+      return buffers;
+   }
+
    std::array<uint8_t, CacheSize> readCache_{};
    std::array<uint8_t, CacheSize> programCache_{};
    std::array<uint8_t, LookaheadSize> lookahead_{};

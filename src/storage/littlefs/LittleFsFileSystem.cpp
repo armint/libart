@@ -662,8 +662,10 @@ art::expected<FileInfo, Error> LittleFsFileSystemBase::stat(const char *path) {
    if(result < 0) {
       return failure(toError(result));
    }
-   return FileInfo{ .type = info.type == LFS_TYPE_DIR ? EntryType::Directory : EntryType::File,
-                    .size = info.type == LFS_TYPE_DIR ? 0u : info.size };
+   FileInfo fileInfo{};
+   fileInfo.type = info.type == LFS_TYPE_DIR ? EntryType::Directory : EntryType::File;
+   fileInfo.size = info.type == LFS_TYPE_DIR ? 0u : info.size;
+   return fileInfo;
 }
 
 art::expected<size_t, Error> LittleFsFileSystemBase::visitDirectory(const char *path, DirectoryVisitor visitor) {
@@ -691,8 +693,10 @@ art::expected<size_t, Error> LittleFsFileSystemBase::visitDirectory(const char *
       }
       ++visited;
       const bool isDirectory = info.type == LFS_TYPE_DIR;
-      if(!visitor(info.name, FileInfo{ .type = isDirectory ? EntryType::Directory : EntryType::File,
-                                       .size = isDirectory ? 0u : info.size })) {
+      FileInfo fileInfo{};
+      fileInfo.type = isDirectory ? EntryType::Directory : EntryType::File;
+      fileInfo.size = isDirectory ? 0u : info.size;
+      if(!visitor(info.name, fileInfo)) {
          break;
       }
    }
