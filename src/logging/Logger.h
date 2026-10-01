@@ -29,6 +29,11 @@ class Logger {
       LogManager::getInstance().registerLogger(this);
    }
 
+   // Leaves the LogManager list, so findLogger() never returns a destroyed Logger.
+   ~Logger() {
+      LogManager::getInstance().unregisterLogger(this);
+   }
+
    [[nodiscard]] const char *topic() const noexcept {
       return topic_;
    }
