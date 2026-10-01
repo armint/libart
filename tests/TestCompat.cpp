@@ -684,9 +684,15 @@ TEST_CASE("[compat] expected comparison of mixed signedness does not warn") {
    const bool voidErrorEquals = voidError == art::unexpected(1);
    const bool valueErrorEquals = valueError == art::unexpected(1);
    const bool unexpectedEquals = art::unexpected(1u) == art::unexpected(1);
+   // Before C++20, unexpected has an operator!= of its own.
+   const bool unexpectedDiffers = art::unexpected(1u) != art::unexpected(2);
+   const art::expected<void, int> signedVoidError = art::unexpected(1);
+   const bool voidErrorsEqual = voidError == signedVoidError;
    CHECK(voidErrorEquals);
    CHECK(valueErrorEquals);
    CHECK(unexpectedEquals);
+   CHECK(unexpectedDiffers);
+   CHECK(voidErrorsEqual);
 }
 
 // Unscoped enums take part in the usual arithmetic conversions of the built-in ==, so they must not warn either
