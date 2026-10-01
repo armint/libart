@@ -259,3 +259,104 @@ TEST_CASE("[Logging] Logger does not write when level is disabled") {
 
    LogManager::getInstance().set_sink(nullptr);
 }
+
+// --- LOG_* macro tests ---
+
+// The macros take the format string as part of their variadic arguments, so a call without format arguments is
+// valid ISO C++17. This file is also built into libArT-compat-tests-cpp17 with -Wpedantic -Werror, where the former
+// ", ##__VA_ARGS__" form failed with GCC (C++17) and Clang (any standard).
+TEST_CASE("[Logging] LOG_* macros accept a format string without arguments") {
+   uint8_t buffer[256] = {};
+   ArrayWritable writable(buffer);
+   LogManager::getInstance().set_sink(&writable);
+   LogManager::getInstance().set_formatter(nullptr);
+   LogManager::getInstance().set_global_level(logging::Level::Trace);
+
+   logging::Logger logger("Macro");
+   logger.set_level(logging::Level::Trace);
+   LOG_TRACE(logger, "trace text");
+   LOG_DEBUG(logger, "debug text");
+   LOG_INFO(logger, "info text");
+   LOG_WARN(logger, "warn text");
+   LOG_ERROR(logger, "error text");
+
+   std::string output(reinterpret_cast<char *>(buffer), writable.written());
+   CHECK(output.find("[Macro][TRACE] trace text") != std::string::npos);
+   CHECK(output.find("[Macro][DEBUG] debug text") != std::string::npos);
+   CHECK(output.find("[Macro][INFO] info text") != std::string::npos);
+   CHECK(output.find("[Macro][WARN] warn text") != std::string::npos);
+   CHECK(output.find("[Macro][ERROR] error text") != std::string::npos);
+
+   LogManager::getInstance().set_sink(nullptr);
+}
+
+TEST_CASE("[Logging] LOG_* macros pass format arguments") {
+   uint8_t buffer[256] = {};
+   ArrayWritable writable(buffer);
+   LogManager::getInstance().set_sink(&writable);
+   LogManager::getInstance().set_formatter(nullptr);
+   LogManager::getInstance().set_global_level(logging::Level::Trace);
+
+   logging::Logger logger("Macro");
+   logger.set_level(logging::Level::Trace);
+   LOG_INFO(logger, "%s=%d", "value", 42);
+
+   std::string output(reinterpret_cast<char *>(buffer), writable.written());
+   CHECK(output.find("[Macro][INFO] value=42") != std::string::npos);
+
+   LogManager::getInstance().set_sink(nullptr);
+}
+
+namespace {
+int countedArgument(int &evaluations) {
+   ++evaluations;
+   return evaluations;
+}
+} // namespace
+
+TEST_CASE("[Logging] LOG_* macros do not evaluate arguments of a disabled level") {
+   uint8_t buffer[256] = {};
+   ArrayWritable writable(buffer);
+   LogManager::getInstance().set_sink(&writable);
+   LogManager::getInstance().set_formatter(nullptr);
+   LogManager::getInstance().set_global_level(logging::Level::Trace);
+
+   logging::Logger logger("Macro");
+   logger.set_level(logging::Level::Error);
+   int evaluations = 0;
+   LOG_WARN(logger, "%d", countedArgument(evaluations));
+   CHECK(evaluations == 0);
+   CHECK(writable.written() == 0);
+
+   LOG_ERROR(logger, "%d", countedArgument(evaluations));
+   CHECK(evaluations == 1);
+
+   LogManager::getInstance().set_sink(nullptr);
+}
+
+TEST_CASE("[Logging] LOG_* macros below LOG_COMPILED_MIN_LEVEL do not evaluate arguments") {
+   uint8_t buffer[256] = {};
+   ArrayWritable writable(buffer);
+   LogManager::getInstance().set_sink(&writable);
+   LogManager::getInstance().set_formatter(nullptr);
+   LogManager::getInstance().set_global_level(logging::Level::Trace);
+
+   logging::Logger logger("Macro");
+   logger.set_level(logging::Level::Trace);
+   int evaluations = 0;
+   // The macros read LOG_COMPILED_MIN_LEVEL where they are expanded, so redefining it here filters these calls at
+   // compile time, the same as -DLOG_COMPILED_MIN_LEVEL=logging::Level::Error does for a whole build.
+#pragma push_macro("LOG_COMPILED_MIN_LEVEL")
+#undef LOG_COMPILED_MIN_LEVEL
+#define LOG_COMPILED_MIN_LEVEL logging::Level::Error
+   LOG_WARN(logger, "%d", countedArgument(evaluations));
+   LOG_WARN(logger, "filtered");
+   CHECK(evaluations == 0);
+   CHECK(writable.written() == 0);
+
+   LOG_ERROR(logger, "%d", countedArgument(evaluations));
+   CHECK(evaluations == 1);
+#pragma pop_macro("LOG_COMPILED_MIN_LEVEL")
+
+   LogManager::getInstance().set_sink(nullptr);
+}
