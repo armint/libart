@@ -38,6 +38,24 @@ CMake fetches all of them with `FetchContent`.
 **`ETL_NO_STL` is not supported.** With `ETL_NO_STL`, ETL defines its own `std::initializer_list`, which conflicts
 with the standard library headers that libArT includes.
 
+## Formatting
+
+The sources in `src/` and `tests/` are formatted with clang-format 20 and the `.clang-format` of the repository.
+Third-party sources are listed in `.clang-format-ignore` and keep the format of their upstream.
+
+- `cmake --build <build_dir> --target clangformat` formats all files in place.
+- `cmake --build <build_dir> --target clangformat-check` changes nothing and fails if a file is not formatted.
+- `git clang-format-20 origin/dev` formats only the lines that you changed.
+
+The targets exist only when CMake finds clang-format 18 or later and libArT is the top-level project (see
+`cmake/clang-format.cmake`). Other major versions than 20 can format differently.
+
+The whole tree was reformatted in one commit. To make `git blame` skip that commit, run once per clone:
+
+```sh
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 ## CMake options
 
 | Option | Default | Effect |

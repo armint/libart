@@ -1,0 +1,7 @@
+# Commits that git blame skips, because they only reformat code. Enable it once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# Each entry is a full commit SHA. If the branch that contains such a commit is rebased before it is merged, update
+# the SHA here.
+
+# style: format src/ and tests/ with clang-format (#35)
+25207040254cff7f9d97db5a43b6a3ae37caa88e
