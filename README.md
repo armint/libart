@@ -24,6 +24,15 @@ streams, logging, Modbus, settings, storage and utilities. `AGENTS.md` describes
 Add the repository with `add_subdirectory()` and link `art::core` (and `art::rtos` for the FreeRTOS wrappers).
 ESP-IDF projects use the repository as a component.
 
+### Installed package
+
+`cmake --install <build_dir> --prefix <prefix>` installs `libart-core.a`, the CMake package `art-core` and the
+public headers. The headers keep their path below `src/`, so a consumer includes them as with `add_subdirectory()`,
+for example `#include "streams/Readable.h"` (they are installed to `<prefix>/include/streams/Readable.h`). Only
+the headers (`*.h`, `*.hpp`) of `src/` are installed, and not those of `storage/littlefs/`: the
+`art-storage-littlefs` target is not part of the installed package, so use `add_subdirectory()` for it. The headers
+in `freertos/` are installed for `art::rtos`; the consumer provides FreeRTOS.
+
 ## Dependencies
 
 | Dependency | Linked | Notes |

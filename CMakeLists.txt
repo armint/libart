@@ -156,12 +156,6 @@ target_include_directories(
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-
-target_include_directories(art-core
-        PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
-
 target_compile_features(art-core PUBLIC ${_ART_MIN_CXX_STD})
 target_compile_definitions(art-core PUBLIC ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
 
@@ -280,9 +274,14 @@ install(TARGETS art-core art-rtos
         EXPORT art-core-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# The public headers keep their path below src/, so that the includes of a consumer (for example
+# "streams/Readable.h") are the same as with add_subdirectory(). Left out: storage/littlefs/, because
+# art-storage-littlefs is not exported and its header includes lfs.h. freertos/ is installed for art::rtos; the
+# consumer provides FreeRTOS. Ryu is only included by sources, never by a header.
+install(DIRECTORY src/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+        PATTERN "storage/littlefs" EXCLUDE)
 
 install(EXPORT art-core-targets
         NAMESPACE art::
