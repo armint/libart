@@ -56,14 +56,13 @@ cmake -S "$etl_source_dir" -B "$work_dir/etl-build-cpp$CXX_STANDARD" -G "Unix Ma
 cmake --install "$work_dir/etl-build-cpp$CXX_STANDARD" --prefix "$prefix"
 
 echo "== Installed libArT headers =="
-(cd "$prefix/include" && find art_types.h freertos logging modbus sensors settings storage streams utils -name '*.h' |
-   sort)
+(cd "$prefix/include/libart" && find . -type f | sort)
 # Ryu and littlefs are private to the build; an installed header must not need them.
-if grep -rEn '#[[:space:]]*include[[:space:]]*[<"](ryu/|lfs\.h|lfs_util\.h)' "$prefix/include"; then
+if grep -rEn '#[[:space:]]*include[[:space:]]*[<"](ryu/|lfs\.h|lfs_util\.h)' "$prefix/include/libart"; then
    echo "An installed header includes Ryu or littlefs" >&2
    exit 1
 fi
-if [ -e "$prefix/include/storage/littlefs" ]; then
+if [ -e "$prefix/include/libart/storage/littlefs" ]; then
    echo "storage/littlefs/ must not be installed" >&2
    exit 1
 fi

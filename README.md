@@ -30,8 +30,11 @@ ESP-IDF projects use the repository as a component.
 public headers. After `find_package(art-core)`, link `art::core` and `art::rtos`, the same names as with
 `add_subdirectory()`.
 
-- **Headers**: they keep their path below `src/`, so a consumer includes them as with `add_subdirectory()`, for
-  example `#include "streams/Readable.h"` (installed to `<prefix>/include/streams/Readable.h`). Only the headers
+- **Headers**: they are installed to `<prefix>/include/libart/`, so that generic names such as `utils/` or
+  `art_types.h` do not collide with other packages in a shared prefix. The include directory of `art::core` and
+  `art::rtos` is `<prefix>/include/libart`, and the headers keep their path below `src/`, so a consumer includes them
+  as with `add_subdirectory()`, for example `#include "streams/Readable.h"` (installed to
+  `<prefix>/include/libart/streams/Readable.h`). Only the headers
   (`*.h`, `*.hpp`) of `src/` are installed, and not those of `storage/littlefs/`: the `art-storage-littlefs` target
   is not part of the installed package, so use `add_subdirectory()` for it. The headers in `freertos/` are
   installed for `art::rtos`; the consumer provides FreeRTOS.

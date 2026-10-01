@@ -154,7 +154,7 @@ add_library(art::core ALIAS art-core)
 target_include_directories(
         art-core
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/libart>)
 
 target_compile_features(art-core PUBLIC ${_ART_MIN_CXX_STD})
 target_compile_definitions(art-core PUBLIC ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
@@ -183,7 +183,7 @@ add_library(art-rtos INTERFACE)
 add_library(art::rtos ALIAS art-rtos)
 target_include_directories(art-rtos INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/libart>
 )
 target_compile_features(art-rtos INTERFACE ${_ART_MIN_CXX_STD})
 target_compile_definitions(art-rtos INTERFACE ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
@@ -281,10 +281,12 @@ install(TARGETS art-core art-rtos
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # The public headers keep their path below src/, so that the includes of a consumer (for example
-# "streams/Readable.h") are the same as with add_subdirectory(). Left out: storage/littlefs/, because
+# "streams/Readable.h") are the same as with add_subdirectory(). They go to include/libart/, the include directory of
+# the exported targets, so that generic names such as utils/ or art_types.h do not collide with the headers of other
+# packages in a shared prefix. Left out: storage/littlefs/, because
 # art-storage-littlefs is not exported and its header includes lfs.h. freertos/ is installed for art::rtos; the
 # consumer provides FreeRTOS. Ryu is only included by sources, never by a header.
-install(DIRECTORY src/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+install(DIRECTORY src/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libart
         FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
         PATTERN "storage/littlefs" EXCLUDE)
 
