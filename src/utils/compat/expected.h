@@ -72,10 +72,11 @@ namespace detail {
 /**
  * a == b for the comparisons of expected and unexpected. std::expected writes a == b as well; its -Wsign-compare
  * warnings (expected<size_t, E> == 0) never reach the user because libstdc++ is a system header. For two arithmetic
- * operands this converts both to their common type explicitly: std::common_type_t of two arithmetic types is the
- * type that the usual arithmetic conversions of the built-in == give, so the result is the same (-1 is still equal to
- * 0xFFFFFFFFu, and not equal to uint8_t{ 255 }) and only the implicit conversion that the warning is about becomes
- * explicit. Every other operand pair uses its own operator==.
+ * operands this converts both to their common type explicitly. For operands of different types, std::common_type_t is
+ * the type that the usual arithmetic conversions of the built-in == give. For two operands of the same type it is
+ * that type, where == first promotes a type smaller than int (uint8_t, bool) to int; the promotion keeps the value,
+ * so the result is the same. -1 is still equal to 0xFFFFFFFFu, and not equal to uint8_t{ 255 }; only the implicit
+ * conversion that the warning is about becomes explicit. Every other operand pair uses its own operator==.
  */
 template <typename A, typename B>
 constexpr bool expected_equal(const A &a, const B &b) {
