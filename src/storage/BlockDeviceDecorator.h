@@ -38,7 +38,8 @@ class BlockDeviceDecorator : public BlockDevice {
     * @param lower The device to forward to. Stored by reference; it must outlive this object.
     */
    explicit BlockDeviceDecorator(BlockDevice &lower)
-      : lower_(lower) {}
+      : lower_(lower) {
+   }
 
    /// Forwards to the lower device.
    art::expected<void, Error> init() override {

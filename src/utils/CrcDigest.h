@@ -19,29 +19,22 @@
  *   - XorOut: final XOR mask (e.g., 0x0000, 0xFFFF)
  */
 
-template <std::uint8_t Width,
-          std::uintmax_t Polynomial,
-          std::uintmax_t Init = 0,
-          bool ReflectIn = false,
-          bool ReflectOut = false,
-          std::uintmax_t XorOut = 0>
+template <std::uint8_t Width, std::uintmax_t Polynomial, std::uintmax_t Init = 0, bool ReflectIn = false, bool ReflectOut = false, std::uintmax_t XorOut = 0>
 class CrcDigest : public Digest {
    static_assert(Width == 8 || Width == 16 || Width == 32, "Width must be 8, 16, or 32");
-   static_assert(Polynomial < (std::uintmax_t{1} << Width), "Polynomial must fit in Width bits");
+   static_assert(Polynomial < (std::uintmax_t{ 1 } << Width), "Polynomial must fit in Width bits");
 
-   using CrcType = typename std::conditional<
-      Width <= 8,  std::uint8_t,
-      typename std::conditional<Width <= 16, std::uint16_t, std::uint32_t>::type
-   >::type;
+   using CrcType =
+   typename std::conditional<Width <= 8, std::uint8_t, typename std::conditional<Width <= 16, std::uint16_t, std::uint32_t>::type>::type;
 
-   static constexpr CrcType MASK = (CrcType{1} << Width) - 1;
+   static constexpr CrcType MASK = (CrcType{ 1 } << Width) - 1;
    static constexpr CrcType POLY = static_cast<CrcType>(Polynomial);
    static constexpr CrcType INIT_VAL = static_cast<CrcType>(Init);
 
    // === Helper declarations (must be BEFORE any usage in constexpr) ===
    static constexpr std::uint8_t reflect8(std::uint8_t x) {
       std::uint8_t r = 0;
-      for (int i = 0; i < 8; ++i) {
+      for(int i = 0; i < 8; ++i) {
          r = (r << 1) | (x & 1);
          x >>= 1;
       }
@@ -50,9 +43,9 @@ class CrcDigest : public Digest {
 
    static constexpr CrcType reflectCrc(CrcType x, std::uint8_t n) {
       CrcType r = 0;
-      for (std::uint8_t i = 0; i < n; ++i) {
-         if (x & 1) {
-            r |= CrcType{1} << (n - 1 - i);
+      for(std::uint8_t i = 0; i < n; ++i) {
+         if(x & 1) {
+            r |= CrcType{ 1 } << (n - 1 - i);
          }
          x >>= 1;
       }
@@ -62,11 +55,11 @@ class CrcDigest : public Digest {
    // === Table generation: only used for MSB mode ===
    static constexpr auto makeTable() {
       std::array<CrcType, 256> table{};
-      if constexpr (!ReflectIn) {
-         for (std::uint16_t i = 0; i < 256; ++i) {
+      if constexpr(!ReflectIn) {
+         for(std::uint16_t i = 0; i < 256; ++i) {
             CrcType crc = static_cast<CrcType>(i) << (Width - 8);
-            for (std::uint8_t bit = 0; bit < 8; ++bit) {
-               if (crc & (CrcType{1} << (Width - 1))) {
+            for(std::uint8_t bit = 0; bit < 8; ++bit) {
+               if(crc & (CrcType{ 1 } << (Width - 1))) {
                   crc = (crc << 1) ^ POLY;
                } else {
                   crc <<= 1;
@@ -82,22 +75,24 @@ class CrcDigest : public Digest {
 
    // === Finalize helper ===
    CrcType finalize(CrcType crc) const {
-      if constexpr (ReflectOut) {
+      if constexpr(ReflectOut) {
          crc = reflectCrc(crc, Width);
       }
       return (crc ^ static_cast<CrcType>(XorOut)) & MASK;
    }
 
- public:
-   CrcDigest() : crc_(INIT_VAL) {}
+   public:
+   CrcDigest()
+      : crc_(INIT_VAL) {
+   }
 
    void update(art::span<const uint8_t> data) override {
-      for (uint8_t byte : data) {
-         if constexpr (ReflectIn) {
+      for(uint8_t byte : data) {
+         if constexpr(ReflectIn) {
             // LSB-first CRC update — POLY is *already reflected* (e.g., 0x8005)
             crc_ ^= static_cast<CrcType>(byte);
-            for (std::uint8_t bit = 0; bit < 8; ++bit) {
-               if (crc_ & 1) {
+            for(std::uint8_t bit = 0; bit < 8; ++bit) {
+               if(crc_ & 1) {
                   crc_ = (crc_ >> 1) ^ POLY;
                } else {
                   crc_ >>= 1;
@@ -113,16 +108,16 @@ class CrcDigest : public Digest {
    }
 
    art::expected<size_t, Error> getDigest(art::span<uint8_t> target) override {
-      if (target.size() < (Width + 7) / 8) {
+      if(target.size() < (Width + 7) / 8) {
          return art::unexpected(ArrayTooSmall);
       }
 
       CrcType finalCrc = finalize(crc_);
 
       // Little-endian output
-      if constexpr (Width == 8) {
+      if constexpr(Width == 8) {
          target[0] = static_cast<uint8_t>(finalCrc);
-      } else if constexpr (Width == 16) {
+      } else if constexpr(Width == 16) {
          target[0] = static_cast<uint8_t>(finalCrc & 0xFF);
          target[1] = static_cast<uint8_t>((finalCrc >> 8) & 0xFF);
       } else { // 32-bit
@@ -139,9 +134,11 @@ class CrcDigest : public Digest {
       crc_ = INIT_VAL;
    }
 
-   [[nodiscard]] CrcType value() const { return finalize(crc_); }
+   [[nodiscard]] CrcType value() const {
+      return finalize(crc_);
+   }
 
- private:
+   private:
    CrcType crc_;
 };
 

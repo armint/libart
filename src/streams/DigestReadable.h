@@ -11,10 +11,10 @@ class DigestReadable : public Readable {
    public:
    DigestReadable(Readable &source, Digest &digest);
 
-   DigestReadable(DigestReadable&&) = default;
-   DigestReadable& operator=(DigestReadable&&) = delete;
-   DigestReadable(const DigestReadable&) = delete;
-   DigestReadable& operator=(const DigestReadable&) = delete;
+   DigestReadable(DigestReadable &&) = default;
+   DigestReadable &operator=(DigestReadable &&) = delete;
+   DigestReadable(const DigestReadable &) = delete;
+   DigestReadable &operator=(const DigestReadable &) = delete;
 
    using Readable::read;
    art::expected<char, Error> read() override;

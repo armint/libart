@@ -1,5 +1,5 @@
-#include <optional>
 #include <doctest/doctest.h>
+#include <optional>
 #include <settings/Setting.h>
 #include <settings/SettingsManager.h>
 #include <streams/ArrayWritable.h>

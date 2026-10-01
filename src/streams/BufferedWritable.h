@@ -15,10 +15,10 @@ class BufferedWritable : public Writable {
    public:
    BufferedWritable(Writable &sink, art::span<uint8_t> buffer);
 
-   BufferedWritable(BufferedWritable&&) = default;
-   BufferedWritable& operator=(BufferedWritable&&) = delete;
-   BufferedWritable(const BufferedWritable&) = delete;
-   BufferedWritable& operator=(const BufferedWritable&) = delete;
+   BufferedWritable(BufferedWritable &&) = default;
+   BufferedWritable &operator=(BufferedWritable &&) = delete;
+   BufferedWritable(const BufferedWritable &) = delete;
+   BufferedWritable &operator=(const BufferedWritable &) = delete;
 
    art::expected<size_t, Error> write(art::span<const uint8_t> data) override;
    art::expected<void, Error> flush() override;

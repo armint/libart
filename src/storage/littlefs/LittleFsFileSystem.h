@@ -328,7 +328,8 @@ class LittleFsFileSystem final : public LittleFsFileSystemBase {
    /// @param device The device to keep the volume on. It must outlive this object. It does not have to be
    /// initialised: mount() and format() call init().
    explicit LittleFsFileSystem(BlockDevice &device)
-      : LittleFsFileSystemBase(device, buffersOf(*this)) {}
+      : LittleFsFileSystemBase(device, buffersOf(*this)) {
+   }
 
    ~LittleFsFileSystem() override {
       shutdown();

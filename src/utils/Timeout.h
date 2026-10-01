@@ -25,7 +25,8 @@ class Timeout {
     * @param time The duration of the timeout in system ticks.
     */
    explicit Timeout(duration_t time)
-      : _deadline(timestamp_in_ms() + time) {}
+      : _deadline(timestamp_in_ms() + time) {
+   }
 
    Timeout(const Timeout &) = default;
    Timeout(Timeout &&) = default;

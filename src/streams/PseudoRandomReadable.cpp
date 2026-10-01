@@ -2,7 +2,8 @@
 #include "PseudoRandomReadable.h"
 
 PseudoRandomReadable::PseudoRandomReadable(uint64_t seed)
-   : rng_(seed, 1) {}
+   : rng_(seed, 1) {
+}
 
 art::expected<char, Readable::Error> PseudoRandomReadable::read() {
    if(idx_ == 0) {

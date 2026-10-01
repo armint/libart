@@ -107,7 +107,8 @@ struct DirectStack {
    explicit DirectStack(const Geometry &geometry = kGeometry)
       : backing(geometry.size)
       , ram(geometry, backing)
-      , powerCut(ram) {}
+      , powerCut(ram) {
+   }
 
    BlockDevice &device() {
       return powerCut;
@@ -123,7 +124,8 @@ struct CipherStack {
       : backing(geometry.size)
       , ram(geometry, backing)
       , powerCut(ram)
-      , cipher(powerCut) {}
+      , cipher(powerCut) {
+   }
 
    BlockDevice &device() {
       return cipher;

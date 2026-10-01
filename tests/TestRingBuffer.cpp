@@ -138,7 +138,7 @@ TEST_CASE("[RingBuffer] try_push_bulk across wraparound boundary") {
    RingBuffer<uint8_t, 8> rb; // capacity() == 7
 
    // Setup: push 5 items (head=5, tail=0, size=5)
-   uint8_t data[5] = {10, 20, 30, 40, 50};
+   uint8_t data[5] = { 10, 20, 30, 40, 50 };
    CHECK(rb.try_push_bulk(data, 5) == 5);
    CHECK(rb.size() == 5);
 
@@ -156,7 +156,7 @@ TEST_CASE("[RingBuffer] try_push_bulk across wraparound boundary") {
    // Push 5 more items. They span the wraparound:
    // - 3 go to indices 5, 6, 7 (to_end=3)
    // - 2 wrap to indices 0, 1
-   uint8_t more_data[5] = {100, 110, 120, 130, 140};
+   uint8_t more_data[5] = { 100, 110, 120, 130, 140 };
    std::size_t pushed = rb.try_push_bulk(more_data, 5);
    CHECK(pushed == 5);
    CHECK(rb.full());
@@ -164,8 +164,8 @@ TEST_CASE("[RingBuffer] try_push_bulk across wraparound boundary") {
 
    // Verify: buffer now contains [40, 50, 100, 110, 120, 130, 140]
    // at indices [3, 4, 5, 6, 7, 0, 1] in logical order
-   uint8_t expected[7] = {40, 50, 100, 110, 120, 130, 140};
-   for (uint8_t i = 0; i < 7; i++) {
+   uint8_t expected[7] = { 40, 50, 100, 110, 120, 130, 140 };
+   for(uint8_t i = 0; i < 7; i++) {
       CHECK(rb.try_pop(out));
       CHECK(out == expected[i]);
    }
@@ -176,7 +176,7 @@ TEST_CASE("[RingBuffer] try_pop_bulk across wraparound boundary") {
    RingBuffer<uint8_t, 8> rb;
 
    // Push 7 items (head=7, tail=0, size=7)
-   uint8_t data[7] = {11, 22, 33, 44, 55, 66, 77};
+   uint8_t data[7] = { 11, 22, 33, 44, 55, 66, 77 };
    CHECK(rb.try_push_bulk(data, 7) == 7);
    CHECK(rb.full());
 
@@ -193,7 +193,7 @@ TEST_CASE("[RingBuffer] try_pop_bulk across wraparound boundary") {
    CHECK(rb.size() == 3);
 
    // Push 3 more to create wraparound scenario (head=2, tail=4, size=6)
-   uint8_t more[3] = {88, 99, 100};
+   uint8_t more[3] = { 88, 99, 100 };
    CHECK(rb.try_push_bulk(more, 3) == 3);
    CHECK(rb.size() == 6);
    CHECK_FALSE(rb.full());
@@ -202,11 +202,11 @@ TEST_CASE("[RingBuffer] try_pop_bulk across wraparound boundary") {
    // Data at [4, 5, 6, 7, 0, 1] = [55, 66, 77, 88, 99, 100]
    // First contiguous run: indices [4, 5, 6, 7] (to_end = 4)
    // Remaining: indices [0, 1] (wrapped portion)
-   uint8_t result[6] = {0};
+   uint8_t result[6] = { 0 };
    std::size_t popped = rb.try_pop_bulk(result, 6);
    CHECK(popped == 6);
-   uint8_t expected[6] = {55, 66, 77, 88, 99, 100};
-   for (std::size_t i = 0; i < 6; i++) {
+   uint8_t expected[6] = { 55, 66, 77, 88, 99, 100 };
+   for(std::size_t i = 0; i < 6; i++) {
       CHECK(result[i] == expected[i]);
    }
    CHECK(rb.empty());
@@ -216,12 +216,12 @@ TEST_CASE("[RingBuffer] try_push_bulk returns partial count when exceeds space")
    RingBuffer<uint8_t, 8> rb;
 
    // Push 5 items (head=5, tail=0, size=5)
-   uint8_t data[5] = {1, 2, 3, 4, 5};
+   uint8_t data[5] = { 1, 2, 3, 4, 5 };
    CHECK(rb.try_push_bulk(data, 5) == 5);
    CHECK(rb.size() == 5);
 
    // Try to push 5 more, but only 2 slots available (capacity - size = 7 - 5 = 2)
-   uint8_t more[5] = {10, 20, 30, 40, 50};
+   uint8_t more[5] = { 10, 20, 30, 40, 50 };
    std::size_t pushed = rb.try_push_bulk(more, 5);
    CHECK(pushed == 2); // truncated to available space
    CHECK(rb.full());
@@ -250,12 +250,12 @@ TEST_CASE("[RingBuffer] try_pop_bulk returns partial count when data insufficien
    RingBuffer<uint8_t, 8> rb;
 
    // Push 3 items
-   uint8_t data[3] = {100, 200, 50};
+   uint8_t data[3] = { 100, 200, 50 };
    CHECK(rb.try_push_bulk(data, 3) == 3);
    CHECK(rb.size() == 3);
 
    // Try to pop 5, but only 3 available
-   uint8_t result[5] = {0};
+   uint8_t result[5] = { 0 };
    std::size_t popped = rb.try_pop_bulk(result, 5);
    CHECK(popped == 3); // only 3 available
    CHECK(result[0] == 100);
@@ -269,9 +269,9 @@ TEST_CASE("[RingBuffer] write_ptr and commit_write basic") {
 
    // Get write pointer on empty buffer
    std::size_t len = 0;
-   uint8_t* ptr = rb.write_ptr(len);
+   uint8_t *ptr = rb.write_ptr(len);
    CHECK(ptr != nullptr);
-   CHECK(len == 7); // full capacity (Size - 1)
+   CHECK(len == 7);   // full capacity (Size - 1)
    CHECK(rb.empty()); // getting a pointer doesn't consume space
 
    // Write 3 items directly
@@ -296,7 +296,7 @@ TEST_CASE("[RingBuffer] write_ptr and commit_write with wraparound and partial c
    RingBuffer<uint8_t, 8> rb; // capacity = 7
 
    // Pre-fill to position head at index 5
-   uint8_t data[5] = {1, 2, 3, 4, 5};
+   uint8_t data[5] = { 1, 2, 3, 4, 5 };
    CHECK(rb.try_push_bulk(data, 5) == 5);
    // head=5, tail=0, size=5
 
@@ -312,7 +312,7 @@ TEST_CASE("[RingBuffer] write_ptr and commit_write with wraparound and partial c
 
    // First write_ptr: available=5, to_end=3, len=3 (indices 5,6,7)
    std::size_t len = 0;
-   uint8_t* ptr = rb.write_ptr(len);
+   uint8_t *ptr = rb.write_ptr(len);
    CHECK(len == 3); // can write 3 before buffer boundary
    REQUIRE(ptr != nullptr);
 
@@ -347,8 +347,8 @@ TEST_CASE("[RingBuffer] write_ptr and commit_write with wraparound and partial c
    CHECK(rb.size() == 7);
 
    // Pop all and verify order: 4, 5, 10, 20, 30, 40, 50
-   uint8_t expected[7] = {4, 5, 10, 20, 30, 40, 50};
-   for (uint8_t i = 0; i < 7; i++) {
+   uint8_t expected[7] = { 4, 5, 10, 20, 30, 40, 50 };
+   for(uint8_t i = 0; i < 7; i++) {
       CHECK(rb.try_pop(out));
       CHECK(out == expected[i]);
    }
@@ -359,13 +359,13 @@ TEST_CASE("[RingBuffer] read_ptr and commit_read basic") {
    RingBuffer<uint8_t, 8> rb;
 
    // Push some data
-   uint8_t data[4] = {77, 88, 99, 110};
+   uint8_t data[4] = { 77, 88, 99, 110 };
    CHECK(rb.try_push_bulk(data, 4) == 4);
    CHECK(rb.size() == 4);
 
    // Get read pointer
    std::size_t len = 0;
-   const uint8_t* ptr = rb.read_ptr(len);
+   const uint8_t *ptr = rb.read_ptr(len);
    CHECK(ptr != nullptr);
    CHECK(len == 4); // 4 items available
 
@@ -384,7 +384,7 @@ TEST_CASE("[RingBuffer] read_ptr and commit_read with partial commit and wraparo
    RingBuffer<uint8_t, 8> rb;
 
    // Pre-fill (head=6, tail=0, size=6)
-   uint8_t data[6] = {11, 22, 33, 44, 55, 66};
+   uint8_t data[6] = { 11, 22, 33, 44, 55, 66 };
    CHECK(rb.try_push_bulk(data, 6) == 6);
 
    // Pop 4 to advance tail (head=6, tail=4, size=2)
@@ -400,14 +400,14 @@ TEST_CASE("[RingBuffer] read_ptr and commit_read with partial commit and wraparo
    CHECK(rb.size() == 2);
 
    // Push 4 more: 2 at indices 6,7, then 2 wrapped at 0,1 (head=2, tail=4, size=6)
-   uint8_t more[4] = {77, 88, 99, 110};
+   uint8_t more[4] = { 77, 88, 99, 110 };
    CHECK(rb.try_push_bulk(more, 4) == 4);
    CHECK(rb.size() == 6);
 
    // First read_ptr: tail=4, available=6, to_end=4, len=4
    // Returns pointer to indices [4, 5, 6, 7] = [55, 66, 77, 88]
    std::size_t len = 0;
-   const uint8_t* ptr = rb.read_ptr(len);
+   const uint8_t *ptr = rb.read_ptr(len);
    CHECK(len == 4); // 4 contiguous elements before end
    REQUIRE(ptr != nullptr);
    CHECK(ptr[0] == 55);
@@ -452,7 +452,7 @@ TEST_CASE("[RingBuffer] write_ptr on empty buffer returns full capacity and spac
    RingBuffer<uint8_t, 8> rb;
 
    std::size_t len = 0;
-   uint8_t* ptr = rb.write_ptr(len);
+   uint8_t *ptr = rb.write_ptr(len);
    CHECK(ptr != nullptr);
    CHECK(len == 7); // full capacity (Size - 1)
    CHECK(len == rb.space_available());
@@ -463,7 +463,7 @@ TEST_CASE("[RingBuffer] read_ptr on empty buffer returns zero length") {
    RingBuffer<uint8_t, 8> rb;
 
    std::size_t len = 0;
-   const uint8_t* ptr = rb.read_ptr(len);
+   const uint8_t *ptr = rb.read_ptr(len);
    CHECK(ptr != nullptr);
    CHECK(len == 0); // nothing to read
    CHECK(rb.empty());
@@ -473,15 +473,15 @@ TEST_CASE("[RingBuffer] read_ptr on full buffer returns available contiguous run
    RingBuffer<uint8_t, 8> rb;
 
    // Fill completely
-   uint8_t data[7] = {1, 2, 3, 4, 5, 6, 7};
+   uint8_t data[7] = { 1, 2, 3, 4, 5, 6, 7 };
    CHECK(rb.try_push_bulk(data, 7) == 7);
    CHECK(rb.full());
 
    // Read pointer should return all 7
    std::size_t len = 0;
-   const uint8_t* ptr = rb.read_ptr(len);
+   const uint8_t *ptr = rb.read_ptr(len);
    CHECK(len == 7);
-   for (uint8_t i = 0; i < 7; i++) {
+   for(uint8_t i = 0; i < 7; i++) {
       CHECK(ptr[i] == i + 1);
    }
 }
@@ -490,13 +490,13 @@ TEST_CASE("[RingBuffer] write_ptr on full buffer returns zero length") {
    RingBuffer<uint8_t, 8> rb;
 
    // Fill completely
-   uint8_t data[7] = {1, 2, 3, 4, 5, 6, 7};
+   uint8_t data[7] = { 1, 2, 3, 4, 5, 6, 7 };
    CHECK(rb.try_push_bulk(data, 7) == 7);
    CHECK(rb.full());
 
    // Write pointer should return zero length
    std::size_t len = 0;
-   uint8_t* ptr = rb.write_ptr(len);
+   uint8_t *ptr = rb.write_ptr(len);
    CHECK(len == 0);
 }
 
@@ -504,13 +504,13 @@ TEST_CASE("[RingBuffer] try_push_bulk on full buffer returns 0") {
    RingBuffer<uint8_t, 8> rb;
 
    // Fill completely (capacity = 7)
-   uint8_t data[7] = {1, 2, 3, 4, 5, 6, 7};
+   uint8_t data[7] = { 1, 2, 3, 4, 5, 6, 7 };
    CHECK(rb.try_push_bulk(data, 7) == 7);
    CHECK(rb.full());
    CHECK(rb.size() == 7);
 
    // Try to push more on full buffer: should return 0 (early return when count > avail)
-   uint8_t more[3] = {10, 20, 30};
+   uint8_t more[3] = { 10, 20, 30 };
    std::size_t pushed = rb.try_push_bulk(more, 3);
    CHECK(pushed == 0);
 
@@ -520,7 +520,7 @@ TEST_CASE("[RingBuffer] try_push_bulk on full buffer returns 0") {
 
    // Verify contents unchanged
    uint8_t out = 0;
-   for (uint8_t i = 1; i <= 7; i++) {
+   for(uint8_t i = 1; i <= 7; i++) {
       CHECK(rb.try_pop(out));
       CHECK(out == i);
    }
@@ -535,7 +535,7 @@ TEST_CASE("[RingBuffer] try_pop_bulk on empty buffer returns 0") {
    CHECK(rb.size() == 0);
 
    // Try to pop from empty buffer: should return 0 (early return when count > avail)
-   uint8_t result[3] = {0};
+   uint8_t result[3] = { 0 };
    std::size_t popped = rb.try_pop_bulk(result, 3);
    CHECK(popped == 0);
 

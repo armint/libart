@@ -18,7 +18,8 @@ void LogManager::unregisterLogger(logging::Logger *logger) {
 }
 
 logging::Logger *LogManager::findLogger(const char *topic) {
-   if(!topic) return nullptr;
+   if(!topic)
+      return nullptr;
    for(auto *l = firstLogger_; l != nullptr; l = l->nextLogger_) {
       if(l->topic() && std::strcmp(l->topic(), topic) == 0) {
          return l;

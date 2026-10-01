@@ -21,7 +21,8 @@ class ModbusSlave {
       using Readable::read;
       ModbusCrc digest_;
       explicit CRCReadable(Readable &source)
-         : DigestReadable(source, digest_) {}
+         : DigestReadable(source, digest_) {
+      }
       bool readCRCAndValidate();
    };
 
@@ -29,7 +30,8 @@ class ModbusSlave {
       public:
       ModbusCrc digest_;
       explicit CRCWritable(Writable &sink)
-         : DigestWritable(sink, digest_) {}
+         : DigestWritable(sink, digest_) {
+      }
       art::expected<size_t, Error> writeCRC();
    };
 

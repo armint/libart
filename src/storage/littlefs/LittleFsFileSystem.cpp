@@ -119,7 +119,8 @@ art::unexpected<Error> failure(Error error) {
 
 LittleFsFileSystemBase::LittleFsFileSystemBase(BlockDevice &device, const Buffers &buffers)
    : device_(device)
-   , buffers_(buffers) {}
+   , buffers_(buffers) {
+}
 
 void LittleFsFileSystemBase::shutdown() {
    art::rtos::MutexGuard guard(mutex_);

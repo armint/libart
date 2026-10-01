@@ -14,12 +14,13 @@ class ArrayWritable : public BoundedWritable {
    public:
    ArrayWritable(art::span<uint8_t> buffer)
       : BoundedWritable(buffer.size())
-      , _buffer(buffer) {}
+      , _buffer(buffer) {
+   }
 
-   ArrayWritable(ArrayWritable&&) = default;
-   ArrayWritable& operator=(ArrayWritable&&) = default;
-   ArrayWritable(const ArrayWritable&) = default;
-   ArrayWritable& operator=(const ArrayWritable&) = default;
+   ArrayWritable(ArrayWritable &&) = default;
+   ArrayWritable &operator=(ArrayWritable &&) = default;
+   ArrayWritable(const ArrayWritable &) = default;
+   ArrayWritable &operator=(const ArrayWritable &) = default;
 
    virtual art::expected<size_t, Error> write(art::span<const uint8_t> data) override;
    virtual art::expected<void, Error> flush() override;

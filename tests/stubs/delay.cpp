@@ -1,6 +1,6 @@
-#include <optional>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <thread>
 #include <utils/timestamp.h>
 

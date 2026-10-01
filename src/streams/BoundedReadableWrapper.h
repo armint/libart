@@ -11,12 +11,13 @@ class BoundedReadableWrapper : public BoundedReadable {
    public:
    BoundedReadableWrapper(Readable &source_, size_t limit)
       : limit_(limit)
-      , source_(source_) {}
+      , source_(source_) {
+   }
 
-   BoundedReadableWrapper(BoundedReadableWrapper&&) = default;
-   BoundedReadableWrapper& operator=(BoundedReadableWrapper&&) = delete;
-   BoundedReadableWrapper(const BoundedReadableWrapper&) = delete;
-   BoundedReadableWrapper& operator=(const BoundedReadableWrapper&) = delete;
+   BoundedReadableWrapper(BoundedReadableWrapper &&) = default;
+   BoundedReadableWrapper &operator=(BoundedReadableWrapper &&) = delete;
+   BoundedReadableWrapper(const BoundedReadableWrapper &) = delete;
+   BoundedReadableWrapper &operator=(const BoundedReadableWrapper &) = delete;
 
    using Readable::read;
    art::expected<char, Error> read() override;

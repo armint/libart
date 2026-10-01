@@ -4,7 +4,9 @@
 namespace {
 class TestableSType : public STypeThermocoupleSensor {
    public:
-   Temperature_t getTemperature() override { return 0; }
+   Temperature_t getTemperature() override {
+      return 0;
+   }
 };
 } // namespace
 

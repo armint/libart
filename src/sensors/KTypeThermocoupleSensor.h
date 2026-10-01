@@ -40,7 +40,8 @@ class KTypeThermocoupleSensor : public ThermocoupleSensor {
    };
 
    KTypeThermocoupleSensor()
-      : ThermocoupleSensor(kTypeStartTemperature, kTypeTemperatureStep) {}
+      : ThermocoupleSensor(kTypeStartTemperature, kTypeTemperatureStep) {
+   }
 
    int32_t getTableValue(size_t index) const override {
       return kTypeVoltageTable[index];

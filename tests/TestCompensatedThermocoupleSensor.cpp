@@ -7,8 +7,12 @@ namespace {
 class MockTemperatureSensor : public TemperatureSensor {
    public:
    Temperature_t temperature = 25.0f;
-   Temperature_t getTemperature() override { return temperature; }
-   Temperature_t getMaxTemperature() override { return 100.0f; }
+   Temperature_t getTemperature() override {
+      return temperature;
+   }
+   Temperature_t getMaxTemperature() override {
+      return 100.0f;
+   }
 };
 
 /**
@@ -18,7 +22,9 @@ class MockTemperatureSensor : public TemperatureSensor {
 class MockKTypeThermocoupleSensor : public KTypeThermocoupleSensor {
    public:
    Temperature_t temperature = 0.0f;
-   Temperature_t getTemperature() override { return temperature; }
+   Temperature_t getTemperature() override {
+      return temperature;
+   }
 };
 
 } // namespace

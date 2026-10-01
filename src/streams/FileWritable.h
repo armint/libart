@@ -45,7 +45,8 @@ class FileWritable : public BoundedWritable {
    /** @param file the open file to write to; it must outlive the stream */
    explicit FileWritable(art::storage::File &file)
       : BoundedWritable(std::numeric_limits<size_t>::max())
-      , file_(file) {}
+      , file_(file) {
+   }
 
    // Not movable, like FileReadable.
    FileWritable(FileWritable &&) = delete;

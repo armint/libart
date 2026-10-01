@@ -18,7 +18,8 @@ namespace {
 class ScriptedDevice : public BlockDevice {
    public:
    explicit ScriptedDevice(const Geometry &geometry)
-      : geometry_(geometry) {}
+      : geometry_(geometry) {
+   }
 
    art::expected<void, Error> init() override {
       ++initCount;
@@ -78,7 +79,8 @@ constexpr Geometry kSdCard{
 // Registers a ScriptedDevice as drive 0, as the fixtures of the FatFs tests do for a real one.
 struct DriveFixture {
    explicit DriveFixture(const Geometry &geometry = kSdCard)
-      : device(geometry) {}
+      : device(geometry) {
+   }
 
    ScriptedDevice device;
    FatFileSystem fatFileSystem{ device };

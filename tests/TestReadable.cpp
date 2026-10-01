@@ -1,10 +1,10 @@
-#include <optional>
 #include <array>
 #include <doctest/doctest.h>
-#include <string_view>
+#include <optional>
 #include <streams/ArrayReadable.h>
 #include <streams/Readable.h>
 #include <streams/StringReadable.h>
+#include <string_view>
 #include <utils/endian.h>
 
 const char *testString = "A string to test Readable::readUntil";

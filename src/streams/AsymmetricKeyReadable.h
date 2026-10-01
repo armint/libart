@@ -15,12 +15,13 @@ class AsymmetricKeyReadable : public Readable {
    public:
    AsymmetricKeyReadable(Readable &source, AsymmetricKey &key)
       : source_(source)
-      , key_(key) {}
+      , key_(key) {
+   }
 
-   AsymmetricKeyReadable(AsymmetricKeyReadable&&) = default;
-   AsymmetricKeyReadable& operator=(AsymmetricKeyReadable&&) = delete;
-   AsymmetricKeyReadable(const AsymmetricKeyReadable&) = delete;
-   AsymmetricKeyReadable& operator=(const AsymmetricKeyReadable&) = delete;
+   AsymmetricKeyReadable(AsymmetricKeyReadable &&) = default;
+   AsymmetricKeyReadable &operator=(AsymmetricKeyReadable &&) = delete;
+   AsymmetricKeyReadable(const AsymmetricKeyReadable &) = delete;
+   AsymmetricKeyReadable &operator=(const AsymmetricKeyReadable &) = delete;
 
    using Readable::read;
    art::expected<char, Error> read() override;

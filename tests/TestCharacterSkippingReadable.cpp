@@ -1,9 +1,9 @@
-#include <optional>
 #include <doctest/doctest.h>
-#include <string_view>
+#include <optional>
 #include <streams/ArrayWritable.h>
 #include <streams/CharacterSkippingReadable.h>
 #include <streams/StringReadable.h>
+#include <string_view>
 #include <utils/streamutils.h>
 
 namespace TestCharacterSkippingReadable {

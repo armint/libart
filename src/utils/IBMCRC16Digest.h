@@ -13,7 +13,8 @@ class IBMCRC16Digest : public Digest {
    IBMCRC16Digest(uint16_t polynomial = 0xA001, uint16_t initialValue = 0xFFFF)
       : polynomial_(polynomial)
       , initial_value_(initialValue)
-      , digest_(initialValue) {}
+      , digest_(initialValue) {
+   }
 
    void update(art::span<const uint8_t> data) override;
    art::expected<size_t, Error> getDigest(art::span<uint8_t> target) override;

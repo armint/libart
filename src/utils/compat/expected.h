@@ -111,11 +111,13 @@ class unexpected {
    template <typename Err = E,
              std::enable_if_t<!std::is_same_v<remove_cvref_t<Err>, unexpected> && !std::is_same_v<remove_cvref_t<Err>, std::in_place_t> && std::is_constructible_v<E, Err>, int> = 0>
    constexpr explicit unexpected(Err &&error)
-      : error_(std::forward<Err>(error)) {}
+      : error_(std::forward<Err>(error)) {
+   }
 
    template <typename... Args, std::enable_if_t<std::is_constructible_v<E, Args...>, int> = 0>
    constexpr explicit unexpected(std::in_place_t, Args &&...args)
-      : error_(std::forward<Args>(args)...) {}
+      : error_(std::forward<Args>(args)...) {
+   }
 
    unexpected &operator=(const unexpected &) = default;
    unexpected &operator=(unexpected &&) = default;
@@ -162,12 +164,12 @@ struct expected_void_value {};
 template <typename T>
 struct is_unexpected : std::false_type {};
 template <typename E>
-struct is_unexpected<unexpected<E> > : std::true_type {};
+struct is_unexpected<unexpected<E>> : std::true_type {};
 
 template <typename T>
 struct is_expected : std::false_type {};
 template <typename T, typename E>
-struct is_expected<expected<T, E> > : std::true_type {};
+struct is_expected<expected<T, E>> : std::true_type {};
 
 [[noreturn]] inline void expected_bad_access() noexcept {
    // value() on an expected that holds an error. std::expected throws, or calls abort() without exceptions.
@@ -178,7 +180,7 @@ struct is_expected<expected<T, E> > : std::true_type {};
  * The value or the error, and which one it is. The primary template is used when T and E are trivially copyable:
  * the anonymous union and therefore this struct are trivially copyable, and every special member is trivial.
  */
-template <typename T, typename E, bool = std::is_trivially_copyable_v<T> && std::is_trivially_copyable_v<E> >
+template <typename T, typename E, bool = std::is_trivially_copyable_v<T> && std::is_trivially_copyable_v<E>>
 struct expected_storage {
    union {
       T value_;
@@ -189,12 +191,14 @@ struct expected_storage {
    template <typename... Args>
    constexpr explicit expected_storage(std::in_place_t, Args &&...args)
       : value_(std::forward<Args>(args)...)
-      , hasValue_(true) {}
+      , hasValue_(true) {
+   }
 
    template <typename... Args>
    constexpr explicit expected_storage(unexpect_t, Args &&...args)
       : error_(std::forward<Args>(args)...)
-      , hasValue_(false) {}
+      , hasValue_(false) {
+   }
 };
 
 /**
@@ -213,12 +217,14 @@ struct expected_storage<T, E, false> {
    template <typename... Args>
    explicit expected_storage(std::in_place_t, Args &&...args)
       : value_(std::forward<Args>(args)...)
-      , hasValue_(true) {}
+      , hasValue_(true) {
+   }
 
    template <typename... Args>
    explicit expected_storage(unexpect_t, Args &&...args)
       : error_(std::forward<Args>(args)...)
-      , hasValue_(false) {}
+      , hasValue_(false) {
+   }
 
    expected_storage(const expected_storage &other)
       : hasValue_(other.hasValue_) {
@@ -360,18 +366,18 @@ std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<
 template <typename T, typename E>
 using expected_enable_construct_for =
 expected_enable_construct<std::is_copy_constructible_v<T> && std::is_copy_constructible_v<E>,
-                          std::is_move_constructible_v<T> && std::is_move_constructible_v<E> >;
+                          std::is_move_constructible_v<T> && std::is_move_constructible_v<E>>;
 
 template <typename T, typename E>
 using expected_enable_assign_for =
 expected_enable_assign<expected_copy_assignable_v<T> && expected_copy_assignable_v<E> && expected_nothrow_move_one_of_v<T, E>,
-                       expected_move_assignable_v<T> && expected_move_assignable_v<E> && expected_nothrow_move_one_of_v<T, E> >;
+                       expected_move_assignable_v<T> && expected_move_assignable_v<E> && expected_nothrow_move_one_of_v<T, E>>;
 
 /** A value argument U of expected<T, E>: not a tag, not an expected and not an unexpected. */
 template <typename T, typename U>
 inline constexpr bool expected_value_argument_v =
 !std::is_same_v<remove_cvref_t<U>, std::in_place_t> && !std::is_same_v<remove_cvref_t<U>, unexpect_t> &&
-!is_expected<remove_cvref_t<U> >::value && !is_unexpected<remove_cvref_t<U> >::value && std::is_constructible_v<T, U>;
+!is_expected<remove_cvref_t<U>>::value && !is_unexpected<remove_cvref_t<U>>::value && std::is_constructible_v<T, U>;
 
 } // namespace detail
 
@@ -388,7 +394,7 @@ class expected : private detail::expected_storage<T, E>,
    static_assert(std::is_object_v<T> && !std::is_array_v<T> && !std::is_reference_v<T>,
                  "expected<T, E> needs an object type T (or void, see the specialization)");
    static_assert(!std::is_same_v<remove_cvref_t<T>, std::in_place_t> &&
-                 !std::is_same_v<remove_cvref_t<T>, unexpect_t> && !detail::is_unexpected<remove_cvref_t<T> >::value,
+                 !std::is_same_v<remove_cvref_t<T>, unexpect_t> && !detail::is_unexpected<remove_cvref_t<T>>::value,
                  "expected<T, E>: T must not be a tag or an unexpected");
 
    public:
@@ -398,7 +404,8 @@ class expected : private detail::expected_storage<T, E>,
 
    template <typename U = T, std::enable_if_t<std::is_default_constructible_v<U>, int> = 0>
    constexpr expected()
-      : Storage(std::in_place) {}
+      : Storage(std::in_place) {
+   }
 
    expected(const expected &) = default;
    expected(expected &&) = default;
@@ -407,35 +414,43 @@ class expected : private detail::expected_storage<T, E>,
 
    template <typename U = T, std::enable_if_t<detail::expected_value_argument_v<T, U> && std::is_convertible_v<U, T>, int> = 0>
    constexpr expected(U &&value)
-      : Storage(std::in_place, std::forward<U>(value)) {}
+      : Storage(std::in_place, std::forward<U>(value)) {
+   }
 
    template <typename U = T, std::enable_if_t<detail::expected_value_argument_v<T, U> && !std::is_convertible_v<U, T>, int> = 0>
    constexpr explicit expected(U &&value)
-      : Storage(std::in_place, std::forward<U>(value)) {}
+      : Storage(std::in_place, std::forward<U>(value)) {
+   }
 
    template <typename G, std::enable_if_t<std::is_convertible_v<const G &, E>, int> = 0>
    constexpr expected(const unexpected<G> &error)
-      : Storage(unexpect, error.error()) {}
+      : Storage(unexpect, error.error()) {
+   }
 
    template <typename G, std::enable_if_t<std::is_constructible_v<E, const G &> && !std::is_convertible_v<const G &, E>, int> = 0>
    constexpr explicit expected(const unexpected<G> &error)
-      : Storage(unexpect, error.error()) {}
+      : Storage(unexpect, error.error()) {
+   }
 
    template <typename G, std::enable_if_t<std::is_convertible_v<G, E>, int> = 0>
    constexpr expected(unexpected<G> &&error)
-      : Storage(unexpect, std::move(error).error()) {}
+      : Storage(unexpect, std::move(error).error()) {
+   }
 
    template <typename G, std::enable_if_t<std::is_constructible_v<E, G> && !std::is_convertible_v<G, E>, int> = 0>
    constexpr explicit expected(unexpected<G> &&error)
-      : Storage(unexpect, std::move(error).error()) {}
+      : Storage(unexpect, std::move(error).error()) {
+   }
 
    template <typename... Args, std::enable_if_t<std::is_constructible_v<T, Args...>, int> = 0>
    constexpr explicit expected(std::in_place_t, Args &&...args)
-      : Storage(std::in_place, std::forward<Args>(args)...) {}
+      : Storage(std::in_place, std::forward<Args>(args)...) {
+   }
 
    template <typename... Args, std::enable_if_t<std::is_constructible_v<E, Args...>, int> = 0>
    constexpr explicit expected(unexpect_t, Args &&...args)
-      : Storage(unexpect, std::forward<Args>(args)...) {}
+      : Storage(unexpect, std::forward<Args>(args)...) {
+   }
 
    template <typename U = T, std::enable_if_t<detail::expected_value_argument_v<T, U> && std::is_assignable_v<T &, U>, int> = 0>
    expected &operator=(U &&value) {
@@ -597,7 +612,8 @@ class expected<void, E> : private detail::expected_storage<detail::expected_void
    using unexpected_type = unexpected<E>;
 
    constexpr expected() noexcept
-      : Storage(std::in_place) {}
+      : Storage(std::in_place) {
+   }
 
    expected(const expected &) = default;
    expected(expected &&) = default;
@@ -606,26 +622,32 @@ class expected<void, E> : private detail::expected_storage<detail::expected_void
 
    template <typename G, std::enable_if_t<std::is_convertible_v<const G &, E>, int> = 0>
    constexpr expected(const unexpected<G> &error)
-      : Storage(unexpect, error.error()) {}
+      : Storage(unexpect, error.error()) {
+   }
 
    template <typename G, std::enable_if_t<std::is_constructible_v<E, const G &> && !std::is_convertible_v<const G &, E>, int> = 0>
    constexpr explicit expected(const unexpected<G> &error)
-      : Storage(unexpect, error.error()) {}
+      : Storage(unexpect, error.error()) {
+   }
 
    template <typename G, std::enable_if_t<std::is_convertible_v<G, E>, int> = 0>
    constexpr expected(unexpected<G> &&error)
-      : Storage(unexpect, std::move(error).error()) {}
+      : Storage(unexpect, std::move(error).error()) {
+   }
 
    template <typename G, std::enable_if_t<std::is_constructible_v<E, G> && !std::is_convertible_v<G, E>, int> = 0>
    constexpr explicit expected(unexpected<G> &&error)
-      : Storage(unexpect, std::move(error).error()) {}
+      : Storage(unexpect, std::move(error).error()) {
+   }
 
    constexpr explicit expected(std::in_place_t) noexcept
-      : Storage(std::in_place) {}
+      : Storage(std::in_place) {
+   }
 
    template <typename... Args, std::enable_if_t<std::is_constructible_v<E, Args...>, int> = 0>
    constexpr explicit expected(unexpect_t, Args &&...args)
-      : Storage(unexpect, std::forward<Args>(args)...) {}
+      : Storage(unexpect, std::forward<Args>(args)...) {
+   }
 
    template <typename G, std::enable_if_t<std::is_constructible_v<E, const G &>, int> = 0>
    expected &operator=(const unexpected<G> &error) {
@@ -647,7 +669,8 @@ class expected<void, E> : private detail::expected_storage<detail::expected_void
    }
 
    /** Does nothing, like std::expected<void, E>::operator*(). */
-   constexpr void operator*() const noexcept {}
+   constexpr void operator*() const noexcept {
+   }
 
    /** Traps (__builtin_trap()) if this holds an error; see the file comment for std::expected. */
    constexpr void value() const {

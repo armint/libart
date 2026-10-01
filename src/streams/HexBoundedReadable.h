@@ -18,12 +18,13 @@ class HexBoundedReadable : public RandomAccessReadable {
 
    explicit HexBoundedReadable(RandomAccessReadable &source)
       : source_(source)
-      , hex_(source) {}
+      , hex_(source) {
+   }
 
-   HexBoundedReadable(HexBoundedReadable&&) = default;
-   HexBoundedReadable& operator=(HexBoundedReadable&&) = delete;
-   HexBoundedReadable(const HexBoundedReadable&) = delete;
-   HexBoundedReadable& operator=(const HexBoundedReadable&) = delete;
+   HexBoundedReadable(HexBoundedReadable &&) = default;
+   HexBoundedReadable &operator=(HexBoundedReadable &&) = delete;
+   HexBoundedReadable(const HexBoundedReadable &) = delete;
+   HexBoundedReadable &operator=(const HexBoundedReadable &) = delete;
 
    // Readable
    art::expected<char, Error> read() override;

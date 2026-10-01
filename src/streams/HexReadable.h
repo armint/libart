@@ -9,12 +9,13 @@ class HexReadable : public Readable {
    public:
    enum { InvalidCharacter = 10 };
    explicit HexReadable(Readable &source)
-      : source_(source) {}
+      : source_(source) {
+   }
 
-   HexReadable(HexReadable&&) = default;
-   HexReadable& operator=(HexReadable&&) = delete;
-   HexReadable(const HexReadable&) = delete;
-   HexReadable& operator=(const HexReadable&) = delete;
+   HexReadable(HexReadable &&) = default;
+   HexReadable &operator=(HexReadable &&) = delete;
+   HexReadable(const HexReadable &) = delete;
+   HexReadable &operator=(const HexReadable &) = delete;
 
    art::expected<char, Error> read() override;
    bool available() override;

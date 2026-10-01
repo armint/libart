@@ -3,7 +3,7 @@
 
 void Writable::writeCharacter(void *ptr, char c) {
    auto &result = static_cast<TfpHelper *>(ptr)->result;
-   if (!result) {
+   if(!result) {
       return;
    }
    Writable &writable = *(static_cast<TfpHelper *>(ptr)->writable);

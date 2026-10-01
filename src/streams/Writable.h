@@ -28,19 +28,21 @@ class Writable {
 
    /** Called when a WriteSession begins. Override to take a lock or start batching for the
     *  duration of the session. Default is a no-op. */
-   virtual void beginWriteSession() noexcept {}
+   virtual void beginWriteSession() noexcept {
+   }
 
    /** Called when a WriteSession ends. Override to release a lock or flush batching started
     *  in beginWriteSession(). Default is a no-op. */
-   virtual void endWriteSession() noexcept {}
+   virtual void endWriteSession() noexcept {
+   }
 
    public:
    Writable() = default;
    virtual ~Writable() = default;
-   Writable(Writable&&) = default;
-   Writable& operator=(Writable&&) = default;
-   Writable(const Writable&) = default;
-   Writable& operator=(const Writable&) = default;
+   Writable(Writable &&) = default;
+   Writable &operator=(Writable &&) = default;
+   Writable(const Writable &) = default;
+   Writable &operator=(const Writable &) = default;
 
    /** Write an amount of data to this writable
     * \param data the data to write

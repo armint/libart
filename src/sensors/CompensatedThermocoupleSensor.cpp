@@ -2,7 +2,8 @@
 
 CompensatedThermocoupleSensor::CompensatedThermocoupleSensor(TemperatureSensor &coldJunctionSensor, ThermocoupleSensor &thermocoupleSensor)
    : coldJunctionSensor(coldJunctionSensor)
-   , thermocoupleSensor(thermocoupleSensor) {}
+   , thermocoupleSensor(thermocoupleSensor) {
+}
 
 Temperature_t CompensatedThermocoupleSensor::getTemperature() {
    auto coldJunctionTemperature = coldJunctionSensor.getTemperature();

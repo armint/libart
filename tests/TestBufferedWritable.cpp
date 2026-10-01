@@ -1,9 +1,9 @@
-#include <optional>
 #include <doctest/doctest.h>
+#include <optional>
 
+#include <etl/vector.h>
 #include <streams/ArrayWritable.h>
 #include <streams/BufferedWritable.h>
-#include <etl/vector.h>
 
 // Mock sink to track writes and flushes
 class MockSink : public Writable {

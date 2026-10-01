@@ -31,7 +31,8 @@ constexpr Geometry kPageNorGeometry{
 template <uint64_t Size>
 struct RamFixture {
    explicit RamFixture(const Geometry &geometry)
-      : device(geometry, backing) {}
+      : device(geometry, backing) {
+   }
 
    std::array<uint8_t, Size> backing{};
    RamBlockDevice device;

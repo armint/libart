@@ -15,12 +15,13 @@ class AsymmetricKeyWritable : public Writable {
    public:
    AsymmetricKeyWritable(Writable &sink, AsymmetricKey &key)
       : key_(key)
-      , sink_(sink) {}
+      , sink_(sink) {
+   }
 
-   AsymmetricKeyWritable(AsymmetricKeyWritable&&) = default;
-   AsymmetricKeyWritable& operator=(AsymmetricKeyWritable&&) = delete;
-   AsymmetricKeyWritable(const AsymmetricKeyWritable&) = delete;
-   AsymmetricKeyWritable& operator=(const AsymmetricKeyWritable&) = delete;
+   AsymmetricKeyWritable(AsymmetricKeyWritable &&) = default;
+   AsymmetricKeyWritable &operator=(AsymmetricKeyWritable &&) = delete;
+   AsymmetricKeyWritable(const AsymmetricKeyWritable &) = delete;
+   AsymmetricKeyWritable &operator=(const AsymmetricKeyWritable &) = delete;
 
    using Writable::write;
    art::expected<size_t, Error> write(art::span<const uint8_t> data) override;
