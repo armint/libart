@@ -208,9 +208,9 @@ set_source_files_properties(
         PROPERTIES COMPILE_OPTIONS "-O2"
 )
 
-# The compat headers (src/utils/compat/) must work at C++17, where the rest of libArT does not compile yet, so
+# The compat headers (src/utils/compat/) must work at C++17, where not all of libArT compiles yet, so
 # TestCompat.cpp is built into two more binaries of its own, besides libArT-tests (C++23, std::expected/std::span),
-# together with the tests of src/streams/ (see below):
+# together with the tests of the ported modules (see below):
 # - libArT-compat-tests-cpp17: C++17, so the own art::expected and etl::span.
 # - libArT-compat-tests-cpp23-own: C++23 with ART_USE_STD_EXPECTED_SPAN=0, the setting of an application that
 #   builds at C++17 while libArT builds at C++23; it also compares the sizes of the own and the std types.
@@ -260,19 +260,72 @@ set(_ART_COMPAT_STORAGE_TESTS
         storage/TestFatFileReadable.cpp
         storage/TestFatFileWritable.cpp
 )
+# The same holds for src/modbus/, src/logging/, src/settings/, src/sensors/, src/utils/ and the header-only
+# src/freertos/ (on the FreeRTOS host stubs): their tests, the sources they need and the remaining sources of these
+# modules are built into both binaries, so that the templates the tests instantiate compile with the own types too.
+set(_ART_COMPAT_MODULE_SOURCES
+        TestNumberUtils.cpp
+        TestSettings.cpp
+        TestModbusMaster.cpp
+        TestModbusSlave.cpp
+        TestIBMCRC16.cpp
+        TestTfpPrintf.cpp
+        TestTfpPrintfUtils.cpp
+        TestAsymmetricKey.cpp
+        TestSHA256.cpp
+        TestLogging.cpp
+        TestRtos.cpp
+        TestKTypeThermocoupleSensor.cpp
+        TestSTypeThermocoupleSensor.cpp
+        TestCompensatedThermocoupleSensor.cpp
+        TestRingBuffer.cpp
+        TestFloatText.cpp
+        stubs/timestamp.cpp
+        stubs/delay.cpp
+        ../src/streams/CountingWritableWrapper.cpp
+        ../src/streams/DigestReadable.cpp
+        ../src/streams/DigestWritable.cpp
+        ../src/streams/AsymmetricKeyReadable.cpp
+        ../src/streams/AsymmetricKeyWritable.cpp
+        ../src/modbus/ModbusMaster.cpp
+        ../src/modbus/ModbusSlave.cpp
+        ../src/logging/LogManager.cpp
+        ../src/settings/SettingBase.cpp
+        ../src/settings/SettingsManager.cpp
+        ../src/sensors/ThermocoupleSensor.cpp
+        ../src/sensors/CompensatedThermocoupleSensor.cpp
+        ../src/utils/cstring.cpp
+        ../src/utils/lists.cpp
+        ../src/utils/JSONReader.cpp
+        ../src/utils/JSONWriter.cpp
+        ../src/utils/streamutils.cpp
+        ../src/utils/IBMCRC16Digest.cpp
+        ../src/utils/IBMCRC16FastDigest.cpp
+        ../src/utils/SHA256Digest.cpp
+        ../src/utils/FloatText.cpp
+        ../src/utils/ryu_float.c
+)
 # These files have warnings that are older than the compat binaries and that the strict flags below make fatal.
 # Keep them as warnings, for these files only: the variable length array in Readable::readUntil(), the unused
-# putstr() in tfp_printf.cpp and the unused parameter of FatDir::read().
+# putstr() in tfp_printf.cpp, the unused parameter of FatDir::read(), the unused parameters of mocks in
+# TestModbusSlave.cpp and TestAsymmetricKey.cpp, the unused variables in TestRingBuffer.cpp and TestIBMCRC16.cpp
+# (the latter reported by Clang only) and the unused putf_etl() in TestSHA256.cpp.
 set_source_files_properties(../src/streams/Readable.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=vla")
 set_source_files_properties(../src/utils/tfp_printf.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-function")
 set_source_files_properties(../src/storage/FatDir.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-parameter")
+set_source_files_properties(TestModbusSlave.cpp TestAsymmetricKey.cpp PROPERTIES COMPILE_OPTIONS
+        "-Wno-error=unused-parameter")
+set_source_files_properties(TestRingBuffer.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-variable")
+set_source_files_properties(TestIBMCRC16.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-but-set-variable")
+set_source_files_properties(TestSHA256.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-function")
 foreach(_art_compat_standard 17 23)
     if (_art_compat_standard EQUAL 17)
         set(_art_compat_target libArT-compat-tests-cpp17)
     else ()
         set(_art_compat_target libArT-compat-tests-cpp23-own)
     endif ()
-    add_executable(${_art_compat_target} TestCompat.cpp test_main.cpp ${_ART_COMPAT_STREAM_SOURCES} ${_ART_COMPAT_STORAGE_SOURCES})
+    add_executable(${_art_compat_target} TestCompat.cpp test_main.cpp ${_ART_COMPAT_STREAM_SOURCES} ${_ART_COMPAT_STORAGE_SOURCES}
+            ${_ART_COMPAT_MODULE_SOURCES})
     set_target_properties(${_art_compat_target} PROPERTIES
             CXX_STANDARD ${_art_compat_standard}
             CXX_STANDARD_REQUIRED ON
@@ -280,8 +333,10 @@ foreach(_art_compat_standard 17 23)
     target_compile_options(${_art_compat_target} PRIVATE -O0 -g -Wall -Wextra -Wpedantic -Werror)
     # UNIT_TESTING: FatFile::MockState, as in libArT-tests.
     target_compile_definitions(${_art_compat_target} PRIVATE UNIT_TESTING)
-    target_include_directories(${_art_compat_target} PRIVATE ../src ../src/storage ../src/storage/fatfs .)
-    target_link_libraries(${_art_compat_target} PRIVATE etl::etl doctest::doctest)
+    target_include_directories(${_art_compat_target} PRIVATE ../src ../src/storage ../src/storage/fatfs . stubs/freertos)
+    # Ryu (FloatText.cpp, ryu_float.c) as a system include, so that the strict flags do not apply to its headers.
+    target_include_directories(${_art_compat_target} SYSTEM PRIVATE ${ryu_SOURCE_DIR})
+    target_link_libraries(${_art_compat_target} PRIVATE etl::etl doctest::doctest ArduinoJson)
 endforeach()
 target_compile_definitions(libArT-compat-tests-cpp23-own PRIVATE ART_USE_STD_EXPECTED_SPAN=0)
 target_sources(libArT-compat-tests-cpp23-own PRIVATE ${_ART_COMPAT_STORAGE_TESTS})

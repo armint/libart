@@ -16,7 +16,7 @@ static void putf_etl(void *p, char c) {
    s->append(1, c);
 }
 
-static etl::string<65> to_hex(std::span<const uint8_t> data) {
+static etl::string<65> to_hex(art::span<const uint8_t> data) {
    etl::string<65> s;
    auto hex_digit = [](uint8_t n) -> char {
       return n < 10 ? '0' + n : 'a' + (n - 10);
@@ -42,7 +42,7 @@ TEST_CASE("SHA256Digest basic cases [sha256]") {
 
    SUBCASE("Known message: 'abc'") {
       const char *msg = "abc";
-      sha.update(std::span{ reinterpret_cast<const uint8_t *>(msg), 3 });
+      sha.update(art::span{ reinterpret_cast<const uint8_t *>(msg), 3 });
       std::array<uint8_t, 32> out{};
       auto res = sha.getDigest(out);
       REQUIRE(res.has_value());
@@ -52,7 +52,7 @@ TEST_CASE("SHA256Digest basic cases [sha256]") {
 
    SUBCASE("Known message: 'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq'") {
       const char *msg = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
-      sha.update(std::span{ reinterpret_cast<const uint8_t *>(msg), strlen(msg) });
+      sha.update(art::span{ reinterpret_cast<const uint8_t *>(msg), strlen(msg) });
       std::array<uint8_t, 32> out{};
       auto res = sha.getDigest(out);
       REQUIRE(res.has_value());
@@ -78,7 +78,7 @@ TEST_CASE("SHA256Digest chunked updates [sha256]") {
 
 TEST_CASE("SHA256Digest reset [sha256]") {
    SHA256Digest sha;
-   sha.update(std::span{ reinterpret_cast<const uint8_t *>("abc"), 3 });
+   sha.update(art::span{ reinterpret_cast<const uint8_t *>("abc"), 3 });
    sha.reset();
    
    std::array<uint8_t, 32> out{};
@@ -94,7 +94,7 @@ TEST_CASE("SHA256Digest with DigestWritable [sha256][streams]") {
    DigestWritable dw(sink, sha);
 
    const char *msg = "abc";
-   auto res = dw.write(std::span{ reinterpret_cast<const uint8_t *>(msg), 3 });
+   auto res = dw.write(art::span{ reinterpret_cast<const uint8_t *>(msg), 3 });
    REQUIRE(res.has_value());
    REQUIRE(res.value() == 3);
 
@@ -112,9 +112,9 @@ TEST_CASE("SHA256Digest with DigestWritable [sha256][streams]") {
       sink.reset(0);
       const char *part1 = "abcdbcdecdefdefgefghfghighijhijk";
       const char *part2 = "ijkljklmklmnlmnomnopnopq";
-      
-      dw.write(std::span{ reinterpret_cast<const uint8_t *>(part1), strlen(part1) });
-      dw.write(std::span{ reinterpret_cast<const uint8_t *>(part2), strlen(part2) });
+
+      dw.write(art::span{ reinterpret_cast<const uint8_t *>(part1), strlen(part1) });
+      dw.write(art::span{ reinterpret_cast<const uint8_t *>(part2), strlen(part2) });
 
       std::array<uint8_t, 32> out2{};
       auto digestRes2 = sha.getDigest(out2);
@@ -129,11 +129,11 @@ TEST_CASE("SHA256Digest with DigestWritable [sha256][streams]") {
 TEST_CASE("SHA256Digest with DigestReadable [sha256][streams]") {
    SHA256Digest sha;
    const char *msg = "abc";
-   ArrayReadable source(std::span{ reinterpret_cast<const uint8_t *>(msg), 3 });
+   ArrayReadable source(art::span{ reinterpret_cast<const uint8_t *>(msg), 3 });
    DigestReadable dr(source, sha);
 
    uint8_t buffer[3];
-   auto res = dr.read(std::span<uint8_t>(buffer, 3));
+   auto res = dr.read(art::span<uint8_t>(buffer, 3));
    REQUIRE(res.has_value());
    REQUIRE(res.value() == 3);
    REQUIRE(memcmp(buffer, msg, 3) == 0);

@@ -1,9 +1,9 @@
 #pragma once
 
 #include "TemperatureSensor.h"
+#include "utils/compat/span.h"
 #include <array>
 #include <cstdint>
-#include <span>
 #include <utils/LookupTable.h>
 
 namespace ntc {
@@ -71,8 +71,8 @@ class ThermistorSensor : public TemperatureSensor {
       : adcValue(adcValue) {}
 
    Temperature_t getTemperature() override {
-      return getInterpolatedValueFromLookupTable(adcValue, std::span<const uint16_t>(adcTable.data(), adcTable.size()),
-                                                  startTemperature, temperatureStep);
+      return getInterpolatedValueFromLookupTable(adcValue, art::span<const uint16_t>(adcTable.data(), adcTable.size()),
+                                                 startTemperature, temperatureStep);
    }
 
    Temperature_t getMaxTemperature() override {

@@ -1,5 +1,5 @@
 #include "FloatText.h"
-#include <bit>
+#include "utils/compat/bit.h"
 #include <cstdint>
 
 extern "C" {
@@ -59,13 +59,13 @@ bool iequals(std::string_view text, const char *lower) {
 }
 
 float bitsToFloat(uint32_t bits) {
-   return std::bit_cast<float>(bits);
+   return art::bit_cast<float>(bits);
 }
 
 } // namespace
 
-size_t formatFloat(float value, std::span<char> dest) {
-   const uint32_t bits = std::bit_cast<uint32_t>(value);
+size_t formatFloat(float value, art::span<char> dest) {
+   const uint32_t bits = art::bit_cast<uint32_t>(value);
    const uint32_t ieeeExponent = (bits >> 23) & 0xFFu;
    const uint32_t ieeeMantissa = bits & 0x7FFFFFu;
 
@@ -147,7 +147,7 @@ size_t formatFloat(float value, std::span<char> dest) {
    return len;
 }
 
-std::expected<float, DecodeError> parseFloat(std::string_view text) {
+art::expected<float, DecodeError> parseFloat(std::string_view text) {
    size_t i = 0;
    bool negative = false;
    if(i < text.size() && (text[i] == '-' || text[i] == '+')) {
@@ -186,7 +186,7 @@ std::expected<float, DecodeError> parseFloat(std::string_view text) {
       const char c = rest[k];
       if(c == '.') {
          if(sawDot) {
-            return std::unexpected(DecodeError::MalformedInput);
+            return art::unexpected(DecodeError::MalformedInput);
          }
          sawDot = true;
          continue;
@@ -227,12 +227,12 @@ std::expected<float, DecodeError> parseFloat(std::string_view text) {
       }
    }
    if(!sawDigit) {
-      return std::unexpected(DecodeError::MalformedInput);
+      return art::unexpected(DecodeError::MalformedInput);
    }
 
    if(k < rest.size()) {
       if((rest[k] | 0x20) != 'e') {
-         return std::unexpected(DecodeError::MalformedInput);
+         return art::unexpected(DecodeError::MalformedInput);
       }
       ++k;
       bool exponentNegative = false;
@@ -240,13 +240,13 @@ std::expected<float, DecodeError> parseFloat(std::string_view text) {
          exponentNegative = rest[k++] == '-';
       }
       if(k == rest.size()) {
-         return std::unexpected(DecodeError::MalformedInput);
+         return art::unexpected(DecodeError::MalformedInput);
       }
       int32_t literalExponent = 0;
       for(; k < rest.size(); ++k) {
          const char c = rest[k];
          if(c < '0' || c > '9') {
-            return std::unexpected(DecodeError::MalformedInput);
+            return art::unexpected(DecodeError::MalformedInput);
          }
          // Saturate rather than overflow: once past this, the result is 0 or +-inf regardless of
          // any further digits, which the magnitude check below still gets right.
@@ -297,7 +297,7 @@ std::expected<float, DecodeError> parseFloat(std::string_view text) {
    if(s2f_n(buf, static_cast<int>(len), &result) != SUCCESS) {
       // Should not happen given the normalization above; fail safe rather than propagate a wrong
       // value.
-      return std::unexpected(DecodeError::MalformedInput);
+      return art::unexpected(DecodeError::MalformedInput);
    }
    return negative ? -result : result;
 }

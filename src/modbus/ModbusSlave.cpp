@@ -7,7 +7,7 @@
 
 namespace modbus {
 
-ModbusSlave::ModbusSlave(Readable &readable, Writable &writable, std::span<uint8_t> buffer, enabler_t rxEnabler, enabler_t txEnabler)
+ModbusSlave::ModbusSlave(Readable &readable, Writable &writable, art::span<uint8_t> buffer, enabler_t rxEnabler, enabler_t txEnabler)
    : readable_(readable)
    , writable_(writable)
    , buffer_(buffer)
@@ -17,7 +17,7 @@ ModbusSlave::ModbusSlave(Readable &readable, Writable &writable, std::span<uint8
    readable_.setTimeout(20);
 }
 
-ModbusSlave::ModbusSlave(BufferedReadable &readable, Writable &writable, std::span<uint8_t> buffer, enabler_t rxEnabler, enabler_t txEnabler)
+ModbusSlave::ModbusSlave(BufferedReadable &readable, Writable &writable, art::span<uint8_t> buffer, enabler_t rxEnabler, enabler_t txEnabler)
    : readable_(readable)
    , buffered_readable_(&readable)
    , writable_(writable)
@@ -31,7 +31,7 @@ ModbusSlave::ModbusSlave(BufferedReadable &readable, Writable &writable, std::sp
 
 bool ModbusSlave::CRCReadable::readCRCAndValidate() {
    uint8_t expected[2];
-   digest_.getDigest(std::span(expected, 2));
+   digest_.getDigest(art::span(expected, 2));
    uint8_t calculated[2];
    if(auto res = read(calculated); !res) {
       return false;
@@ -39,13 +39,13 @@ bool ModbusSlave::CRCReadable::readCRCAndValidate() {
    return std::memcmp(expected, calculated, 2) == 0;
 }
 
-std::expected<size_t, Writable::Error> ModbusSlave::CRCWritable::writeCRC() {
+art::expected<size_t, Writable::Error> ModbusSlave::CRCWritable::writeCRC() {
    uint8_t crc[2];
    digest_.getDigest(crc);
    return sink_.write(crc);
 }
 
-std::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t function, uint8_t exceptionCode) {
+art::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t function, uint8_t exceptionCode) {
    enableRx(false);
    enableTx(true);
    CRCWritable w(writable_);

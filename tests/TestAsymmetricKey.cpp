@@ -15,38 +15,38 @@ public:
     void reset() override { resetCalled = true; data.clear(); }
     size_t getOutputSize() const override { return 32; }
     
-    std::expected<size_t, Error> write(std::span<const uint8_t> d) override {
-        if (data.size() + d.size() > data.max_size()) return std::unexpected(Overflow);
+    art::expected<size_t, Error> write(art::span<const uint8_t> d) override {
+        if (data.size() + d.size() > data.max_size()) return art::unexpected(Overflow);
         data.insert(data.end(), d.begin(), d.end());
         return d.size();
     }
     
-    std::expected<void, Error> flush() override { return {}; }
+    art::expected<void, Error> flush() override { return {}; }
 
-    std::expected<size_t, Error> sign(std::span<uint8_t> signature) override {
-        if (signature.size() < 4) return std::unexpected(Overflow);
+    art::expected<size_t, Error> sign(art::span<uint8_t> signature) override {
+        if (signature.size() < 4) return art::unexpected(Overflow);
         signature[0] = 's'; signature[1] = 'i'; signature[2] = 'g'; signature[3] = (uint8_t)data.size();
         return 4;
     }
 
-    std::expected<bool, Error> verify(std::span<const uint8_t> signature) override {
+    art::expected<bool, Error> verify(art::span<const uint8_t> signature) override {
         return signature.size() == 4 && signature[0] == 's' && signature[3] == (uint8_t)data.size();
     }
 
-    std::expected<size_t, Error> encrypt(std::span<uint8_t> ciphertext) override { return 0; }
-    std::expected<size_t, Error> decrypt(std::span<uint8_t> plaintext) override { return 0; }
+    art::expected<size_t, Error> encrypt(art::span<uint8_t> ciphertext) override { return 0; }
+    art::expected<size_t, Error> decrypt(art::span<uint8_t> plaintext) override { return 0; }
 };
 
 // A simple Writable for testing
 class VectorWritable : public Writable {
 public:
     etl::vector<uint8_t, 128> output;
-    std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
-        if (output.size() + data.size() > output.max_size()) return std::unexpected(Overflow);
+    art::expected<size_t, Error> write(art::span<const uint8_t> data) override {
+        if (output.size() + data.size() > output.max_size()) return art::unexpected(Overflow);
         output.insert(output.end(), data.begin(), data.end());
         return data.size();
     }
-    std::expected<void, Error> flush() override { return {}; }
+    art::expected<void, Error> flush() override { return {}; }
 };
 
 TEST_CASE("AsymmetricKey interface and adapters [crypto]") {
@@ -57,7 +57,7 @@ TEST_CASE("AsymmetricKey interface and adapters [crypto]") {
         AsymmetricKeyWritable akw(sink, key);
         
         const uint8_t msg[] = "hello";
-        akw.write(std::span(msg, 5)).value();
+        akw.write(art::span(msg, 5)).value();
         REQUIRE(sink.output.size() == 5);
         REQUIRE(key.data.size() == 5);
         
@@ -73,7 +73,7 @@ TEST_CASE("AsymmetricKey interface and adapters [crypto]") {
         AsymmetricKeyReadable akr(source, key);
         
         uint8_t buf[10];
-        auto res = akr.read(std::span(buf, 5));
+        auto res = akr.read(art::span(buf, 5));
         REQUIRE(res.has_value());
         REQUIRE(res.value() == 5);
         REQUIRE(key.data.size() == 5);

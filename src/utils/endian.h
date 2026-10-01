@@ -78,21 +78,21 @@ inline constexpr std::enable_if_t<std::is_floating_point_v<T>, T> convertEndian(
    }
 
    if constexpr(sizeof(T) == 2) {
-      uint16_t temp;
+      uint16_t temp = 0;
       std::memcpy(&temp, &in, sizeof(T));
       temp = __builtin_bswap16(temp);
       T result;
       std::memcpy(&result, &temp, sizeof(T));
       return result;
    } else if constexpr(sizeof(T) == 4) {
-      uint32_t temp;
+      uint32_t temp = 0;
       std::memcpy(&temp, &in, sizeof(T));
       temp = __builtin_bswap32(temp);
       T result;
       std::memcpy(&result, &temp, sizeof(T));
       return result;
    } else if constexpr(sizeof(T) == 8) {
-      uint64_t temp;
+      uint64_t temp = 0;
       std::memcpy(&temp, &in, sizeof(T));
       temp = __builtin_bswap64(temp);
       T result;

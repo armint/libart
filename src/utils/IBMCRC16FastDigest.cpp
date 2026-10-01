@@ -2,7 +2,7 @@
 
 #include "IBMCRC16FastDigest.h"
 
-void IBMCRC16FastDigest::update(std::span<const uint8_t> data) {
+void IBMCRC16FastDigest::update(art::span<const uint8_t> data) {
    constexpr uint16_t lookupTable[]{
       0x0000, 0xC1C0, 0x81C1, 0x4001, 0x01C3, 0xC003, 0x8002, 0x41C2, 0x01C6, 0xC006, 0x8007, 0x41C7, 0x0005, 0xC1C5,
       0x81C4, 0x4004, 0x01CC, 0xC00C, 0x800D, 0x41CD, 0x000F, 0xC1CF, 0x81CE, 0x400E, 0x000A, 0xC1CA, 0x81CB, 0x400B,
@@ -38,9 +38,9 @@ void IBMCRC16FastDigest::update(std::span<const uint8_t> data) {
    digest_ = static_cast<uint16_t>((static_cast<uint16_t>(crc_lo) << 8) | crc_hi);
 }
 
-std::expected<size_t, Digest::Error> IBMCRC16FastDigest::getDigest(std::span<uint8_t> target) {
+art::expected<size_t, Digest::Error> IBMCRC16FastDigest::getDigest(art::span<uint8_t> target) {
    if(target.size() < sizeof(digest_)) {
-      return std::unexpected(ArrayTooSmall);
+      return art::unexpected(ArrayTooSmall);
    }
    auto p = target.data();
    *reinterpret_cast<uint16_t *>(p) = digest_;

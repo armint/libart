@@ -1,8 +1,8 @@
 #pragma once
 
 #include "art_types.h"
+#include "utils/compat/span.h"
 #include <cstdint>
-#include <span>
 
 /**
  * An interface class that temperature sensors should implement

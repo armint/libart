@@ -12,8 +12,8 @@ class IBMCRC16FastDigest : public Digest {
       : initial_value_(initialValue)
       , digest_(initialValue) {}
 
-   void update(std::span<const uint8_t> data) override;
-   std::expected<size_t, Error> getDigest(std::span<uint8_t> target) override;
+   void update(art::span<const uint8_t> data) override;
+   art::expected<size_t, Error> getDigest(art::span<uint8_t> target) override;
    void reset() override {
       digest_ = initial_value_;
    }

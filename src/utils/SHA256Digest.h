@@ -19,14 +19,14 @@ class SHA256Digest : public Digest {
     * @brief Updates the digest with a chunk of data.
     * @param data Span of bytes to process.
     */
-   void update(std::span<const uint8_t> data) override;
+   void update(art::span<const uint8_t> data) override;
 
    /**
     * @brief Finalizes the hash and retrieves the 32-byte digest.
     * @param target Buffer to store the resulting hash (must be at least 32 bytes).
     * @return Size of the digest (32) or error if buffer is too small.
     */
-   std::expected<size_t, Error> getDigest(std::span<uint8_t> target) override;
+   art::expected<size_t, Error> getDigest(art::span<uint8_t> target) override;
 
    /**
     * @brief Resets the digest state for a new computation.
@@ -38,7 +38,7 @@ class SHA256Digest : public Digest {
     * @brief Processes a 64-byte block using the SHA-256 algorithm.
     * @param data A 64-byte chunk of data.
     */
-   void processBlock(std::span<const uint8_t, 64> data);
+   void processBlock(art::span<const uint8_t, 64> data);
 
    /**
     * @brief Applies padding and length according to FIPS 180-4.

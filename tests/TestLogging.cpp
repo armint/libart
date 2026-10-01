@@ -1,7 +1,7 @@
 
-#include <doctest/doctest.h>
+#include "utils/compat/span.h"
 #include <cstring>
-#include <span>
+#include <doctest/doctest.h>
 #include <string>
 #include <vector>
 
@@ -128,10 +128,10 @@ TEST_CASE("[Logging] Logger writes formatted output to sink") {
 // at the time of each write(), used to verify a Logger line is written inside one session.
 class SessionCountingWritable : public Writable {
    public:
-   explicit SessionCountingWritable(std::span<uint8_t> buffer)
+   explicit SessionCountingWritable(art::span<uint8_t> buffer)
       : _buffer(buffer) {}
 
-   std::expected<size_t, Error> write(std::span<const uint8_t> data) override {
+   art::expected<size_t, Error> write(art::span<const uint8_t> data) override {
       // Record the session nesting depth open at the time of this write(): 0 = no session,
       // 1 = only the caller's own (e.g. printf()'s) session, 2 = also nested inside a wider
       // one held by a caller such as Logger. tfp_format() writes one character (a 1-byte
@@ -147,12 +147,12 @@ class SessionCountingWritable : public Writable {
          _buffer[_position] = data[i];
       }
       if(written != data.size()) {
-         return std::unexpected(Overflow);
+         return art::unexpected(Overflow);
       }
       return written;
    }
 
-   std::expected<void, Error> flush() override {
+   art::expected<void, Error> flush() override {
       depthDuringFlush = beginCount - endCount;
       return {};
    }
@@ -176,7 +176,7 @@ class SessionCountingWritable : public Writable {
    }
 
    private:
-   std::span<uint8_t> _buffer;
+   art::span<uint8_t> _buffer;
    size_t _position{ 0 };
 };
 

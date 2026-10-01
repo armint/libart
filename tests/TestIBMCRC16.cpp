@@ -1,11 +1,11 @@
-#include <optional>
+#include "utils/compat/span.h"
 #include <algorithm>
 #include <array>
-#include <doctest/doctest.h>
 #include <cstdint>
 #include <cstring>
-#include <span>
+#include <doctest/doctest.h>
 #include <etl/vector.h>
+#include <optional>
 
 #include "utils/IBMCRC16Digest.h"
 #include "utils/IBMCRC16FastDigest.h"
@@ -25,7 +25,7 @@ TEST_CASE("ModbusCrc from new implementation matches IBMCRC16Digest [crc16]") {
    IBMCRC16Digest slow{};
 
    const char *msg = "123456789";
-   std::span<const uint8_t> data{ reinterpret_cast<const uint8_t *>(msg), strlen(msg) };
+   art::span<const uint8_t> data{ reinterpret_cast<const uint8_t *>(msg), strlen(msg) };
    modbus.update(data);
    slow.update(data);
 
@@ -58,7 +58,7 @@ TEST_CASE("ModbusCrc from new implementation matches IBMCRC16Digest [crc16]") {
       size_t chunk_size = 0;
       for (size_t i = 0; i < data.size(); ++i) {
          if (i % 17 == 0) ++chunk_size;
-         std::span<const uint8_t> part{ &data[i], 1 };
+         art::span<const uint8_t> part{ &data[i], 1 };
          modbus_chunk.update(part);
          slow_chunk.update(part);
       }
@@ -84,7 +84,7 @@ TEST_CASE("IBMCRC16Digest and IBMCRC16FastDigest produce identical digests (basi
 
    SUBCASE("Known short message: 123456789") {
       const char *msg = "123456789";
-      std::span<const uint8_t> data{ reinterpret_cast<const uint8_t *>(msg), strlen(msg) };
+      art::span<const uint8_t> data{ reinterpret_cast<const uint8_t *>(msg), strlen(msg) };
       slow.update(data);
       fast.update(data);
       auto s = digest_value(slow);
@@ -122,7 +122,7 @@ TEST_CASE("IBMCRC16Digest and IBMCRC16FastDigest produce identical digests (chun
    while(pos < data.size()) {
       size_t remaining = data.size() - pos;
       size_t take = std::min(remaining, chunk);
-      std::span<const uint8_t> part{ data.data() + pos, take };
+      art::span<const uint8_t> part{ data.data() + pos, take };
       slow.update(part);
       fast.update(part);
       pos += take;

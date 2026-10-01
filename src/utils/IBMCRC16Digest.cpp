@@ -1,7 +1,7 @@
 
 #include "IBMCRC16Digest.h"
 
-void IBMCRC16Digest::update(std::span<const uint8_t> data) {
+void IBMCRC16Digest::update(art::span<const uint8_t> data) {
    for(auto b : data) {
       digest_ ^= b;
       for(int i = 0; i < 8; ++i) {
@@ -13,9 +13,9 @@ void IBMCRC16Digest::update(std::span<const uint8_t> data) {
       }
    }
 }
-std::expected<size_t, Digest::Error> IBMCRC16Digest::getDigest(std::span<uint8_t> target) {
+art::expected<size_t, Digest::Error> IBMCRC16Digest::getDigest(art::span<uint8_t> target) {
    if(target.size() < sizeof(digest_)) {
-      return std::unexpected(ArrayTooSmall);
+      return art::unexpected(ArrayTooSmall);
    }
    auto p = target.data();
    *reinterpret_cast<uint16_t *>(p) = digest_;
