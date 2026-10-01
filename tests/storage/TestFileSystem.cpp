@@ -15,7 +15,7 @@ namespace {
 
 // Compares through a bool: doctest would stringify Error through the toString() found by ADL, which does not fit.
 template <typename T>
-bool failedWith(const std::expected<T, Error> &result, Error error) {
+bool failedWith(const art::expected<T, Error> &result, Error error) {
    return !result.has_value() && result.error() == error;
 }
 

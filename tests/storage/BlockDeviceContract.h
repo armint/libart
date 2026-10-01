@@ -1,8 +1,8 @@
 #pragma once
 
 #include "storage/BlockDevice.h"
+#include "utils/compat/expected.h"
 #include <cstdint>
-#include <expected>
 #include <optional>
 
 namespace art::storage::test {
@@ -36,7 +36,7 @@ inline constexpr uint8_t kNorErasedByte = 0xFFu;
 void checkBlockDeviceContract(BlockDevice &device, std::optional<uint8_t> erasedByte);
 
 /// true if `result` holds exactly the given error. Avoids doctest having to stringify the enum class.
-inline bool failedWith(const std::expected<void, Error> &result, Error error) {
+inline bool failedWith(const art::expected<void, Error> &result, Error error) {
    return !result.has_value() && result.error() == error;
 }
 

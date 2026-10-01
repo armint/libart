@@ -80,7 +80,7 @@ TEST_CASE("[FatFileReadable] edge cases [FatFileReadable]") {
    FatFile file("test.txt", 0);
 
    SUBCASE("Empty buffer") {
-      std::span<uint8_t> emptyBuffer;
+      art::span<uint8_t> emptyBuffer;
       FatFileReadable readable(file, emptyBuffer);
 
       auto res = readable.read();

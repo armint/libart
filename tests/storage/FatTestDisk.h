@@ -2,11 +2,11 @@
 
 #include "storage/BlockDevice.h"
 #include "storage/RamBlockDevice.h"
+#include "utils/compat/span.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <doctest/doctest.h>
-#include <span>
 
 namespace art::storage::test {
 
@@ -44,7 +44,7 @@ class FatTestDisk : public RamBlockDevice {
    }
 
    private:
-   static std::span<uint8_t> claimBacking() {
+   static art::span<uint8_t> claimBacking() {
       REQUIRE_MESSAGE(instances_ == 0, "only one FatTestDisk may be alive: the backing array is shared");
       ++instances_;
       return backing_;

@@ -1,12 +1,12 @@
 #pragma once
 
 #include "storage/BlockDevice.h"
+#include "utils/compat/span.h"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <optional>
-#include <span>
 
 namespace art::storage::test {
 
@@ -49,21 +49,21 @@ class RamBlockDevice : public BlockDevice {
     * @param backing Storage for the device content. Referenced, not copied; init() rejects storage smaller
     * than geometry.size.
     */
-   RamBlockDevice(const Geometry &geometry, std::span<uint8_t> backing)
+   RamBlockDevice(const Geometry &geometry, art::span<uint8_t> backing)
       : geometry_(geometry)
       , backing_(backing) {
       std::ranges::fill(backing_, kErasedByte);
    }
 
-   std::expected<void, Error> init() override {
+   art::expected<void, Error> init() override {
       if(!geometry_.isValid() || backing_.size() < geometry_.size) {
-         return std::unexpected(Error::InvalidArgument);
+         return art::unexpected(Error::InvalidArgument);
       }
       initialised_ = true;
       return {};
    }
 
-   std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
+   art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override {
       if(auto admitted = admit(geometry_.isValidRead(offset, buffer.size()), readCount_); !admitted) {
          return admitted;
       }
@@ -71,7 +71,7 @@ class RamBlockDevice : public BlockDevice {
       return {};
    }
 
-   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+   art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) override {
       if(auto admitted = admit(geometry_.isValidProgram(offset, data.size()), programCount_); !admitted) {
          return admitted;
       }
@@ -87,19 +87,19 @@ class RamBlockDevice : public BlockDevice {
          cell = geometry_.eraseBeforeProgram ? static_cast<uint8_t>(cell & data[index]) : data[index];
       }
       if(powerCut) {
-         return std::unexpected(Error::Io);
+         return art::unexpected(Error::Io);
       }
       return {};
    }
 
-   std::expected<void, Error> erase(offset_t offset, offset_t length) override {
+   art::expected<void, Error> erase(offset_t offset, offset_t length) override {
       if(geometry_.eraseSize == 0u) {
          // No erase unit: an in-bounds call succeeds without touching the data and is not counted.
          if(!initialised_) {
-            return std::unexpected(Error::NotInitialised);
+            return art::unexpected(Error::NotInitialised);
          }
          if(!geometry_.isValidErase(offset, length)) {
-            return std::unexpected(Error::InvalidArgument);
+            return art::unexpected(Error::InvalidArgument);
          }
          return {};
       }
@@ -160,33 +160,33 @@ class RamBlockDevice : public BlockDevice {
    }
 
    /// Raw content of the backing storage, for tests that inspect what really reached the medium.
-   std::span<const uint8_t> contents() const {
+   art::span<const uint8_t> contents() const {
       return backing_;
    }
 
-   std::span<uint8_t> contents() {
+   art::span<uint8_t> contents() {
       return backing_;
    }
 
    private:
    // Common front end of read, program and erase: initialisation, argument validation (the caller passes the
    // Geometry::isValid*() verdict), counting and the n-th-operation fault.
-   std::expected<void, Error> admit(bool validArguments, uint32_t &counter) {
+   art::expected<void, Error> admit(bool validArguments, uint32_t &counter) {
       if(!initialised_) {
-         return std::unexpected(Error::NotInitialised);
+         return art::unexpected(Error::NotInitialised);
       }
       if(!validArguments) {
-         return std::unexpected(Error::InvalidArgument);
+         return art::unexpected(Error::InvalidArgument);
       }
       ++counter;
       if(operationsUntilFailure_ != 0u && --operationsUntilFailure_ == 0u) {
-         return std::unexpected(Error::Io);
+         return art::unexpected(Error::Io);
       }
       return {};
    }
 
    Geometry geometry_;
-   std::span<uint8_t> backing_;
+   art::span<uint8_t> backing_;
    bool initialised_{ false };
    uint32_t readCount_{ 0u };
    uint32_t programCount_{ 0u };

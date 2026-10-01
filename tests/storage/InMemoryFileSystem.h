@@ -32,12 +32,12 @@ class InMemoryFileSystem final : public FileSystem {
    public:
    static constexpr size_t kMaxOpenFiles = 3u;
 
-   std::expected<void, Error> mount() override {
+   art::expected<void, Error> mount() override {
       mounted_ = true;
       return {};
    }
 
-   std::expected<void, Error> unmount() override {
+   art::expected<void, Error> unmount() override {
       for(auto &slot : slots_) {
          releaseSlot(slot);
       }
@@ -45,9 +45,9 @@ class InMemoryFileSystem final : public FileSystem {
       return {};
    }
 
-   std::expected<void, Error> format() override {
+   art::expected<void, Error> format() override {
       if(mounted_) {
-         return std::unexpected(Error::Busy);
+         return art::unexpected(Error::Busy);
       }
       files_.clear();
       directories_.clear();
@@ -58,32 +58,32 @@ class InMemoryFileSystem final : public FileSystem {
       return mounted_;
    }
 
-   std::expected<File, Error> open(const char *path, OpenMode mode) override {
+   art::expected<File, Error> open(const char *path, OpenMode mode) override {
       ++openCalls_;
       if(!mounted_) {
-         return std::unexpected(Error::NotMounted);
+         return art::unexpected(Error::NotMounted);
       }
       const std::string name{ path };
       if(hasTooLongName(name)) {
-         return std::unexpected(Error::NameTooLong);
+         return art::unexpected(Error::NameTooLong);
       }
       if(directories_.contains(name) || name == "/") {
-         return std::unexpected(Error::IsDirectory);
+         return art::unexpected(Error::IsDirectory);
       }
       const auto parent = parentOf(name);
       if(!directories_.contains(parent) && parent != "/") {
-         return std::unexpected(files_.contains(parent) ? Error::NotDirectory : Error::NoEntry);
+         return art::unexpected(files_.contains(parent) ? Error::NotDirectory : Error::NoEntry);
       }
       const bool exists = files_.contains(name);
       if(!exists && mode == OpenMode::Read) {
-         return std::unexpected(Error::NoEntry);
+         return art::unexpected(Error::NoEntry);
       }
       if(exists && mode == OpenMode::CreateNew) {
-         return std::unexpected(Error::Exists);
+         return art::unexpected(Error::Exists);
       }
       const auto free = std::ranges::find_if(slots_, [](const Slot &slot) { return !slot.used; });
       if(free == slots_.end()) {
-         return std::unexpected(Error::NoMemory);
+         return art::unexpected(Error::NoMemory);
       }
       auto &content = files_[name];
       if(mode == OpenMode::Write || mode == OpenMode::ReadWriteTruncate) {
@@ -96,78 +96,78 @@ class InMemoryFileSystem final : public FileSystem {
       return makeFile(handleOf(static_cast<size_t>(free - slots_.begin()), *free));
    }
 
-   std::expected<void, Error> remove(const char *path) override {
+   art::expected<void, Error> remove(const char *path) override {
       if(!mounted_) {
-         return std::unexpected(Error::NotMounted);
+         return art::unexpected(Error::NotMounted);
       }
       const std::string name{ path };
       if(isOpenPath(name)) {
-         return std::unexpected(Error::Busy);
+         return art::unexpected(Error::Busy);
       }
       if(files_.erase(name) != 0u) {
          return {};
       }
       if(!directories_.contains(name)) {
-         return std::unexpected(Error::NoEntry);
+         return art::unexpected(Error::NoEntry);
       }
       if(hasChildren(name)) {
-         return std::unexpected(Error::NotEmpty);
+         return art::unexpected(Error::NotEmpty);
       }
       directories_.erase(name);
       return {};
    }
 
-   std::expected<void, Error> rename(const char *oldPath, const char *newPath) override {
+   art::expected<void, Error> rename(const char *oldPath, const char *newPath) override {
       if(!mounted_) {
-         return std::unexpected(Error::NotMounted);
+         return art::unexpected(Error::NotMounted);
       }
       const std::string from{ oldPath };
       const std::string to{ newPath };
       if(hasTooLongName(to)) {
-         return std::unexpected(Error::NameTooLong);
+         return art::unexpected(Error::NameTooLong);
       }
       const auto source = files_.find(from);
       if(source == files_.end()) {
-         return std::unexpected(directories_.contains(from) ? Error::Unsupported : Error::NoEntry);
+         return art::unexpected(directories_.contains(from) ? Error::Unsupported : Error::NoEntry);
       }
       if(from == to) {
          return {};
       }
       if(isOpenPath(from) || isOpenPath(to)) {
-         return std::unexpected(Error::Busy);
+         return art::unexpected(Error::Busy);
       }
       if(directories_.contains(to)) {
-         return std::unexpected(Error::IsDirectory);
+         return art::unexpected(Error::IsDirectory);
       }
       if(!directories_.contains(parentOf(to)) && parentOf(to) != "/") {
-         return std::unexpected(Error::NoEntry);
+         return art::unexpected(Error::NoEntry);
       }
       files_[to] = std::move(source->second);
       files_.erase(from);
       return {};
    }
 
-   std::expected<void, Error> mkdir(const char *path) override {
+   art::expected<void, Error> mkdir(const char *path) override {
       if(!mounted_) {
-         return std::unexpected(Error::NotMounted);
+         return art::unexpected(Error::NotMounted);
       }
       const std::string name{ path };
       if(hasTooLongName(name)) {
-         return std::unexpected(Error::NameTooLong);
+         return art::unexpected(Error::NameTooLong);
       }
       if(files_.contains(name) || directories_.contains(name)) {
-         return std::unexpected(Error::Exists);
+         return art::unexpected(Error::Exists);
       }
       if(!directories_.contains(parentOf(name)) && parentOf(name) != "/") {
-         return std::unexpected(Error::NoEntry);
+         return art::unexpected(Error::NoEntry);
       }
       directories_.insert(name);
       return {};
    }
 
-   std::expected<FileInfo, Error> stat(const char *path) override {
+   art::expected<FileInfo, Error> stat(const char *path) override {
       if(!mounted_) {
-         return std::unexpected(Error::NotMounted);
+         return art::unexpected(Error::NotMounted);
       }
       const std::string name{ path };
       if(name == "/" || directories_.contains(name)) {
@@ -175,18 +175,18 @@ class InMemoryFileSystem final : public FileSystem {
       }
       const auto file = files_.find(name);
       if(file == files_.end()) {
-         return std::unexpected(Error::NoEntry);
+         return art::unexpected(Error::NoEntry);
       }
       return FileInfo{ .type = EntryType::File, .size = file->second.size() };
    }
 
-   std::expected<size_t, Error> visitDirectory(const char *path, DirectoryVisitor visitor) override {
+   art::expected<size_t, Error> visitDirectory(const char *path, DirectoryVisitor visitor) override {
       if(!mounted_) {
-         return std::unexpected(Error::NotMounted);
+         return art::unexpected(Error::NotMounted);
       }
       const std::string directory{ path };
       if(directory != "/" && !directories_.contains(directory)) {
-         return std::unexpected(files_.contains(directory) ? Error::NotDirectory : Error::NoEntry);
+         return art::unexpected(files_.contains(directory) ? Error::NotDirectory : Error::NoEntry);
       }
       size_t visited = 0u;
       for(const auto &name : directories_) {
@@ -208,8 +208,8 @@ class InMemoryFileSystem final : public FileSystem {
       return visited;
    }
 
-   std::expected<offset_t, Error> freeSpace() override {
-      return mounted_ ? std::expected<offset_t, Error>{ 4096u } : std::unexpected(Error::NotMounted);
+   art::expected<offset_t, Error> freeSpace() override {
+      return mounted_ ? art::expected<offset_t, Error>{ 4096u } : art::unexpected(Error::NotMounted);
    }
 
    /// Number of files that are currently open.
@@ -244,17 +244,17 @@ class InMemoryFileSystem final : public FileSystem {
    }
 
    protected:
-   std::expected<size_t, Error> fileRead(FileHandle handle, std::span<uint8_t> buffer) override {
+   art::expected<size_t, Error> fileRead(FileHandle handle, art::span<uint8_t> buffer) override {
       auto *slot = lookup(handle);
       if(slot == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       if(!canRead(slot->mode)) {
-         return std::unexpected(Error::InvalidArgument);
+         return art::unexpected(Error::InvalidArgument);
       }
       const auto *file = dataOf(*slot);
       if(file == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       const auto &data = *file;
       if(slot->position >= data.size()) {
@@ -266,20 +266,20 @@ class InMemoryFileSystem final : public FileSystem {
       return count;
    }
 
-   std::expected<void, Error> fileWrite(FileHandle handle, std::span<const uint8_t> data) override {
+   art::expected<void, Error> fileWrite(FileHandle handle, art::span<const uint8_t> data) override {
       auto *slot = lookup(handle);
       if(slot == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       if(!canWrite(slot->mode)) {
-         return std::unexpected(Error::InvalidArgument);
+         return art::unexpected(Error::InvalidArgument);
       }
       if(nextWriteError_) {
-         return std::unexpected(std::exchange(nextWriteError_, std::nullopt).value());
+         return art::unexpected(std::exchange(nextWriteError_, std::nullopt).value());
       }
       auto *file = dataOf(*slot);
       if(file == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       auto &content = *file;
       if(slot->mode == OpenMode::Append) {
@@ -293,54 +293,54 @@ class InMemoryFileSystem final : public FileSystem {
       return {};
    }
 
-   std::expected<void, Error> fileSeek(FileHandle handle, offset_t position) override {
+   art::expected<void, Error> fileSeek(FileHandle handle, offset_t position) override {
       auto *slot = lookup(handle);
       if(slot == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       slot->position = static_cast<size_t>(position);
       return {};
    }
 
-   std::expected<offset_t, Error> fileTell(FileHandle handle) override {
+   art::expected<offset_t, Error> fileTell(FileHandle handle) override {
       const auto *slot = lookup(handle);
       if(slot == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       return slot->position;
    }
 
-   std::expected<offset_t, Error> fileSize(FileHandle handle) override {
+   art::expected<offset_t, Error> fileSize(FileHandle handle) override {
       const auto *slot = lookup(handle);
       if(slot == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       const auto *file = dataOf(*slot);
       if(file == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       return file->size() + reportedSizeExtra_;
    }
 
-   std::expected<void, Error> fileSync(FileHandle handle) override {
+   art::expected<void, Error> fileSync(FileHandle handle) override {
       if(lookup(handle) == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       if(nextSyncError_) {
-         return std::unexpected(std::exchange(nextSyncError_, std::nullopt).value());
+         return art::unexpected(std::exchange(nextSyncError_, std::nullopt).value());
       }
       return {};
    }
 
-   std::expected<void, Error> fileClose(FileHandle handle) override {
+   art::expected<void, Error> fileClose(FileHandle handle) override {
       auto *slot = lookup(handle);
       if(slot == nullptr) {
-         return std::unexpected(Error::BadHandle);
+         return art::unexpected(Error::BadHandle);
       }
       ++closeCalls_;
       releaseSlot(*slot);
       if(nextCloseError_) {
-         return std::unexpected(std::exchange(nextCloseError_, std::nullopt).value());
+         return art::unexpected(std::exchange(nextCloseError_, std::nullopt).value());
       }
       return {};
    }

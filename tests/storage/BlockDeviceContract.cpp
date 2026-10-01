@@ -1,9 +1,9 @@
 #include "BlockDeviceContract.h"
+#include "utils/compat/span.h"
 #include <algorithm>
 #include <doctest/doctest.h>
 #include <limits>
 #include <numeric>
-#include <span>
 #include <vector>
 
 namespace art::storage::test {
@@ -80,28 +80,28 @@ class ContractChecker {
       }
    }
 
-   void readRange(uint64_t offset, std::span<uint8_t> out) {
+   void readRange(uint64_t offset, art::span<uint8_t> out) {
       INFO("read offset " << offset << " length " << out.size());
       REQUIRE(device_.read(offset, out).has_value());
    }
 
-   void programRange(uint64_t offset, std::span<const uint8_t> data) {
+   void programRange(uint64_t offset, art::span<const uint8_t> data) {
       INFO("program offset " << offset << " length " << data.size());
       REQUIRE(device_.program(offset, data).has_value());
    }
 
-   std::span<uint8_t> pattern(size_t length, uint64_t firstIndex, uint8_t seed) {
+   art::span<uint8_t> pattern(size_t length, uint64_t firstIndex, uint8_t seed) {
       for(size_t index = 0u; index < length; ++index) {
          pattern_[index] = patternByte(firstIndex + index, seed);
       }
-      return std::span<uint8_t>{ pattern_.data(), length };
+      return art::span<uint8_t>{ pattern_.data(), length };
    }
 
-   static bool sameBytes(std::span<const uint8_t> first, std::span<const uint8_t> second) {
+   static bool sameBytes(art::span<const uint8_t> first, art::span<const uint8_t> second) {
       return std::ranges::equal(first, second);
    }
 
-   bool allBytesEqual(std::span<const uint8_t> bytes, uint8_t value) const {
+   bool allBytesEqual(art::span<const uint8_t> bytes, uint8_t value) const {
       return std::ranges::all_of(bytes, [value](uint8_t byte) { return byte == value; });
    }
 
@@ -124,12 +124,12 @@ class ContractChecker {
       INFO("round trip offset " << offset << " length " << length);
       const uint64_t regionStart = alignDown(offset, granule_);
       const uint64_t regionEnd = alignUp(offset + length, granule_);
-      const std::span<uint8_t> before{ snapshot_.data(), regionEnd - regionStart };
-      const std::span<uint8_t> after{ readback_.data(), regionEnd - regionStart };
+      const art::span<uint8_t> before{ snapshot_.data(), regionEnd - regionStart };
+      const art::span<uint8_t> after{ readback_.data(), regionEnd - regionStart };
 
       eraseRange(regionStart, regionEnd - regionStart);
       readRange(regionStart, before);
-      const std::span<const uint8_t> data = pattern(length, offset, 1u);
+      const art::span<const uint8_t> data = pattern(length, offset, 1u);
       programRange(offset, data);
       readRange(regionStart, after);
 
@@ -146,7 +146,7 @@ class ContractChecker {
       }
       for(uint64_t position = 0u; position < length; position += readSize) {
          for(uint64_t units = 1u; units <= 2u && position + units * readSize <= length; ++units) {
-            const std::span<uint8_t> partial{ readback_.data(), units * readSize };
+            const art::span<uint8_t> partial{ readback_.data(), units * readSize };
             readRange(offset + position, partial);
             CHECK(sameBytes(partial, data.subspan(position, units * readSize)));
          }
@@ -164,12 +164,12 @@ class ContractChecker {
       if(geometry_.eraseSize == 0u) {
          // No erase unit: an in-bounds call of any alignment must succeed and change nothing.
          const uint64_t length = probeLength();
-         const std::span<const uint8_t> data = pattern(length, 0u, 2u);
+         const art::span<const uint8_t> data = pattern(length, 0u, 2u);
          programRange(0u, data);
          CHECK(device_.erase(0u, granule_).has_value());
          CHECK(device_.erase(1u, 3u).has_value());
          CHECK(device_.erase(0u, 0u).has_value());
-         const std::span<uint8_t> after{ readback_.data(), alignUp(length, granule_) };
+         const art::span<uint8_t> after{ readback_.data(), alignUp(length, granule_) };
          readRange(0u, after);
          CHECK(sameBytes(after.first(length), data));
          return;
@@ -178,11 +178,11 @@ class ContractChecker {
       const uint64_t eraseSize = geometry_.eraseSize;
       const uint64_t length = probeLength();
       const bool hasSecondUnit = window_ >= 2u * eraseSize;
-      const std::span<uint8_t> unit{ readback_.data(), eraseSize };
+      const art::span<uint8_t> unit{ readback_.data(), eraseSize };
 
       eraseRange(0u, window_);
       if(erasedByte_) {
-         const std::span<uint8_t> all{ snapshot_.data(), window_ };
+         const art::span<uint8_t> all{ snapshot_.data(), window_ };
          readRange(0u, all);
          CHECK(allBytesEqual(all, *erasedByte_));
       }
@@ -191,7 +191,7 @@ class ContractChecker {
       if(hasSecondUnit) {
          programRange(eraseSize, pattern(length, eraseSize, 3u));
       }
-      const std::span<uint8_t> secondCheck{ snapshot_.data(), length };
+      const art::span<uint8_t> secondCheck{ snapshot_.data(), length };
       if(hasSecondUnit) {
          readRange(eraseSize, secondCheck);
          CHECK(sameBytes(secondCheck, pattern(length, eraseSize, 3u)));
@@ -205,7 +205,7 @@ class ContractChecker {
       }
       CHECK_FALSE(sameBytes(unit.first(length), pattern(length, 0u, 2u)));
       // Erased content is stable: reading does not change it.
-      const std::span<uint8_t> unitAgain{ nextRead_.data(), eraseSize };
+      const art::span<uint8_t> unitAgain{ nextRead_.data(), eraseSize };
       readRange(0u, unitAgain);
       CHECK(sameBytes(unit, unitAgain));
       if(hasSecondUnit) {
@@ -220,7 +220,7 @@ class ContractChecker {
          CHECK_FALSE(sameBytes(secondCheck, pattern(length, eraseSize, 3u)));
       }
       if(erasedByte_) {
-         const std::span<uint8_t> all{ snapshot_.data(), window_ };
+         const art::span<uint8_t> all{ snapshot_.data(), window_ };
          readRange(0u, all);
          CHECK(allBytesEqual(all, *erasedByte_));
       }
@@ -228,7 +228,7 @@ class ContractChecker {
 
    void checkOverwrite() {
       const uint64_t length = probeLength();
-      const std::span<uint8_t> region{ readback_.data(), alignUp(length, granule_) };
+      const art::span<uint8_t> region{ readback_.data(), alignUp(length, granule_) };
 
       eraseRange(0u, granule_);
       programRange(0u, pattern(length, 0u, 4u));
@@ -247,7 +247,7 @@ class ContractChecker {
 
    void checkReinitKeepsData() {
       const uint64_t length = probeLength();
-      const std::span<uint8_t> region{ readback_.data(), alignUp(length, granule_) };
+      const art::span<uint8_t> region{ readback_.data(), alignUp(length, granule_) };
       eraseRange(0u, granule_);
       programRange(0u, pattern(length, 0u, 7u));
       CHECK(device_.init().has_value());
@@ -265,7 +265,7 @@ class ContractChecker {
 
    bool readFails(uint64_t offset, uint64_t length) {
       INFO("read offset " << offset << " length " << length);
-      return failedWith(device_.read(offset, std::span<uint8_t>{ readback_.data(), length }), Error::InvalidArgument);
+      return failedWith(device_.read(offset, art::span<uint8_t>{ readback_.data(), length }), Error::InvalidArgument);
    }
 
    bool programFails(uint64_t offset, uint64_t length) {
@@ -292,8 +292,8 @@ class ContractChecker {
          return;
       }
       const uint64_t start = geometry_.size - span;
-      const std::span<uint8_t> before{ snapshot_.data(), span };
-      const std::span<uint8_t> after{ nextRead_.data(), span };
+      const art::span<uint8_t> before{ snapshot_.data(), span };
+      const art::span<uint8_t> after{ nextRead_.data(), span };
       readRange(start, before);
 
       CHECK(programFails(start, span + geometry_.programSize));
@@ -310,8 +310,8 @@ class ContractChecker {
 
       writeKnownData();
       const uint64_t regionSize = std::min(2u * granule_, window_);
-      const std::span<uint8_t> before{ snapshot_.data(), regionSize };
-      const std::span<uint8_t> after{ readback_.data(), regionSize };
+      const art::span<uint8_t> before{ snapshot_.data(), regionSize };
+      const art::span<uint8_t> after{ readback_.data(), regionSize };
       readRange(0u, before);
 
       constexpr uint64_t kMax = std::numeric_limits<uint64_t>::max();
@@ -352,8 +352,8 @@ class ContractChecker {
       // Rejected calls must also leave the medium as it was. The data is not rewritten first: whatever the
       // range rejections above left behind is part of what is compared.
       const uint64_t regionSize = std::min(2u * granule_, window_);
-      const std::span<uint8_t> before{ snapshot_.data(), regionSize };
-      const std::span<uint8_t> after{ readback_.data(), regionSize };
+      const art::span<uint8_t> before{ snapshot_.data(), regionSize };
+      const art::span<uint8_t> after{ readback_.data(), regionSize };
       readRange(0u, before);
 
       const uint64_t readSize = geometry_.readSize;

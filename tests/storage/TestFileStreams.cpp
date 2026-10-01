@@ -32,9 +32,9 @@ class FailingReadDevice final : public BlockDeviceDecorator {
    public:
    using BlockDeviceDecorator::BlockDeviceDecorator;
 
-   std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
+   art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override {
       if(failWith) {
-         return std::unexpected(*failWith);
+         return art::unexpected(*failWith);
       }
       return BlockDeviceDecorator::read(offset, buffer);
    }
@@ -77,7 +77,7 @@ struct Fixture {
    LittleFsFileSystem<> fileSystem;
 };
 
-std::array<uint8_t, 32> sha256Of(std::span<const uint8_t> data) {
+std::array<uint8_t, 32> sha256Of(art::span<const uint8_t> data) {
    SHA256Digest digest;
    digest.update(data);
    std::array<uint8_t, 32> hash{};
@@ -100,7 +100,7 @@ TEST_SUITE("FileReadable and FileWritable over LittleFsFileSystem") {
       DigestReadable hashing(readable, digest);
 
       std::vector<uint8_t> received(data.size());
-      const auto count = hashing.read(std::span<uint8_t>(received));
+      const auto count = hashing.read(art::span<uint8_t>(received));
       REQUIRE(count.has_value());
       CHECK(*count == data.size());
       CHECK(received == data);
@@ -209,7 +209,7 @@ TEST_SUITE("FileReadable and FileWritable over LittleFsFileSystem") {
       Fixture fixture;
       fixture.stage("/f", 4u);
       File file = fixture.open("/f", OpenMode::Read);
-      FileReadable readable(file, std::span<uint8_t>());
+      FileReadable readable(file, art::span<uint8_t>());
       CHECK(readable.read().error() == Readable::ReadError);
    }
 
@@ -342,10 +342,10 @@ TEST_SUITE("FileReadable and FileWritable over LittleFsFileSystem") {
       FileWritable writable(file);
       const auto data = Fixture::pattern(5000u);
 
-      const auto first = writable.write(std::span<const uint8_t>(data).first(3000u));
+      const auto first = writable.write(art::span<const uint8_t>(data).first(3000u));
       REQUIRE(first.has_value());
       CHECK(*first == 3000u);
-      const auto second = writable.write(std::span<const uint8_t>(data).subspan(3000u));
+      const auto second = writable.write(art::span<const uint8_t>(data).subspan(3000u));
       REQUIRE(second.has_value());
       CHECK(*second == 2000u);
       CHECK(writable.position() == 5000u);
@@ -439,8 +439,8 @@ TEST_SUITE("FileReadable and FileWritable over LittleFsFileSystem") {
          FileWritable sink(file);
          std::array<uint8_t, 256> bufferMemory{};
          BufferedWritable buffered(sink, bufferMemory);
-         REQUIRE(buffered.write(std::span<const uint8_t>(data).first(10u)).has_value());
-         REQUIRE(buffered.write(std::span<const uint8_t>(data).subspan(10u)).has_value());
+         REQUIRE(buffered.write(art::span<const uint8_t>(data).first(10u)).has_value());
+         REQUIRE(buffered.write(art::span<const uint8_t>(data).subspan(10u)).has_value());
          REQUIRE(buffered.flush().has_value());
          REQUIRE(file.close().has_value());
       }
@@ -451,7 +451,7 @@ TEST_SUITE("FileReadable and FileWritable over LittleFsFileSystem") {
       SHA256Digest digest;
       DigestReadable hashing(readable, digest);
       std::vector<uint8_t> received(data.size());
-      REQUIRE(hashing.read(std::span<uint8_t>(received)).has_value());
+      REQUIRE(hashing.read(art::span<uint8_t>(received)).has_value());
       CHECK(received == data);
       std::array<uint8_t, 32> hash{};
       REQUIRE(digest.getDigest(hash).has_value());

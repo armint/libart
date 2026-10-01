@@ -30,21 +30,21 @@ class MockCipherBlockDevice : public BlockDeviceDecorator {
 
    using BlockDeviceDecorator::BlockDeviceDecorator;
 
-   std::expected<void, Error> init() override {
+   art::expected<void, Error> init() override {
       if(auto initialised = lower().init(); !initialised) {
          return initialised;
       }
       const Geometry below = lower().geometry();
       if(!below.isValid() || kSectorSize % below.readSize != 0u || kSectorSize % below.programSize != 0u ||
          below.eraseSize % kSectorSize != 0u || below.size % kSectorSize != 0u) {
-         return std::unexpected(Error::Unsupported);
+         return art::unexpected(Error::Unsupported);
       }
       return {};
    }
 
-   std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
+   art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override {
       if(!geometry().isValidRead(offset, buffer.size())) {
-         return std::unexpected(Error::InvalidArgument);
+         return art::unexpected(Error::InvalidArgument);
       }
       if(auto result = lower().read(offset, buffer); !result) {
          return result;
@@ -53,17 +53,17 @@ class MockCipherBlockDevice : public BlockDeviceDecorator {
       return {};
    }
 
-   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+   art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) override {
       // Validate up front so a rejected call writes nothing, even though the data is encrypted in chunks.
       if(!geometry().isValidProgram(offset, data.size())) {
-         return std::unexpected(Error::InvalidArgument);
+         return art::unexpected(Error::InvalidArgument);
       }
       size_t done = 0u;
       while(done < data.size()) {
          const size_t chunk = std::min(scratch_.size(), data.size() - done);
          std::copy_n(data.begin() + done, chunk, scratch_.begin());
-         applyKeystream(offset + done, std::span<uint8_t>{ scratch_.data(), chunk });
-         if(auto result = lower().program(offset + done, std::span<const uint8_t>{ scratch_.data(), chunk }); !result) {
+         applyKeystream(offset + done, art::span<uint8_t>{ scratch_.data(), chunk });
+         if(auto result = lower().program(offset + done, art::span<const uint8_t>{ scratch_.data(), chunk }); !result) {
             return result;
          }
          done += chunk;
@@ -83,7 +83,7 @@ class MockCipherBlockDevice : public BlockDeviceDecorator {
       return static_cast<uint8_t>((position * 167u + 0x5Au) ^ (position >> 8u));
    }
 
-   static void applyKeystream(offset_t offset, std::span<uint8_t> bytes) {
+   static void applyKeystream(offset_t offset, art::span<uint8_t> bytes) {
       for(size_t index = 0u; index < bytes.size(); ++index) {
          bytes[index] ^= keyByte(offset + index);
       }
