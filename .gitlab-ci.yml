@@ -14,6 +14,10 @@ workflow:
 # projects consume via add_subdirectory(). This still configures and
 # fetches tests/ too (CMakeLists.txt adds it whenever not cross-compiling),
 # just doesn't build the test binary — the test job below does that.
+# The second build compiles art-core and art-storage-littlefs with LOGGING_DISABLED, the form of the LOG_* macros
+# (src/logging/Logger.h) that no test binary uses, so that a mistake in it breaks the pipeline.
+# The last checks show that the minimum standard of art-core follows ART_USE_STD_EXPECTED_SPAN (see README.md,
+# "Requirements"), by the -std flag and the definition that CMake generates for art-core.
 build:
   stage: build
   variables:
@@ -21,6 +25,22 @@ build:
   script:
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
     - cmake --build build --target art-core -j$(nproc)
+    - cmake -B build-logging-disabled -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON -D CMAKE_CXX_FLAGS=-DLOGGING_DISABLED
+    - cmake --build build-logging-disabled --target art-core art-storage-littlefs -j$(nproc)
+    # The minimum standard follows ART_USE_STD_EXPECTED_SPAN. Default (no CMAKE_CXX_STANDARD): std types at C++23.
+    - grep -q "ART_USE_STD_EXPECTED_SPAN=1" build/CMakeFiles/art-core.dir/flags.make
+    - grep -Eq "std=(gnu|c)\+\+23" build/CMakeFiles/art-core.dir/flags.make
+    # OFF set explicitly at C++23: the own types, still compiled at C++23.
+    - cmake -B build-own-cpp23 -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release -D CMAKE_CXX_STANDARD=23 -D ART_USE_STD_EXPECTED_SPAN=OFF
+    - cmake --build build-own-cpp23 --target art-core -j$(nproc)
+    - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
+    - grep -Eq "std=(gnu|c)\+\+23" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
+    # OFF without CMAKE_CXX_STANDARD: the minimum is cxx_std_17. GCC defaults to gnu++17, so CMake adds no -std flag
+    # for C++20 or later (it would add -std=gnu++23 for a cxx_std_23 minimum).
+    - cmake -B build-own-default -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release -D ART_USE_STD_EXPECTED_SPAN=OFF
+    - cmake --build build-own-default --target art-core -j$(nproc)
+    - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-default/CMakeFiles/art-core.dir/flags.make
+    - '! grep -Eq "std=(gnu|c)\+\+2[0-9]" build-own-default/CMakeFiles/art-core.dir/flags.make'
 
 # Builds and runs the native unit test suite (doctest; a handful of
 # storage/ tests use Catch2-style TEST_CASE/CHECK/SUBCASE macros, which
@@ -37,51 +57,71 @@ build:
 # width-dependent overflow boundary at 2^32 vs 2^64) instead of staying
 # untested dead code, without giving up CI coverage of the float-disabled
 # default on either integer width.
+#
+# The job is a matrix over the compiler (GCC, Clang) and the language standard (CMAKE_CXX_STANDARD). Every cell
+# builds art-core and art-storage-littlefs and the four binaries at its standard, and runs the binaries:
+# - C++23 (GCC, Clang): the default, with std::expected and std::span (ART_USE_STD_EXPECTED_SPAN=ON). These cells
+#   also build and run the two compat binaries, whose standard is fixed (see tests/CMakeLists.txt):
+#   libArT-compat-tests-cpp17 and libArT-compat-tests-cpp23-own.
+# - C++20 (GCC): the own art::expected and etl::span (ART_USE_STD_EXPECTED_SPAN=OFF, C++20 has std::span but not
+#   std::expected), with all tests.
+# - C++17 (GCC, Clang): the own types, without the storage tests that need C++20 (tests/CMakeLists.txt).
+# The C++17 and C++20 cells build with CMAKE_CXX_EXTENSIONS=OFF, -Wpedantic -Werror=pedantic and
+# -Werror=c++20-extensions -Werror=c++23-extensions. GCC and Clang accept code of a newer standard in an older mode
+# and only warn (for example a range-for with an initializer, a designated initializer, a template lambda or an
+# uninitialized variable in a constexpr function at C++17, or if consteval at C++20); these flags make that an error.
+# Clang at C++20 is left out: the C++20 language features are already compiled by Clang in the C++23 cells, and
+# the own types by Clang in the C++17 cell and in libArT-compat-tests-cpp23-own.
 test:
   stage: build
+  parallel:
+    matrix:
+      - COMPILER: [gcc, clang]
+        CXX_STANDARD: "17"
+      - COMPILER: gcc
+        CXX_STANDARD: "20"
+      - COMPILER: [gcc, clang]
+        CXX_STANDARD: "23"
   variables:
     GIT_DEPTH: 0
   script:
-    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug
-    - cmake --build build --target libArT-tests libArT-tests-64bit libArT-tests-float libArT-tests-float-64bit libArT-compat-tests-cpp17 libArT-compat-tests-cpp23-own -j$(nproc)
+    - if [ "$COMPILER" = clang ]; then export CC=clang CXX=clang++; else export CC=gcc CXX=g++; fi
+    - $CXX --version
+    - 'if [ "$CXX_STANDARD" -lt 23 ]; then cxx_extensions=OFF; strict_cxx_flags="-Wpedantic -Werror=pedantic -Werror=c++20-extensions -Werror=c++23-extensions"; else cxx_extensions=ON; strict_cxx_flags=""; fi'
+    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug -D CMAKE_CXX_STANDARD=$CXX_STANDARD -D CMAKE_CXX_EXTENSIONS=$cxx_extensions -D CMAKE_CXX_FLAGS="$strict_cxx_flags" -D ART_STORAGE_LITTLEFS=ON
+    # The default of ART_USE_STD_EXPECTED_SPAN: ON at C++23, OFF below.
+    - if [ "$CXX_STANDARD" -ge 23 ]; then expected_option=ON; else expected_option=OFF; fi
+    - grep -x "ART_USE_STD_EXPECTED_SPAN:BOOL=$expected_option" build/CMakeCache.txt
+    - test_binaries="libArT-tests libArT-tests-64bit libArT-tests-float libArT-tests-float-64bit"
+    - if [ "$CXX_STANDARD" = 23 ]; then test_binaries="$test_binaries libArT-compat-tests-cpp17 libArT-compat-tests-cpp23-own"; fi
+    - cmake --build build --target art-core art-storage-littlefs $test_binaries -j$(nproc)
     # doctest writes every active reporter's output to the same --out file,
     # which corrupts the XML if the console reporter is also active; run
     # twice instead — console output determines job pass/fail, the second
     # run just produces the JUnit artifact for the MR widget.
-    - ./build/tests/libArT-tests
-    - ./build/tests/libArT-tests --reporters=junit --out=build/junit.xml
-    - ./build/tests/libArT-tests-64bit
-    - ./build/tests/libArT-tests-64bit --reporters=junit --out=build/junit-64bit.xml
-    - ./build/tests/libArT-tests-float
-    - ./build/tests/libArT-tests-float --reporters=junit --out=build/junit-float.xml
-    - ./build/tests/libArT-tests-float-64bit
-    - ./build/tests/libArT-tests-float-64bit --reporters=junit --out=build/junit-float-64bit.xml
-    # The compat headers (src/utils/compat/) and the tests of the ported modules (src/streams/, src/modbus/,
-    # src/logging/, src/settings/, src/sensors/, src/utils/, src/freertos/) at C++17 and with the own types at
-    # C++23. src/storage/ with the LittleFS binding is compiled into both, its tests (which need C++20) run in the
-    # C++23 one only, except TestLittleFsCompat.cpp, which runs in both. See tests/CMakeLists.txt.
-    - ./build/tests/libArT-compat-tests-cpp17
-    - ./build/tests/libArT-compat-tests-cpp17 --reporters=junit --out=build/junit-compat-cpp17.xml
-    - ./build/tests/libArT-compat-tests-cpp23-own
-    - ./build/tests/libArT-compat-tests-cpp23-own --reporters=junit --out=build/junit-compat-cpp23-own.xml
-    # ART_USE_STD_EXPECTED_SPAN=1 in a C++17 translation unit must stop the build (#error in utils/compat/config.h).
-    # The job shell uses pipefail, so capture the compiler output first; the failing g++ must not end the job.
-    - 'cpp17_std_output=$(echo "#include \"utils/compat/expected.h\"" | g++ -std=c++17 -DART_USE_STD_EXPECTED_SPAN=1 -Isrc -fsyntax-only -x c++ - 2>&1 || true)'
-    - 'echo "$cpp17_std_output" | grep -q "#error \"ART_USE_STD_EXPECTED_SPAN is 1, but"'
+    - |
+      for binary in $test_binaries; do
+        echo "== $binary (C++$CXX_STANDARD, $COMPILER) =="
+        ./build/tests/$binary || exit 1
+        ./build/tests/$binary --reporters=junit --out=build/junit-$binary.xml || exit 1
+      done
+    # ART_USE_STD_EXPECTED_SPAN=1 must stop the build below C++23 (#error in utils/compat/config.h), and must compile
+    # at C++23. The job shell uses pipefail, so capture the compiler output first; a failing compiler must not end
+    # the job.
+    - 'std_output=$(echo "#include \"utils/compat/expected.h\"" | $CXX -std=c++$CXX_STANDARD -DART_USE_STD_EXPECTED_SPAN=1 -Isrc -fsyntax-only -x c++ - 2>&1 && echo "compiled" || true)'
+    - echo "$std_output"
+    - 'if [ "$CXX_STANDARD" -ge 23 ]; then [ "$std_output" = "compiled" ]; else echo "$std_output" | grep -q "error.*ART_USE_STD_EXPECTED_SPAN is 1, but"; fi'
   artifacts:
     when: always
     reports:
       junit:
-        - build/junit.xml
-        - build/junit-64bit.xml
-        - build/junit-float.xml
-        - build/junit-float-64bit.xml
-        - build/junit-compat-cpp17.xml
-        - build/junit-compat-cpp23-own.xml
+        - build/junit-*.xml
 
 # FloatText's exhaustive round-trip test (TestFloatText.cpp) formats and parses all 2^32 float
 # bit patterns and checks the result is bit-identical to the original (NaN is only checked as
-# still being a NaN). It is doctest::skip()'d by default, so the "test" job above never runs it;
+# still being a NaN). It is doctest::skip()'d by default, so the "test" job above never runs it
+# (in no cell of its matrix), and it runs with GCC at C++23 only (FloatText's C++17 build is
+# covered by the test job and by floattext-zero-cost);
 # this dedicated job runs it explicitly with --no-skip=true, on just one of the four binaries
 # (FloatText does not depend on LIBART_ENABLE_64BIT or PRINTF_ENABLE_FLOATING_POINT, so the other
 # three would only repeat the same 2^32 iterations). tests/CMakeLists.txt builds FloatText.cpp,
@@ -108,7 +148,8 @@ float-exhaustive:
 # Verifies, with a real cross-compile and link (arm-none-eabi-gcc/g++, expected on PATH in this
 # image), that FloatText/Ryu (src/utils/FloatText.*, ryu_float.c) are genuinely absent from a
 # program that never calls them, and that a program that does call them does not pull in newlib's
-# assert/printf/malloc chain (see tests/check-floattext-zero-cost.sh). This image
+# assert/printf/malloc chain (see tests/check-floattext-zero-cost.sh), at C++17 (own types) and
+# C++23 (std types). This image
 # (firmware-builder:v1.14.0) has arm-none-eabi-gcc under /opt, not on PATH by default - the same
 # toolchain path other embedded-libraries projects' CI (sentinode-th, universal-oven-controller-
 # firmware) points GCC_TOOLCHAIN_PREFIX at. REQUIRE_TOOLCHAIN=1 turns a missing toolchain or a
@@ -121,7 +162,22 @@ floattext-zero-cost:
   script:
     - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
-    - RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
+    - CXX_STANDARD=17 ETL_INCLUDE_DIR="$(pwd)/build/_deps/etl-src/include" RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
+    - CXX_STANDARD=23 RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
+
+# Compiles the compat headers (src/utils/compat/) like firmware: arm-none-eabi-g++ with -fno-exceptions and -fno-rtti,
+# at C++17 with the own types and at C++23 with the own and the std types (see tests/check-compat-firmware-build.sh).
+# The native test binaries build with exceptions and RTTI, so they cannot notice a throw or a typeid in these
+# headers. The configure step only fetches ETL. Same toolchain path and REQUIRE_TOOLCHAIN as floattext-zero-cost.
+compat-firmware:
+  stage: build
+  variables:
+    GIT_DEPTH: 0
+    REQUIRE_TOOLCHAIN: "1"
+  script:
+    - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
+    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
+    - ETL_INCLUDE_DIR="$(pwd)/build/_deps/etl-src/include" ./tests/check-compat-firmware-build.sh
 
 # Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
 # optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the

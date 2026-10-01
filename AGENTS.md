@@ -45,7 +45,7 @@ Behaviour to know when porting:
 
 ## Guidelines
 
-- **Language**: C++20 (or newer). Use modern C++ features and best practices as long as they don't interfere with the embedded nature of the project (e.g., const correctness, move semantics, no c-style casts).
+- **Language**: C++17 (or newer). Every library source and header must compile at C++17 (CI builds at C++17, C++20 and C++23; see `README.md`, "Requirements"); use the compat headers in `src/utils/compat/` for C++20/23 vocabulary types. Tests may use C++20 if `tests/CMakeLists.txt` leaves them out of the C++17 build. Use modern C++ features and best practices as long as they don't interfere with the embedded nature of the project (e.g., const correctness, move semantics, no c-style casts).
 - **Style & Linting**: Follow the established stream patterns mechanically when adding new data handling utilities. Before completing tasks, format code using the provided CMake target: `cmake --build <build_dir> --target clangformat`.
 - **Resource Management**: Use RAII for all resource management. Use `Writable` streams for formatted output in a memory-efficient way. Prefer `std::span` (or equivalent) for passing buffers to avoid size/pointer mismatches.
 - **Memory**: Heap memory usage is strictly prohibited. Ensure that changes are compatible with the embedded nature of the project (low memory footprint).

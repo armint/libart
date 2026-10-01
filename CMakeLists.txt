@@ -90,7 +90,8 @@ option(ART_LITTLEFS_NO_ASSERT "Build littlefs with LFS_NO_ASSERT" ${_ART_LITTLEF
 # libArT's own expected and etl::span when it is OFF. The choice is exported as a PUBLIC compile definition, so that
 # libArT, libArT-proto and the application agree on it: Readable/Writable have virtual functions that take and return
 # these types, and mixing both in one program is a silent ODR violation. Default: ON unless the superproject asks
-# for a standard below C++23 (art-core itself still requires C++23, see cxx_std_23 below).
+# for a standard below C++23. The minimum standard of art-core, art-rtos and art-storage-littlefs follows the choice:
+# C++23 with the std types (std::expected needs it), C++17 with the own types (see _ART_MIN_CXX_STD below).
 if (DEFINED CMAKE_CXX_STANDARD AND CMAKE_CXX_STANDARD LESS 23)
     set(_ART_USE_STD_EXPECTED_SPAN_DEFAULT OFF)
 else ()
@@ -100,8 +101,10 @@ option(ART_USE_STD_EXPECTED_SPAN "Use std::expected/std::span for art::expected/
         ${_ART_USE_STD_EXPECTED_SPAN_DEFAULT})
 if (ART_USE_STD_EXPECTED_SPAN)
     set(_ART_USE_STD_EXPECTED_SPAN_VALUE 1)
+    set(_ART_MIN_CXX_STD cxx_std_23)
 else ()
     set(_ART_USE_STD_EXPECTED_SPAN_VALUE 0)
+    set(_ART_MIN_CXX_STD cxx_std_17)
 endif ()
 if (ART_STORAGE_LITTLEFS OR NOT CMAKE_CROSSCOMPILING)
     set(_ART_NEED_LITTLEFS ON)
@@ -142,7 +145,7 @@ target_include_directories(art-core
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-target_compile_features(art-core PUBLIC cxx_std_23)
+target_compile_features(art-core PUBLIC ${_ART_MIN_CXX_STD})
 target_compile_definitions(art-core PUBLIC ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
 
 # Private: only ryu_float.c and FloatText.cpp include ryu/*, never a public libArT header.
@@ -164,14 +167,14 @@ if (TARGET art-build-config)
     target_link_libraries(art-core PRIVATE $<BUILD_INTERFACE:art-build-config>)
 endif ()
 
-# Interface target for C++23 FreeRTOS wrapper headers (src/freertos/)
+# Interface target for the FreeRTOS wrapper headers (src/freertos/)
 add_library(art-rtos INTERFACE)
 add_library(art::rtos ALIAS art-rtos)
 target_include_directories(art-rtos INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_compile_features(art-rtos INTERFACE cxx_std_23)
+target_compile_features(art-rtos INTERFACE ${_ART_MIN_CXX_STD})
 target_compile_definitions(art-rtos INTERFACE ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
 if (TARGET freertos)
     target_link_libraries(art-rtos INTERFACE $<BUILD_INTERFACE:freertos>)
@@ -232,7 +235,7 @@ endif ()
 if (ART_STORAGE_LITTLEFS)
     add_library(art-storage-littlefs STATIC src/storage/littlefs/LittleFsFileSystem.cpp)
     add_library(art::storage-littlefs ALIAS art-storage-littlefs)
-    target_compile_features(art-storage-littlefs PUBLIC cxx_std_23)
+    target_compile_features(art-storage-littlefs PUBLIC ${_ART_MIN_CXX_STD})
     # art-core provides FileSystem, File and the logger; art-rtos the mutex; littlefs is exported PUBLIC
     # because the template header includes lfs.h.
     target_link_libraries(art-storage-littlefs PUBLIC art-core art-rtos littlefs)
