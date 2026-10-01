@@ -59,8 +59,6 @@ test:
     matrix:
       - COMPILER: [gcc, clang]
         CXX_STANDARD: "17"
-        CXX_EXTENSIONS: "OFF"
-        STRICT_CXX_FLAGS: "-Wpedantic -Werror=pedantic"
       - COMPILER: gcc
         CXX_STANDARD: "20"
       - COMPILER: [gcc, clang]
@@ -70,7 +68,8 @@ test:
   script:
     - if [ "$COMPILER" = clang ]; then export CC=clang CXX=clang++; else export CC=gcc CXX=g++; fi
     - $CXX --version
-    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug -D CMAKE_CXX_STANDARD=$CXX_STANDARD -D CMAKE_CXX_EXTENSIONS=${CXX_EXTENSIONS:-ON} -D CMAKE_CXX_FLAGS="${STRICT_CXX_FLAGS:-}" -D ART_STORAGE_LITTLEFS=ON
+    - 'if [ "$CXX_STANDARD" = 17 ]; then cxx_extensions=OFF; strict_cxx_flags="-Wpedantic -Werror=pedantic"; else cxx_extensions=ON; strict_cxx_flags=""; fi'
+    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug -D CMAKE_CXX_STANDARD=$CXX_STANDARD -D CMAKE_CXX_EXTENSIONS=$cxx_extensions -D CMAKE_CXX_FLAGS="$strict_cxx_flags" -D ART_STORAGE_LITTLEFS=ON
     # The default of ART_USE_STD_EXPECTED_SPAN: ON at C++23, OFF below.
     - if [ "$CXX_STANDARD" -ge 23 ]; then expected_option=ON; else expected_option=OFF; fi
     - grep -x "ART_USE_STD_EXPECTED_SPAN:BOOL=$expected_option" build/CMakeCache.txt
