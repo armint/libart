@@ -62,6 +62,12 @@ the subset that libArT uses: construction from a value, from `unexpected` and wi
 copyable when `T` and `E` are, and it supports move-only `T` (for example `storage::File`). `*`, `->` and
 `error()` do not check the state, like `std::expected`.
 
+The comparisons of the own `art::expected` give the results of `std::expected`. They also do not warn where
+`std::expected` is silent (`std::expected` does not warn because libstdc++ is a system header), with one known
+limit: an unscoped enum compared with an `int` or with another enum type can still give `-Wsign-compare` or
+`-Wenum-compare` inside `utils/compat/expected.h`. The result is still the one of `std::expected`. To avoid the
+warning, compare with a value of the same enum type, or cast explicitly.
+
 `value()` on an error fails differently in the two modes. Do not rely on either behaviour; check `has_value()`
 first:
 

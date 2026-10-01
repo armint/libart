@@ -77,6 +77,12 @@ namespace detail {
  * that type, where == first promotes a type smaller than int (uint8_t, bool) to int; the promotion keeps the value,
  * so the result is the same. -1 is still equal to 0xFFFFFFFFu, and not equal to uint8_t{ 255 }; only the implicit
  * conversion that the warning is about becomes explicit. Every other operand pair uses its own operator==.
+ *
+ * Known limit: enums are not arithmetic types, so an unscoped enum compared with an int or with another enum still goes
+ * through a == b here, and can still warn (-Wsign-compare, -Wenum-compare) where std::expected is silent. The result
+ * is always the one of std::expected. The explicit path is not extended to unscoped enums because it would bypass an
+ * operator== that the user declares for the enum. To avoid the warning, compare with a value of the same enum type,
+ * or cast explicitly.
  */
 template <typename A, typename B>
 constexpr bool expected_equal(const A &a, const B &b) {
