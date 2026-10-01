@@ -229,27 +229,62 @@ set(_ART_COMPAT_STREAM_SOURCES
         ../src/streams/BufferedWritable.cpp
         ../src/utils/tfp_printf.cpp
 )
+# The same holds for src/storage/ without the LittleFS binding, which is not ported yet, and the file streams on
+# top of it: their sources are built into both binaries, so that they compile with the own types at C++17.
+set(_ART_COMPAT_STORAGE_SOURCES
+        ../src/streams/FatFileReadable.cpp
+        ../src/streams/FatFileWritable.cpp
+        ../src/streams/FileReadable.cpp
+        ../src/streams/FileWritable.cpp
+        ../src/storage/File.cpp
+        ../src/storage/FileSystem.cpp
+        ../src/storage/FatFileSystem.cpp
+        ../src/storage/FatFile.cpp
+        ../src/storage/FatDir.cpp
+        ../src/storage/diskio.cpp
+        ../src/storage/fatfs/ff.c
+        ../src/storage/fatfs/ffsystem.c
+        ../src/storage/fatfs/ffunicode.c
+)
+# The storage tests that do not need littlefs, with the BlockDevice contract suite and the device and file system
+# mocks, use C++20 (designated initializers, std::ranges), so they are built into libArT-compat-tests-cpp23-own
+# only: there they run with the own types.
+set(_ART_COMPAT_STORAGE_TESTS
+        storage/TestBlockDeviceDecorator.cpp
+        storage/BlockDeviceContract.cpp
+        storage/TestBlockDevice.cpp
+        storage/TestFileSystem.cpp
+        storage/TestFatFile.cpp
+        storage/TestFatDir.cpp
+        storage/TestFatDiskIo.cpp
+        storage/TestFatFileReadable.cpp
+        storage/TestFatFileWritable.cpp
+)
 # These files have warnings that are older than the compat binaries and that the strict flags below make fatal.
-# Keep them as warnings, for these files only: the variable length array in Readable::readUntil() and the unused
-# putstr() in tfp_printf.cpp.
+# Keep them as warnings, for these files only: the variable length array in Readable::readUntil(), the unused
+# putstr() in tfp_printf.cpp and the unused parameter of FatDir::read().
 set_source_files_properties(../src/streams/Readable.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=vla")
 set_source_files_properties(../src/utils/tfp_printf.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-function")
+set_source_files_properties(../src/storage/FatDir.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-parameter")
 foreach(_art_compat_standard 17 23)
     if (_art_compat_standard EQUAL 17)
         set(_art_compat_target libArT-compat-tests-cpp17)
     else ()
         set(_art_compat_target libArT-compat-tests-cpp23-own)
     endif ()
-    add_executable(${_art_compat_target} TestCompat.cpp test_main.cpp ${_ART_COMPAT_STREAM_SOURCES})
+    add_executable(${_art_compat_target} TestCompat.cpp test_main.cpp ${_ART_COMPAT_STREAM_SOURCES} ${_ART_COMPAT_STORAGE_SOURCES})
     set_target_properties(${_art_compat_target} PROPERTIES
             CXX_STANDARD ${_art_compat_standard}
             CXX_STANDARD_REQUIRED ON
             CXX_EXTENSIONS OFF)
     target_compile_options(${_art_compat_target} PRIVATE -O0 -g -Wall -Wextra -Wpedantic -Werror)
-    target_include_directories(${_art_compat_target} PRIVATE ../src)
+    # UNIT_TESTING: FatFile::MockState, as in libArT-tests.
+    target_compile_definitions(${_art_compat_target} PRIVATE UNIT_TESTING)
+    target_include_directories(${_art_compat_target} PRIVATE ../src ../src/storage ../src/storage/fatfs .)
     target_link_libraries(${_art_compat_target} PRIVATE etl::etl doctest::doctest)
 endforeach()
 target_compile_definitions(libArT-compat-tests-cpp23-own PRIVATE ART_USE_STD_EXPECTED_SPAN=0)
+target_sources(libArT-compat-tests-cpp23-own PRIVATE ${_ART_COMPAT_STORAGE_TESTS})
 
 # Discover all libArT-tests
 # catch_discover_tests(libArT-tests)
