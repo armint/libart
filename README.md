@@ -24,11 +24,39 @@ streams, logging, Modbus, settings, storage and utilities. `AGENTS.md` describes
 Add the repository with `add_subdirectory()` and link `art::core` (and `art::rtos` for the FreeRTOS wrappers).
 ESP-IDF projects use the repository as a component.
 
+### Installed package
+
+`cmake --install <build_dir> --prefix <prefix>` installs `libart-core.a`, the CMake package `art-core` and the
+public headers. After `find_package(art-core)`, link `art::core` and `art::rtos`, the same names as with
+`add_subdirectory()`.
+
+- **Headers**: they are installed to `<prefix>/include/libart/`, so that generic names such as `utils/` or
+  `art_types.h` do not collide with other packages in a shared prefix. The include directory of `art::core` and
+  `art::rtos` is `<prefix>/include/libart`, and the headers keep their path below `src/`, so a consumer includes them
+  as with `add_subdirectory()`, for example `#include "streams/Readable.h"` (installed to
+  `<prefix>/include/libart/streams/Readable.h`). Only the headers
+  (`*.h`, `*.hpp`) of `src/` are installed, and not those of `storage/littlefs/`: the `art-storage-littlefs` target
+  is not part of the installed package, so use `add_subdirectory()` for it. The headers in `freertos/` are
+  installed for `art::rtos`; the consumer provides FreeRTOS.
+- **Usage requirements**: as with `add_subdirectory()`, `art::core` carries the ETL include path, the compile
+  definition `ART_USE_STD_EXPECTED_SPAN` and the minimum C++ standard of the build that was installed (see
+  "Requirements"). It does not carry ArduinoJson: a consumer that includes `settings/` or `utils/JSONWriter.h` links
+  `ArduinoJson` itself.
+- **Dependencies**: the package finds ETL and ArduinoJson with `find_package()`, so both must be installed where
+  CMake finds them, for example in the same prefix. The install of libArT installs ArduinoJson as well. ETL installs
+  its package only when it is built as the top-level project, so install it separately:
+  `cmake -S <etl_source> -B <etl_build> && cmake --install <etl_build> --prefix <prefix>`.
+
+`tests/check-install.sh` does all of this in a temporary prefix, checks that the installed headers are exactly the
+headers of `src/` in git without `storage/littlefs/`, and builds the consumer project `tests/install-consumer/`
+against it, at C++17 with the own types (`CXX_STANDARD=17`) and at C++23 with the `std`
+types (`CXX_STANDARD=23`). The CI job `install` runs both.
+
 ## Dependencies
 
 | Dependency | Linked | Notes |
 |---|---|---|
-| [ETL](https://github.com/ETLCPP/etl) (embedded template library) | **PUBLIC** | Public headers use ETL types, for example `art::span` (see below). With `add_subdirectory()`, a target that links `art::core` gets the ETL include path; the ESP-IDF component exports it as well. The installed package (`find_package(art-core)`) only finds ETL; the consumer must link `etl::etl` itself. |
+| [ETL](https://github.com/ETLCPP/etl) (embedded template library) | **PUBLIC** | Public headers use ETL types, for example `art::span` (see below). With `add_subdirectory()`, a target that links `art::core` gets the ETL include path; the ESP-IDF component exports it as well. The installed package (`find_package(art-core)`) finds the installed ETL package and links `etl::etl` to `art::core` as well. |
 | [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | PRIVATE | Used by the JSON reader and writer. |
 | [Ryu](https://github.com/ulfjack/ryu) | PRIVATE | Used by `FloatText`, see `cmake/ryu.cmake`. |
 | [littlefs](https://github.com/littlefs-project/littlefs) | optional | Only for the `art-storage-littlefs` target (`ART_STORAGE_LITTLEFS`). |

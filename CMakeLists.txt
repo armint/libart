@@ -154,13 +154,7 @@ add_library(art::core ALIAS art-core)
 target_include_directories(
         art-core
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-
-
-target_include_directories(art-core
-        PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/libart>)
 
 target_compile_features(art-core PUBLIC ${_ART_MIN_CXX_STD})
 target_compile_definitions(art-core PUBLIC ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
@@ -189,7 +183,7 @@ add_library(art-rtos INTERFACE)
 add_library(art::rtos ALIAS art-rtos)
 target_include_directories(art-rtos INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/libart>
 )
 target_compile_features(art-rtos INTERFACE ${_ART_MIN_CXX_STD})
 target_compile_definitions(art-rtos INTERFACE ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
@@ -273,16 +267,28 @@ endif ()
 # Ensure the exported interface does not pull non-exported targets.
 set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
 # ETL is a PUBLIC dependency: the compat header utils/compat/span.h aliases etl::span. It is added after the reset above
-# and only for the build tree; the installed package config finds ETL itself (find_dependency(etl)).
+# and only for the build tree: the etl target of FetchContent is not in an export set, and CMake refuses to export a
+# link to it (also inside $<INSTALL_INTERFACE:...>). The installed art-coreConfig.cmake finds the installed ETL package
+# (find_dependency(etl)) and links etl::etl to art::core itself.
 target_link_libraries(art-core INTERFACE $<BUILD_INTERFACE:etl::etl>)
 
+# Export the targets as art::core and art::rtos, the names of the aliases that add_subdirectory() consumers link.
+set_target_properties(art-core PROPERTIES EXPORT_NAME core)
+set_target_properties(art-rtos PROPERTIES EXPORT_NAME rtos)
 install(TARGETS art-core art-rtos
         EXPORT art-core-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# The public headers keep their path below src/, so that the includes of a consumer (for example
+# "streams/Readable.h") are the same as with add_subdirectory(). They go to include/libart/, the include directory of
+# the exported targets, so that generic names such as utils/ or art_types.h do not collide with the headers of other
+# packages in a shared prefix. Left out: storage/littlefs/, because
+# art-storage-littlefs is not exported and its header includes lfs.h. freertos/ is installed for art::rtos; the
+# consumer provides FreeRTOS. Ryu is only included by sources, never by a header.
+install(DIRECTORY src/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libart
+        FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+        PATTERN "storage/littlefs" EXCLUDE)
 
 install(EXPORT art-core-targets
         NAMESPACE art::
