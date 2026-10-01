@@ -130,6 +130,8 @@ class Logger {
 // You can set a compile-time minimum level to compile out lower levels entirely.
 // Example: add -DLOG_COMPILED_MIN_LEVEL=logging::Level::Info to your compiler flags
 // to remove TRACE and DEBUG calls from the binary.
+// The format string is part of the variadic arguments, (LOGGER, FORMAT, ARGS...), so that a call without format
+// arguments, such as LOG_WARN(logger, "text"), is valid ISO C++17 without the GNU ", ##__VA_ARGS__" extension.
 
 #ifndef LOG_COMPILED_MIN_LEVEL
 #define LOG_COMPILED_MIN_LEVEL logging::Level::Trace
@@ -140,46 +142,46 @@ class Logger {
 
 #ifdef LOGGING_DISABLED
 
-#define LOG_TRACE(LOGGER, FMT, ...) ((void)0)
-#define LOG_DEBUG(LOGGER, FMT, ...) ((void)0)
-#define LOG_INFO(LOGGER, FMT, ...) ((void)0)
-#define LOG_WARN(LOGGER, FMT, ...) ((void)0)
-#define LOG_ERROR(LOGGER, FMT, ...) ((void)0)
+#define LOG_TRACE(LOGGER, ...) ((void)0)
+#define LOG_DEBUG(LOGGER, ...) ((void)0)
+#define LOG_INFO(LOGGER, ...) ((void)0)
+#define LOG_WARN(LOGGER, ...) ((void)0)
+#define LOG_ERROR(LOGGER, ...) ((void)0)
 
 #else
 
-#define LOG_TRACE(LOGGER, FMT, ...)                                                                                    \
+#define LOG_TRACE(LOGGER, ...)                                                                                         \
    do {                                                                                                                \
       if(LOG__CT_ENABLED(logging::Level::Trace) && (LOGGER).isEnabled(logging::Level::Trace)) {                        \
-         (LOGGER).trace((FMT), ##__VA_ARGS__);                                                                         \
+         (LOGGER).trace(__VA_ARGS__);                                                                                  \
       }                                                                                                                \
    } while(0)
 
-#define LOG_DEBUG(LOGGER, FMT, ...)                                                                                    \
+#define LOG_DEBUG(LOGGER, ...)                                                                                         \
    do {                                                                                                                \
       if(LOG__CT_ENABLED(logging::Level::Debug) && (LOGGER).isEnabled(logging::Level::Debug)) {                        \
-         (LOGGER).debug((FMT), ##__VA_ARGS__);                                                                         \
+         (LOGGER).debug(__VA_ARGS__);                                                                                  \
       }                                                                                                                \
    } while(0)
 
-#define LOG_INFO(LOGGER, FMT, ...)                                                                                     \
+#define LOG_INFO(LOGGER, ...)                                                                                          \
    do {                                                                                                                \
       if(LOG__CT_ENABLED(logging::Level::Info) && (LOGGER).isEnabled(logging::Level::Info)) {                          \
-         (LOGGER).info((FMT), ##__VA_ARGS__);                                                                          \
+         (LOGGER).info(__VA_ARGS__);                                                                                   \
       }                                                                                                                \
    } while(0)
 
-#define LOG_WARN(LOGGER, FMT, ...)                                                                                     \
+#define LOG_WARN(LOGGER, ...)                                                                                          \
    do {                                                                                                                \
       if(LOG__CT_ENABLED(logging::Level::Warning) && (LOGGER).isEnabled(logging::Level::Warning)) {                    \
-         (LOGGER).warn((FMT), ##__VA_ARGS__);                                                                          \
+         (LOGGER).warn(__VA_ARGS__);                                                                                   \
       }                                                                                                                \
    } while(0)
 
-#define LOG_ERROR(LOGGER, FMT, ...)                                                                                    \
+#define LOG_ERROR(LOGGER, ...)                                                                                         \
    do {                                                                                                                \
       if(LOG__CT_ENABLED(logging::Level::Error) && (LOGGER).isEnabled(logging::Level::Error)) {                        \
-         (LOGGER).error((FMT), ##__VA_ARGS__);                                                                         \
+         (LOGGER).error(__VA_ARGS__);                                                                                  \
       }                                                                                                                \
    } while(0)
 
