@@ -695,4 +695,22 @@ TEST_CASE("[compat] expected comparison of mixed signedness does not warn") {
    CHECK(voidErrorsEqual);
 }
 
+namespace app {
+// An unscoped enum with its own operator==. std::expected compares *x == value, which calls it; the own expected must
+// call it too, and must not compare the promoted values instead.
+enum Flags : unsigned { NoFlags = 0, FlagA = 1, FlagB = 2 };
+constexpr bool operator==(Flags flags, int mask) {
+   return (static_cast<unsigned>(flags) & static_cast<unsigned>(mask)) != 0;
+}
+} // namespace app
+
+TEST_CASE("[compat] expected comparison uses the operator== of an unscoped enum") {
+   const art::expected<app::Flags, Error> both = static_cast<app::Flags>(app::FlagA | app::FlagB);
+   const bool hasA = both == 1;
+   const art::expected<app::Flags, Error> none = app::NoFlags;
+   const bool noneHasA = none == 1;
+   CHECK(hasA);
+   CHECK_FALSE(noneHasA);
+}
+
 } // namespace
