@@ -69,27 +69,20 @@ inline constexpr unexpect_t unexpect{};
 
 namespace detail {
 
-/** An arithmetic type or an unscoped enum: the operand types for which == is the built-in comparison. */
-template <typename T>
-inline constexpr bool expected_arithmetic_operand_v =
-std::is_arithmetic_v<T> || (std::is_enum_v<T> && std::is_convertible_v<T, int>);
-
 /**
- * a == b for the comparisons of expected and unexpected. std::expected writes a == b as well; its -Wsign-compare and
- * -Wenum-compare warnings (expected<size_t, E> == 0) never reach the user because libstdc++ is a system header. For
- * two arithmetic or unscoped enum operands this performs the usual arithmetic conversions of the built-in ==
- * explicitly: unary + applies the integral promotions (uint8_t and bool to int, an unscoped enum to int or to its
- * promoted underlying type), and std::common_type_t of the two promoted types is the type that == converts both to.
- * The result is therefore the same (-1 is still equal to 0xFFFFFFFFu, and not equal to uint8_t{ 255 }); only the
- * implicit conversion that the warnings are about becomes explicit. Scoped enums and every other operand pair use
- * their own operator==. An operator== or unary operator+ that the user declares for an unscoped enum is not the
- * built-in one; this assumes neither exists.
+ * a == b for the comparisons of expected and unexpected. std::expected writes a == b as well; its -Wsign-compare
+ * warnings (expected<size_t, E> == 0) never reach the user because libstdc++ is a system header. For two arithmetic
+ * operands this converts both to their common type explicitly. For operands of different types, std::common_type_t is
+ * the type that the usual arithmetic conversions of the built-in == give. For two operands of the same type it is
+ * that type, where == first promotes a type smaller than int (uint8_t, bool) to int; the promotion keeps the value,
+ * so the result is the same. -1 is still equal to 0xFFFFFFFFu, and not equal to uint8_t{ 255 }; only the implicit
+ * conversion that the warning is about becomes explicit. Every other operand pair uses its own operator==.
  */
 template <typename A, typename B>
 constexpr bool expected_equal(const A &a, const B &b) {
-   if constexpr(expected_arithmetic_operand_v<A> && expected_arithmetic_operand_v<B>) {
-      using Common = std::common_type_t<decltype(+a), decltype(+b)>;
-      return static_cast<Common>(+a) == static_cast<Common>(+b);
+   if constexpr(std::is_arithmetic_v<A> && std::is_arithmetic_v<B>) {
+      using Common = std::common_type_t<A, B>;
+      return static_cast<Common>(a) == static_cast<Common>(b);
    } else {
       return a == b;
    }

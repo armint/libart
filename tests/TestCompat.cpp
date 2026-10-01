@@ -695,33 +695,4 @@ TEST_CASE("[compat] expected comparison of mixed signedness does not warn") {
    CHECK(voidErrorsEqual);
 }
 
-// Unscoped enums take part in the usual arithmetic conversions of the built-in ==, so they must not warn either
-// (-Wsign-compare for an unsigned underlying type, -Wenum-compare for two different enums). Scoped enums, like Error,
-// have their own operator== and are not affected.
-enum UnsignedLevel : uint32_t { LevelAllOnes = 0xFFFFFFFFu };
-enum SmallLevel : uint8_t { SmallTop = 255 };
-enum Colour { Red, Green };
-enum Fruit { Apple, Pear };
-
-TEST_CASE("[compat] expected comparison of unscoped enums does not warn") {
-   // The promoted underlying type: uint32_t, so -1 becomes 0xFFFFFFFF; uint8_t is promoted to int.
-   const art::expected<UnsignedLevel, Error> allOnes = LevelAllOnes;
-   const bool allOnesEqualsMinusOne = allOnes == -1;
-   const art::expected<SmallLevel, Error> top = SmallTop;
-   const bool topEqualsMinusOne = top == -1;
-   CHECK(allOnesEqualsMinusOne);
-   CHECK_FALSE(topEqualsMinusOne);
-
-   const art::expected<Colour, Error> green = Green;
-   const bool greenEqualsPear = green == Pear;
-   const bool greenEqualsApple = green == Apple;
-   const art::expected<Fruit, Error> pear = Pear;
-   const bool sameEnumerator = green == pear;
-   const bool unexpectedEnums = art::unexpected(Red) == art::unexpected(Apple);
-   CHECK(greenEqualsPear);
-   CHECK_FALSE(greenEqualsApple);
-   CHECK(sameEnumerator);
-   CHECK(unexpectedEnums);
-}
-
 } // namespace
