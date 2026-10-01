@@ -16,6 +16,7 @@ if(ESP_PLATFORM)
             etl
             GIT_REPOSITORY https://github.com/ETLCPP/etl.git
             GIT_TAG 20.41.7
+            GIT_SHALLOW TRUE
     )
     FetchContent_GetProperties(etl)
     if(NOT etl_POPULATED)
@@ -25,6 +26,7 @@ if(ESP_PLATFORM)
     FetchContent_Declare(ArduinoJson
             GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git
             GIT_TAG v6.21.5
+            GIT_SHALLOW TRUE
     )
     FetchContent_GetProperties(ArduinoJson)
     if(NOT arduinojson_POPULATED)
@@ -55,10 +57,13 @@ project(art-core VERSION 0.1.0 LANGUAGES C CXX ASM)
 
 include(GNUInstallDirs)
 
+# The git dependencies are pinned by tag and cloned shallow (GIT_SHALLOW): only the tagged commit is fetched, not the
+# history (about 40 MB for ETL).
 FetchContent_Declare(
         etl
         GIT_REPOSITORY https://github.com/ETLCPP/etl.git
         GIT_TAG 20.41.7
+        GIT_SHALLOW TRUE
 )
 
 FetchContent_MakeAvailable(etl)
@@ -66,6 +71,7 @@ FetchContent_MakeAvailable(etl)
 FetchContent_Declare(ArduinoJson
         GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git
         GIT_TAG v6.21.5
+        GIT_SHALLOW TRUE
 )
 
 FetchContent_MakeAvailable(ArduinoJson)

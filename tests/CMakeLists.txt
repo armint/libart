@@ -5,6 +5,7 @@ FetchContent_Declare(
         doctest
         GIT_REPOSITORY https://github.com/doctest/doctest.git
         GIT_TAG v2.4.12
+        GIT_SHALLOW TRUE
 )
 set(DOCTEST_NO_INSTALL ON)
 FetchContent_MakeAvailable(doctest)
@@ -12,6 +13,7 @@ FetchContent_MakeAvailable(doctest)
 FetchContent_Declare(ArduinoJson
         GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git
         GIT_TAG v6.21.3
+        GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(ArduinoJson)
 
@@ -19,6 +21,7 @@ FetchContent_Declare(
         etl
         GIT_REPOSITORY https://github.com/ETLCPP/etl.git
         GIT_TAG 20.37.0
+        GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(etl)
 
