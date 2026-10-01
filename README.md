@@ -44,7 +44,8 @@ The sources in `src/` and `tests/` are formatted with clang-format 20 and the `.
 Third-party sources are listed in `.clang-format-ignore` and keep the format of their upstream.
 
 - `cmake --build <build_dir> --target clangformat` formats all files in place.
-- `cmake --build <build_dir> --target clangformat-check` changes nothing and fails if a file is not formatted.
+- `cmake --build <build_dir> --target clangformat-check` changes nothing and fails if a file is not formatted. The CI
+  job `format` runs it.
 - `git clang-format-20 origin/dev` formats only the lines that you changed.
 
 The targets exist only when CMake finds clang-format 18 or later and libArT is the top-level project (see
