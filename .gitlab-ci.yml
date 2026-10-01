@@ -15,8 +15,12 @@ workflow:
 # -D FETCHCONTENT_BASE_DIR, so all build directories of a job and all jobs share one download.
 # - A changed pin is still applied: FetchContent re-clones for a changed GIT_TAG and re-downloads for a changed URL or
 #   URL_HASH. FETCHCONTENT_UPDATES_DISCONNECTED must stay off, because it skips the step that applies a changed tag.
-# - The key follows the two files that pin the versions, so that a branch with other pins does not overwrite the
-#   cache of the others.
+# - The key follows CMakeLists.txt and tests/CMakeLists.txt, which pin all versions but Ryu's, so that a branch with
+#   other pins does not overwrite the cache of the others. The Ryu pin (cmake/ryu.cmake) is not in the key (GitLab
+#   allows two files), but a changed URL_HASH still makes FetchContent download it again.
+# - All build directories of a job share the binary directories of the dependencies (etl-build, ...) as well. That is
+#   harmless while the dependencies only define interface targets; one that compiles a target into a shared binary
+#   directory would need a base directory per build directory.
 # - Only the build job uploads the cache (pull-push); the other jobs only download it, which saves an upload of about
 #   50 MB (compressed) per job. A job that runs without a cache downloads the dependencies as before.
 # - The before_script deletes the CMake caches of the FetchContent sub-builds. They contain the absolute path of the
