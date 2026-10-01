@@ -1,4 +1,4 @@
-#include <bit>
+#include "utils/compat/bit.h"
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -17,16 +17,16 @@ using utils::FloatText::parseFloat;
 namespace {
 
 uint32_t bitsOf(float f) {
-   return std::bit_cast<uint32_t>(f);
+   return art::bit_cast<uint32_t>(f);
 }
 
 float floatFromBits(uint32_t bits) {
-   return std::bit_cast<float>(bits);
+   return art::bit_cast<float>(bits);
 }
 
 // Formats into a fresh, exactly-sized-enough buffer and returns the written text. Fails the
 // current test (via REQUIRE) if the buffer turns out too small.
-std::string_view format(float value, std::span<char> buf) {
+std::string_view format(float value, art::span<char> buf) {
    size_t len = formatFloat(value, buf);
    REQUIRE(len > 0);
    return { buf.data(), len };

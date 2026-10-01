@@ -16,7 +16,7 @@
 
 using namespace modbus;
 
-static void compute_crc(std::span<const uint8_t> frame_wo_crc, uint8_t (&crc)[2]) {
+static void compute_crc(art::span<const uint8_t> frame_wo_crc, uint8_t (&crc)[2]) {
    IBMCRC16Digest d;
    d.update(frame_wo_crc);
    (void)d.getDigest(crc);
@@ -112,7 +112,7 @@ TEST_CASE("[Modbus] Slave replies to Read Holding Registers (float) [Modbus]") {
    REQUIRE(slaveTxBuffer[2] == 0x04); // 2 regs -> 4 data bytes
 
    uint8_t masterTxBuffer[20];
-   ArrayReadable masterReadable({ std::span<const uint8_t>(slaveTxBuffer, 9) });
+   ArrayReadable masterReadable({ art::span<const uint8_t>(slaveTxBuffer, 9) });
    ArrayWritable masterWritable(masterTxBuffer);
    ModbusMaster master(masterReadable, masterWritable);
    uint8_t masterOut[4];

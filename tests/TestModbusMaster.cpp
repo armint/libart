@@ -386,10 +386,10 @@ TEST_CASE("[Modbus] Master detects read timeout after byte count [Modbus]") {
 
 class FailingWritable : public Writable {
    public:
-   std::expected<size_t, Error> write(std::span<const uint8_t>) override {
-      return std::unexpected(CouldNotWrite);
+   art::expected<size_t, Error> write(art::span<const uint8_t>) override {
+      return art::unexpected(CouldNotWrite);
    }
-   std::expected<void, Error> flush() override {
+   art::expected<void, Error> flush() override {
       return {};
    }
 };
@@ -430,13 +430,13 @@ TEST_CASE("[Modbus] Master broadcast does not expect response [Modbus]") {
 
 class DynamicReadable : public Readable {
    public:
-   std::span<const uint8_t> data;
+   art::span<const uint8_t> data;
    size_t pos = 0;
-   std::expected<char, Error> read() override {
+   art::expected<char, Error> read() override {
       if(pos < data.size()) {
          return static_cast<char>(data[pos++]);
       }
-      return std::unexpected(Timeout);
+      return art::unexpected(Timeout);
    }
    bool available() override {
       return pos < data.size();
