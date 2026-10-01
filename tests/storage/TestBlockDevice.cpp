@@ -217,8 +217,8 @@ TEST_SUITE("art::storage::RamBlockDevice") {
       REQUIRE(ram.device.init().has_value());
       const std::array<uint8_t, 8> zeros{};
       // programSize is 4: misaligned offset, misaligned length.
-      CHECK(failedWith(ram.device.program(2u, std::span<const uint8_t>{ zeros }.first(4u)), Error::InvalidArgument));
-      CHECK(failedWith(ram.device.program(0u, std::span<const uint8_t>{ zeros }.first(6u)), Error::InvalidArgument));
+      CHECK(failedWith(ram.device.program(2u, art::span<const uint8_t>{ zeros }.first(4u)), Error::InvalidArgument));
+      CHECK(failedWith(ram.device.program(0u, art::span<const uint8_t>{ zeros }.first(6u)), Error::InvalidArgument));
       // eraseSize is 256.
       CHECK(failedWith(ram.device.erase(4u, 256u), Error::InvalidArgument));
       CHECK(failedWith(ram.device.erase(0u, 300u), Error::InvalidArgument));
@@ -240,7 +240,7 @@ TEST_SUITE("art::storage::RamBlockDevice") {
       REQUIRE(ram.device.init().has_value());
       std::array<uint8_t, 8> buffer{};
       CHECK(failedWith(ram.device.read(4u, buffer), Error::InvalidArgument));
-      CHECK(failedWith(ram.device.read(0u, std::span<uint8_t>{ buffer }.first(4u)), Error::InvalidArgument));
+      CHECK(failedWith(ram.device.read(0u, art::span<uint8_t>{ buffer }.first(4u)), Error::InvalidArgument));
    }
 
    TEST_CASE("counters count operations that reached the medium") {
@@ -436,7 +436,7 @@ TEST_SUITE("art::storage::MockCipherBlockDevice") {
       for(size_t index = 0u; index < plain.size(); ++index) {
          plain[index] = static_cast<uint8_t>(index * 7u);
       }
-      REQUIRE(cipher.program(96u, std::span<const uint8_t>{ plain }.first(384u)).has_value());
+      REQUIRE(cipher.program(96u, art::span<const uint8_t>{ plain }.first(384u)).has_value());
       std::array<uint8_t, 384> result{};
       REQUIRE(cipher.read(96u, result).has_value());
       CHECK(std::equal(result.begin(), result.end(), plain.begin()));

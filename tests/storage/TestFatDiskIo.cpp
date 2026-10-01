@@ -20,33 +20,33 @@ class ScriptedDevice : public BlockDevice {
    explicit ScriptedDevice(const Geometry &geometry)
       : geometry_(geometry) {}
 
-   std::expected<void, Error> init() override {
+   art::expected<void, Error> init() override {
       ++initCount;
       return initResult;
    }
 
-   std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
+   art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override {
       ++readCount;
       lastOffset = offset;
       lastLength = buffer.size();
       return ioResult;
    }
 
-   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+   art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) override {
       ++programCount;
       lastOffset = offset;
       lastLength = data.size();
       return ioResult;
    }
 
-   std::expected<void, Error> erase(offset_t offset, offset_t length) override {
+   art::expected<void, Error> erase(offset_t offset, offset_t length) override {
       ++eraseCount;
       lastOffset = offset;
       lastLength = length;
       return ioResult;
    }
 
-   std::expected<void, Error> sync() override {
+   art::expected<void, Error> sync() override {
       ++syncCount;
       return syncResult;
    }
@@ -56,9 +56,9 @@ class ScriptedDevice : public BlockDevice {
    }
 
    Geometry geometry_;
-   std::expected<void, Error> initResult{};
-   std::expected<void, Error> ioResult{};
-   std::expected<void, Error> syncResult{};
+   art::expected<void, Error> initResult{};
+   art::expected<void, Error> ioResult{};
+   art::expected<void, Error> syncResult{};
    uint32_t initCount{ 0u };
    uint32_t readCount{ 0u };
    uint32_t programCount{ 0u };
@@ -113,7 +113,7 @@ TEST_CASE("[FatDiskIo] an unregistered drive is not ready and rejects every call
 
 TEST_CASE("[FatDiskIo] a failed init leaves the drive not ready and a later init recovers it [FatDiskIo]") {
    DriveFixture drive;
-   drive.device.initResult = std::unexpected(Error::NotReady);
+   drive.device.initResult = art::unexpected(Error::NotReady);
    CHECK(disk_initialize(0) == STA_NOINIT);
    CHECK(disk_status(0) == STA_NOINIT);
 
@@ -121,7 +121,7 @@ TEST_CASE("[FatDiskIo] a failed init leaves the drive not ready and a later init
    CHECK(disk_initialize(0) == 0);
    CHECK(disk_status(0) == 0);
 
-   drive.device.initResult = std::unexpected(Error::Io);
+   drive.device.initResult = art::unexpected(Error::Io);
    CHECK(disk_initialize(0) == STA_NOINIT);
    CHECK(disk_status(0) == STA_NOINIT);
 }
@@ -244,7 +244,7 @@ TEST_CASE("[FatDiskIo] device errors map onto DRESULT [FatDiskIo]") {
       CAPTURE(toString(row.error));
       DriveFixture drive;
       drive.initialise();
-      drive.device.ioResult = std::unexpected(row.error);
+      drive.device.ioResult = art::unexpected(row.error);
       CHECK(disk_read(0, drive.buffer.data(), 0, 1) == row.expected);
       CHECK(disk_write(0, drive.buffer.data(), 0, 1) == row.expected);
    }
@@ -256,17 +256,17 @@ TEST_CASE("[FatDiskIo] a device that reports it is gone leaves the drive not rea
    drive.initialise();
 
    SUBCASE("hard failure keeps the drive ready") {
-      drive.device.ioResult = std::unexpected(Error::Io);
+      drive.device.ioResult = art::unexpected(Error::Io);
       CHECK(disk_read(0, drive.buffer.data(), 0, 1) == RES_ERROR);
       CHECK(disk_status(0) == 0);
    }
    SUBCASE("write protection keeps the drive ready") {
-      drive.device.ioResult = std::unexpected(Error::WriteProtected);
+      drive.device.ioResult = art::unexpected(Error::WriteProtected);
       CHECK(disk_write(0, drive.buffer.data(), 0, 1) == RES_WRPRT);
       CHECK(disk_status(0) == 0);
    }
    SUBCASE("not ready on read") {
-      drive.device.ioResult = std::unexpected(Error::NotReady);
+      drive.device.ioResult = art::unexpected(Error::NotReady);
       CHECK(disk_read(0, drive.buffer.data(), 0, 1) == RES_NOTRDY);
       CHECK(disk_status(0) == STA_NOINIT);
       CHECK(disk_write(0, drive.buffer.data(), 0, 1) == RES_NOTRDY);
@@ -277,12 +277,12 @@ TEST_CASE("[FatDiskIo] a device that reports it is gone leaves the drive not rea
       CHECK(disk_read(0, drive.buffer.data(), 0, 1) == RES_OK);
    }
    SUBCASE("not initialised on write") {
-      drive.device.ioResult = std::unexpected(Error::NotInitialised);
+      drive.device.ioResult = art::unexpected(Error::NotInitialised);
       CHECK(disk_write(0, drive.buffer.data(), 0, 1) == RES_NOTRDY);
       CHECK(disk_status(0) == STA_NOINIT);
    }
    SUBCASE("not ready on sync") {
-      drive.device.syncResult = std::unexpected(Error::NotReady);
+      drive.device.syncResult = art::unexpected(Error::NotReady);
       CHECK(disk_ioctl(0, CTRL_SYNC, nullptr) == RES_NOTRDY);
       CHECK(disk_status(0) == STA_NOINIT);
    }
@@ -294,7 +294,7 @@ TEST_CASE("[FatDiskIo] CTRL_SYNC flushes the device [FatDiskIo]") {
    CHECK(disk_ioctl(0, CTRL_SYNC, nullptr) == RES_OK);
    CHECK(drive.device.syncCount == 1u);
 
-   drive.device.syncResult = std::unexpected(Error::Io);
+   drive.device.syncResult = art::unexpected(Error::Io);
    CHECK(disk_ioctl(0, CTRL_SYNC, nullptr) == RES_ERROR);
 }
 

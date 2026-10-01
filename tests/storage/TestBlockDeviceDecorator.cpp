@@ -14,12 +14,12 @@ namespace {
 // method reports that error.
 class RecordingDevice : public BlockDevice {
    public:
-   std::expected<void, Error> init() override {
+   art::expected<void, Error> init() override {
       ++initCalls;
       return result();
    }
 
-   std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
+   art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override {
       lastReadOffset = offset;
       lastReadSize = buffer.size();
       for(uint8_t &byte : buffer) {
@@ -28,19 +28,19 @@ class RecordingDevice : public BlockDevice {
       return result();
    }
 
-   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+   art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) override {
       lastProgramOffset = offset;
       lastProgramData.assign(data.begin(), data.end());
       return result();
    }
 
-   std::expected<void, Error> erase(offset_t offset, offset_t length) override {
+   art::expected<void, Error> erase(offset_t offset, offset_t length) override {
       lastEraseOffset = offset;
       lastEraseLength = length;
       return result();
    }
 
-   std::expected<void, Error> sync() override {
+   art::expected<void, Error> sync() override {
       ++syncCalls;
       return result();
    }
@@ -60,9 +60,9 @@ class RecordingDevice : public BlockDevice {
    offset_t lastEraseLength{ 0u };
 
    private:
-   std::expected<void, Error> result() const {
+   art::expected<void, Error> result() const {
       if(failWith) {
-         return std::unexpected(*failWith);
+         return art::unexpected(*failWith);
       }
       return {};
    }
@@ -73,11 +73,11 @@ class MinimalTransform : public BlockDeviceDecorator {
    public:
    using BlockDeviceDecorator::BlockDeviceDecorator;
 
-   std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) override {
+   art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) override {
       return lower().read(offset + 1u, buffer);
    }
 
-   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+   art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) override {
       return lower().program(offset + 1u, data);
    }
 
@@ -181,16 +181,16 @@ TEST_SUITE("art::storage::BlockDeviceDecorator") {
 
    TEST_CASE("BlockDevice::sync defaults to success") {
       struct NoSyncDevice : BlockDevice {
-         std::expected<void, Error> init() override {
+         art::expected<void, Error> init() override {
             return {};
          }
-         std::expected<void, Error> read(offset_t, std::span<uint8_t>) override {
+         art::expected<void, Error> read(offset_t, art::span<uint8_t>) override {
             return {};
          }
-         std::expected<void, Error> program(offset_t, std::span<const uint8_t>) override {
+         art::expected<void, Error> program(offset_t, art::span<const uint8_t>) override {
             return {};
          }
-         std::expected<void, Error> erase(offset_t, offset_t) override {
+         art::expected<void, Error> erase(offset_t, offset_t) override {
             return {};
          }
          Geometry geometry() const override {

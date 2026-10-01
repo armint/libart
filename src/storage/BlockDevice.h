@@ -2,9 +2,9 @@
 
 #include "storage/StorageError.h"
 #include "storage/StorageTypes.h"
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #include <cstdint>
-#include <expected>
-#include <span>
 
 namespace art::storage {
 
@@ -135,7 +135,7 @@ class BlockDevice {
     *
     * @return Nothing on success, otherwise the reason for the failure (for example Error::Io).
     */
-   virtual std::expected<void, Error> init() = 0;
+   virtual art::expected<void, Error> init() = 0;
 
    /**
     * @brief Reads bytes from the device.
@@ -144,7 +144,7 @@ class BlockDevice {
     * @param buffer Destination. Its size is the number of bytes read.
     * @return Nothing on success, otherwise the error. The buffer content is unspecified after an error.
     */
-   virtual std::expected<void, Error> read(offset_t offset, std::span<uint8_t> buffer) = 0;
+   virtual art::expected<void, Error> read(offset_t offset, art::span<uint8_t> buffer) = 0;
 
    /**
     * @brief Programs bytes into the device.
@@ -156,7 +156,7 @@ class BlockDevice {
     * @param data Source. Its size is the number of bytes programmed.
     * @return Nothing on success, otherwise the error. The target range is in an undefined state after an error.
     */
-   virtual std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) = 0;
+   virtual art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) = 0;
 
    /**
     * @brief Erases a range of the device.
@@ -170,7 +170,7 @@ class BlockDevice {
     * @param length Length of the range in bytes, a multiple of Geometry::eraseSize (any length if it is 0).
     * @return Nothing on success, otherwise the error.
     */
-   virtual std::expected<void, Error> erase(offset_t offset, offset_t length) = 0;
+   virtual art::expected<void, Error> erase(offset_t offset, offset_t length) = 0;
 
    /**
     * @brief Flushes buffered writes to the medium.
@@ -180,7 +180,7 @@ class BlockDevice {
     *
     * @return Nothing on success, otherwise the error.
     */
-   virtual std::expected<void, Error> sync() {
+   virtual art::expected<void, Error> sync() {
       return {};
    }
 

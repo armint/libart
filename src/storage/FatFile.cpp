@@ -24,13 +24,13 @@ FatFile::~FatFile() {
    }
 }
 
-std::expected<size_t, FRESULT> FatFile::read(std::span<uint8_t> buffer) {
+art::expected<size_t, FRESULT> FatFile::read(art::span<uint8_t> buffer) {
 #ifdef UNIT_TESTING
    if(state) {
       if(state->nextReadResult != FR_OK) {
          auto res = state->nextReadResult;
          state->nextReadResult = FR_OK;
-         return std::unexpected(res);
+         return art::unexpected(res);
       }
       size_t toRead = std::min(buffer.size(), state->fileData.size() - state->currentPosition);
       std::copy(state->fileData.begin() + state->currentPosition,
@@ -42,12 +42,12 @@ std::expected<size_t, FRESULT> FatFile::read(std::span<uint8_t> buffer) {
    UINT read;
    auto res = f_read(&_fil, buffer.data(), buffer.size(), &read);
    if(res != FR_OK) {
-      return std::unexpected(res);
+      return art::unexpected(res);
    }
    return static_cast<size_t>(read);
 }
 
-std::expected<size_t, FRESULT> FatFile::write(std::span<const uint8_t> buffer) {
+art::expected<size_t, FRESULT> FatFile::write(art::span<const uint8_t> buffer) {
 #ifdef UNIT_TESTING
    if(state) {
       state->writeCalled = true;
@@ -59,12 +59,12 @@ std::expected<size_t, FRESULT> FatFile::write(std::span<const uint8_t> buffer) {
    UINT written;
    auto res = f_write(&_fil, buffer.data(), buffer.size(), &written);
    if(res != FR_OK) {
-      return std::unexpected(res);
+      return art::unexpected(res);
    }
    return static_cast<size_t>(written);
 }
 
-std::expected<void, FRESULT> FatFile::seek(size_t offset) {
+art::expected<void, FRESULT> FatFile::seek(size_t offset) {
 #ifdef UNIT_TESTING
    if(state) {
       state->currentPosition = offset;
@@ -73,7 +73,7 @@ std::expected<void, FRESULT> FatFile::seek(size_t offset) {
 #endif
    auto res = f_lseek(&_fil, offset);
    if(res != FR_OK) {
-      return std::unexpected(res);
+      return art::unexpected(res);
    }
    return {};
 }
@@ -94,7 +94,7 @@ size_t FatFile::size() {
    return f_size(&_fil);
 }
 
-std::expected<void, FRESULT> FatFile::flush() {
+art::expected<void, FRESULT> FatFile::flush() {
 #ifdef UNIT_TESTING
    if(state) {
       state->syncCalled = true;
@@ -104,7 +104,7 @@ std::expected<void, FRESULT> FatFile::flush() {
 #endif
    auto res = f_sync(&_fil);
    if(res != FR_OK) {
-      return std::unexpected(res);
+      return art::unexpected(res);
    }
    return {};
 }

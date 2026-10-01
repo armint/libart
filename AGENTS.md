@@ -20,7 +20,7 @@ systems are cortex-m or risc-v microcontrollers running bare-metal or rtos-based
 
 The sector-based `StorageDevice` interface no longer exists. A driver that implemented it (for example an SD card
 over SPI) implements `art::storage::BlockDevice` (`src/storage/BlockDevice.h`) instead. All positions are byte
-offsets, and results are `std::expected<void, Error>` instead of status flags and sector counts.
+offsets, and results are `art::expected<void, Error>` instead of status flags and sector counts.
 
 | `StorageDevice` | `BlockDevice` |
 |---|---|

@@ -1,7 +1,7 @@
 #pragma once
 #include "fatfs/ff.h"
-#include <expected>
-#include <span>
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #ifdef UNIT_TESTING
 #include <cstdint>
 #include <vector>
@@ -80,10 +80,10 @@ class FatFile {
     * @param buffer The buffer where the read data will be stored. The buffer's size determines
     *               the maximum amount of data that will be read from the file.
     *
-    * @return A std::expected object containing the number of bytes read on success, or an FRESULT
+    * @return A art::expected object containing the number of bytes read on success, or an FRESULT
     *         indicating the type of error that occurred.
     */
-   std::expected<size_t, FRESULT> read(std::span<uint8_t> buffer);
+   art::expected<size_t, FRESULT> read(art::span<uint8_t> buffer);
    /**
     * Writes data from a provided buffer to a file within the FAT filesystem.
     *
@@ -97,12 +97,12 @@ class FatFile {
     *               The span should point to a contiguous block of memory
     *               containing the data.
     *
-    * @return std::expected<size_t, FRESULT> On success, returns the number of bytes
+    * @return art::expected<size_t, FRESULT> On success, returns the number of bytes
     *                                        actually written wrapped in an expected
     *                                        object. On failure, returns an unexpected
     *                                        object containing the FRESULT error code.
     */
-   std::expected<size_t, FRESULT> write(std::span<const uint8_t> buffer);
+   art::expected<size_t, FRESULT> write(art::span<const uint8_t> buffer);
    /**
     * @brief Synchronizes the file's in-memory state with the storage media.
     *
@@ -114,7 +114,7 @@ class FatFile {
     * - `void` on success
     * - `FRESULT` on failure, indicating the specific error that occurred
     */
-   std::expected<void, FRESULT> flush();
+   art::expected<void, FRESULT> flush();
    /**
     * Seeks to a specific position within the file.
     *
@@ -123,9 +123,9 @@ class FatFile {
     * error code will be returned.
     *
     * @param offset The position, in bytes, to seek to within the file.
-    * @return A std::expected<void, FRESULT> either holding no value on success or an FRESULT error code on failure.
+    * @return A art::expected<void, FRESULT> either holding no value on success or an FRESULT error code on failure.
     */
-   std::expected<void, FRESULT> seek(size_t offset);
+   art::expected<void, FRESULT> seek(size_t offset);
    /**
     * Retrieves the current file position.
     *

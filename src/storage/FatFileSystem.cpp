@@ -43,7 +43,7 @@ FRESULT FatFileSystem::mount() {
    mountPoint[1] = ':';
    return f_mount(&_fatfs, mountPoint, 0);
 }
-std::expected<uint64_t, FRESULT> FatFileSystem::free() {
+art::expected<uint64_t, FRESULT> FatFileSystem::free() {
    FATFS *fs = &_fatfs;
    DWORD freeCluster;
    uint64_t freeBytes = 0;
@@ -53,7 +53,7 @@ std::expected<uint64_t, FRESULT> FatFileSystem::free() {
    mountPoint[1] = ':';
    auto res = f_getfree(mountPoint, &freeCluster, &fs);
    if(res != FR_OK) {
-      return std::unexpected(res);
+      return art::unexpected(res);
    }
    // FF_MIN_SS is the FAT sector size; diskio.cpp refuses a build with a variable one.
    freeBytes = static_cast<uint64_t>(freeCluster) * fs->csize * FF_MIN_SS;

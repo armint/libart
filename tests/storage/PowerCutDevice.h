@@ -2,10 +2,10 @@
 
 #include "RamBlockDevice.h"
 #include "storage/BlockDeviceDecorator.h"
+#include "utils/compat/span.h"
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 
 namespace art::storage::test {
 
@@ -45,9 +45,9 @@ class PowerCutDevice final : public BlockDeviceDecorator {
       writeOperations_ = 0u;
    }
 
-   std::expected<void, Error> program(offset_t offset, std::span<const uint8_t> data) override {
+   art::expected<void, Error> program(offset_t offset, art::span<const uint8_t> data) override {
       if(cut_) {
-         return std::unexpected(Error::Io);
+         return art::unexpected(Error::Io);
       }
       ++writeOperations_;
       if(writeOperationsUntilCut_ != 0u && --writeOperationsUntilCut_ == 0u) {
@@ -55,28 +55,28 @@ class PowerCutDevice final : public BlockDeviceDecorator {
          ram_.truncateNextProgram(tearBytes_);
          static_cast<void>(BlockDeviceDecorator::program(offset, data));
          ram_.clearFaults();
-         return std::unexpected(Error::Io);
+         return art::unexpected(Error::Io);
       }
       return BlockDeviceDecorator::program(offset, data);
    }
 
-   std::expected<void, Error> erase(offset_t offset, offset_t length) override {
+   art::expected<void, Error> erase(offset_t offset, offset_t length) override {
       if(cut_) {
-         return std::unexpected(Error::Io);
+         return art::unexpected(Error::Io);
       }
       ++writeOperations_;
       if(writeOperationsUntilCut_ != 0u && --writeOperationsUntilCut_ == 0u) {
          cut_ = true;
          const size_t erased = std::min<size_t>(tearBytes_, length);
          std::ranges::fill(ram_.contents().subspan(static_cast<size_t>(offset), erased), RamBlockDevice::kErasedByte);
-         return std::unexpected(Error::Io);
+         return art::unexpected(Error::Io);
       }
       return BlockDeviceDecorator::erase(offset, length);
    }
 
-   std::expected<void, Error> sync() override {
+   art::expected<void, Error> sync() override {
       if(cut_) {
-         return std::unexpected(Error::Io);
+         return art::unexpected(Error::Io);
       }
       return BlockDeviceDecorator::sync();
    }
