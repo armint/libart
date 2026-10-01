@@ -228,6 +228,19 @@ compat-firmware:
     - cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
     - ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" ./tests/check-compat-firmware-build.sh
 
+# Installs art-core with cmake --install into a temporary prefix (ETL into the same prefix) and builds the consumer
+# project tests/install-consumer/ against it with find_package(art-core) (see tests/check-install.sh): at C++17 with
+# the own types, and at C++23 with the std types. The consumer compiles every installed header on its own, except
+# freertos/ and the FatFs headers, and fails if an installed header includes Ryu or littlefs. The script works in a
+# temporary directory outside the checkout and takes the dependencies from FETCHCONTENT_BASE_DIR (the cache).
+install:
+  stage: build
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - CXX_STANDARD=17 ./tests/check-install.sh
+    - CXX_STANDARD=23 ./tests/check-install.sh
+
 # Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
 # optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the
 # FreeRTOS host stubs of the unit tests; a cross build of it needs a FreeRTOS target from a superproject
