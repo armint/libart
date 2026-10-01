@@ -1,7 +1,7 @@
 #pragma once
 
-#include <expected>
-#include <span>
+#include "utils/compat/expected.h"
+#include "utils/compat/span.h"
 #include <utility>
 
 #include "streams/BoundedReadable.h"
@@ -30,7 +30,7 @@ class ModbusSlave {
       ModbusCrc digest_;
       explicit CRCWritable(Writable &sink)
          : DigestWritable(sink, digest_) {}
-      std::expected<size_t, Error> writeCRC();
+      art::expected<size_t, Error> writeCRC();
    };
 
    public:
@@ -73,7 +73,7 @@ class ModbusSlave {
    BufferedReadable *buffered_readable_ = nullptr;
    Writable &writable_;
    uint8_t address_ = 1; // default slave address
-   std::span<uint8_t> buffer_;
+   art::span<uint8_t> buffer_;
    utils::Timeout packet_timeout_;
 
    ReadRegistersCallback_t readHolding_{};
@@ -99,7 +99,7 @@ class ModbusSlave {
       }
    }
    // helpers
-   std::expected<size_t, Writable::Error> writeException(uint8_t function, uint8_t exceptionCode);
+   art::expected<size_t, Writable::Error> writeException(uint8_t function, uint8_t exceptionCode);
    bool handleReadRegisters(CRCReadable &r, uint8_t function, bool isBroadcast);
    bool handleWriteMultipleRegisters(CRCReadable &r, uint8_t function, bool isBroadcast);
    bool isWaitingForIdle();
@@ -113,7 +113,7 @@ class ModbusSlave {
     * @param rxEnabler An optional function to enable/disable the receiver (e.g. for RS-485 transceivers)
     * @param txEnabler An optional function to enable/disable the transmitter (e.g. for RS-485 transceivers)
     */
-   ModbusSlave(BufferedReadable &readable, Writable &writable, std::span<uint8_t> buffer, enabler_t rxEnabler = {}, enabler_t txEnabler = {});
+   ModbusSlave(BufferedReadable &readable, Writable &writable, art::span<uint8_t> buffer, enabler_t rxEnabler = {}, enabler_t txEnabler = {});
    /**
     * @brief Construct a new Modbus Slave object
     * @param readable The readable stream to receive data from
@@ -122,7 +122,7 @@ class ModbusSlave {
     * @param rxEnabler An optional function to enable/disable the receiver (e.g. for RS-485 transceivers)
     * @param txEnabler An optional function to enable/disable the transmitter (e.g. for RS-485 transceivers)
     */
-   ModbusSlave(Readable &readable, Writable &writable, std::span<uint8_t> buffer, enabler_t rxEnabler = {}, enabler_t txEnabler = {});
+   ModbusSlave(Readable &readable, Writable &writable, art::span<uint8_t> buffer, enabler_t rxEnabler = {}, enabler_t txEnabler = {});
 
    void setAddress(uint8_t addr) {
       address_ = addr;
