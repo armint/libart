@@ -14,6 +14,8 @@ workflow:
 # projects consume via add_subdirectory(). This still configures and
 # fetches tests/ too (CMakeLists.txt adds it whenever not cross-compiling),
 # just doesn't build the test binary — the test job below does that.
+# The second build compiles art-core and art-storage-littlefs with LOGGING_DISABLED, the form of the LOG_* macros
+# (src/logging/Logger.h) that no test binary uses, so that a mistake in it breaks the pipeline.
 build:
   stage: build
   variables:
@@ -21,6 +23,8 @@ build:
   script:
     - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
     - cmake --build build --target art-core -j$(nproc)
+    - cmake -B build-logging-disabled -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON -D CMAKE_CXX_FLAGS=-DLOGGING_DISABLED
+    - cmake --build build-logging-disabled --target art-core art-storage-littlefs -j$(nproc)
 
 # Builds and runs the native unit test suite (doctest; a handful of
 # storage/ tests use Catch2-style TEST_CASE/CHECK/SUBCASE macros, which
