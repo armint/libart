@@ -655,4 +655,62 @@ TEST_CASE("[compat] expected and unexpected comparison") {
    CHECK(check(true) != art::unexpected(Error::Io));
 }
 
+// The comparisons of mixed signedness that std::expected accepts silently (its warnings stay in the system header)
+// must not warn in the own type either: this file builds with -Wall -Wextra -Werror in the compat binaries. The
+// comparisons are written outside the CHECK macros, as in user code. The results are those of the built-in ==.
+TEST_CASE("[compat] expected comparison of mixed signedness does not warn") {
+   const art::expected<size_t, Error> zero = size_t{ 0 };
+   const bool equalsZero = zero == 0;
+   const bool zeroEquals = 0 == zero;
+   const bool differsFromOne = zero != 1;
+   CHECK(equalsZero);
+   CHECK(zeroEquals);
+   CHECK(differsFromOne);
+
+   const art::expected<int, Error> signedZero = 0;
+   const bool sameValue = signedZero == zero;
+   CHECK(sameValue);
+
+   // The usual arithmetic conversions of the built-in ==: -1 becomes 0xFFFFFFFF, but uint8_t is promoted to int.
+   const art::expected<uint32_t, Error> allOnes = 0xFFFFFFFFu;
+   const bool allOnesEqualsMinusOne = allOnes == -1;
+   const art::expected<uint8_t, Error> byte = uint8_t{ 255 };
+   const bool byteEqualsMinusOne = byte == -1;
+   CHECK(allOnesEqualsMinusOne);
+   CHECK_FALSE(byteEqualsMinusOne);
+
+   const art::expected<void, unsigned> voidError = art::unexpected(1u);
+   const art::expected<int, unsigned> valueError = art::unexpected(1u);
+   const bool voidErrorEquals = voidError == art::unexpected(1);
+   const bool valueErrorEquals = valueError == art::unexpected(1);
+   const bool unexpectedEquals = art::unexpected(1u) == art::unexpected(1);
+   // Before C++20, unexpected has an operator!= of its own.
+   const bool unexpectedDiffers = art::unexpected(1u) != art::unexpected(2);
+   const art::expected<void, int> signedVoidError = art::unexpected(1);
+   const bool voidErrorsEqual = voidError == signedVoidError;
+   CHECK(voidErrorEquals);
+   CHECK(valueErrorEquals);
+   CHECK(unexpectedEquals);
+   CHECK(unexpectedDiffers);
+   CHECK(voidErrorsEqual);
+}
+
+namespace app {
+// An unscoped enum with its own operator==. std::expected compares *x == value, which calls it; the own expected must
+// call it too, and must not compare the promoted values instead.
+enum Flags : unsigned { NoFlags = 0, FlagA = 1, FlagB = 2 };
+constexpr bool operator==(Flags flags, int mask) {
+   return (static_cast<unsigned>(flags) & static_cast<unsigned>(mask)) != 0;
+}
+} // namespace app
+
+TEST_CASE("[compat] expected comparison uses the operator== of an unscoped enum") {
+   const art::expected<app::Flags, Error> both = static_cast<app::Flags>(app::FlagA | app::FlagB);
+   const bool hasA = both == 1;
+   const art::expected<app::Flags, Error> none = app::NoFlags;
+   const bool noneHasA = none == 1;
+   CHECK(hasA);
+   CHECK_FALSE(noneHasA);
+}
+
 } // namespace
