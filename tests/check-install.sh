@@ -6,8 +6,9 @@
 #   - CXX_STANDARD=23: libArT at its default (C++23, std::expected and std::span). The consumer sets no standard,
 #     so the C++23 it is compiled at comes from the cxx_std_23 requirement of the installed art::core.
 #
-# The consumer compiles every installed header except freertos/ on its own, and runs a smoke test. The script also
-# fails if an installed header includes Ryu or littlefs, which are not part of the installed package.
+# The script fails if the installed headers are not exactly the headers of src/ in git without storage/littlefs/, or
+# if an installed header includes Ryu or littlefs, which are not part of the installed package. The consumer compiles
+# every installed header on its own, except freertos/ and storage/fatfs/, and runs a smoke test.
 #
 # ETL is installed into the same prefix from the ETL source of the libArT configure (ETL installs its package only
 # when it is the top-level project); ArduinoJson is installed by the `cmake --install` of libArT itself.
@@ -56,7 +57,16 @@ cmake -S "$etl_source_dir" -B "$work_dir/etl-build-cpp$CXX_STANDARD" -G "Unix Ma
 cmake --install "$work_dir/etl-build-cpp$CXX_STANDARD" --prefix "$prefix"
 
 echo "== Installed libArT headers =="
-(cd "$prefix/include/libart" && find . -type f | sort)
+(cd "$prefix/include/libart" && find . -type f | sed 's|^\./||' | sort) > "$work_dir/installed-headers.txt"
+cat "$work_dir/installed-headers.txt"
+# The installed set must be exactly the headers of src/ in git, without storage/littlefs/: a header that the install
+# rule misses, or a file that it installs in addition, fails here, also one that no other header includes.
+git -C "$source_dir" ls-files 'src/*.h' 'src/*.hpp' | grep -v '^src/storage/littlefs/' | sed 's|^src/||' | sort \
+   > "$work_dir/expected-headers.txt"
+if ! diff -u "$work_dir/expected-headers.txt" "$work_dir/installed-headers.txt"; then
+   echo "The installed headers differ from the headers of src/ (- missing, + not expected)" >&2
+   exit 1
+fi
 # Ryu and littlefs are private to the build; an installed header must not need them.
 if grep -rEn '#[[:space:]]*include[[:space:]]*[<"](ryu/|lfs\.h|lfs_util\.h)' "$prefix/include/libart"; then
    echo "An installed header includes Ryu or littlefs" >&2

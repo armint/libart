@@ -19,16 +19,11 @@ find_package(art-core REQUIRED)
 # includes them in the right order.
 get_target_property(_art_include_dirs art::core INTERFACE_INCLUDE_DIRECTORIES)
 list(GET _art_include_dirs 0 _art_include_dir)
+# Every header below the include directory, so that a header in a new directory is compiled as well.
 file(GLOB_RECURSE _art_headers RELATIVE "${_art_include_dir}" CONFIGURE_DEPENDS
-        "${_art_include_dir}/art_types.h"
-        "${_art_include_dir}/logging/*.h"
-        "${_art_include_dir}/modbus/*.h"
-        "${_art_include_dir}/sensors/*.h"
-        "${_art_include_dir}/settings/*.h"
-        "${_art_include_dir}/storage/*.h"
-        "${_art_include_dir}/streams/*.h"
-        "${_art_include_dir}/utils/*.h")
-list(FILTER _art_headers EXCLUDE REGEX "^storage/fatfs/")
+        "${_art_include_dir}/*.h"
+        "${_art_include_dir}/*.hpp")
+list(FILTER _art_headers EXCLUDE REGEX "^(freertos|storage/fatfs)/")
 if (NOT _art_headers)
     message(FATAL_ERROR "No libArT headers found in ${_art_include_dir}")
 endif ()

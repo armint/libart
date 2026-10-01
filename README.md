@@ -47,8 +47,9 @@ public headers. After `find_package(art-core)`, link `art::core` and `art::rtos`
   its package only when it is built as the top-level project, so install it separately:
   `cmake -S <etl_source> -B <etl_build> && cmake --install <etl_build> --prefix <prefix>`.
 
-`tests/check-install.sh` does all of this in a temporary prefix and builds the consumer project
-`tests/install-consumer/` against it, at C++17 with the own types (`CXX_STANDARD=17`) and at C++23 with the `std`
+`tests/check-install.sh` does all of this in a temporary prefix, checks that the installed headers are exactly the
+headers of `src/` in git without `storage/littlefs/`, and builds the consumer project `tests/install-consumer/`
+against it, at C++17 with the own types (`CXX_STANDARD=17`) and at C++23 with the `std`
 types (`CXX_STANDARD=23`). The CI job `install` runs both.
 
 ## Dependencies

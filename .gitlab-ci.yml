@@ -230,8 +230,9 @@ compat-firmware:
 
 # Installs art-core with cmake --install into a temporary prefix (ETL into the same prefix) and builds the consumer
 # project tests/install-consumer/ against it with find_package(art-core) (see tests/check-install.sh): at C++17 with
-# the own types, and at C++23 with the std types. The consumer compiles every installed header on its own, except
-# freertos/ and the FatFs headers, and fails if an installed header includes Ryu or littlefs. The script works in a
+# the own types, and at C++23 with the std types. The script fails if the installed headers are not exactly the
+# headers of src/ in git without storage/littlefs/, or if one of them includes Ryu or littlefs. The consumer compiles
+# every installed header on its own, except freertos/ and the FatFs headers. The script works in a
 # temporary directory outside the checkout and takes the dependencies from FETCHCONTENT_BASE_DIR (the cache).
 install:
   stage: build
