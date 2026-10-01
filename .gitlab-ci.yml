@@ -10,6 +10,34 @@ workflow:
       when: never
     - if: "$CI_COMMIT_BRANCH"
 
+# The FetchContent dependencies (ETL, ArduinoJson, doctest, littlefs, Ryu) are downloaded into FETCHCONTENT_BASE_DIR
+# instead of each build directory, and that directory is kept in the GitLab cache. Every configure passes it with
+# -D FETCHCONTENT_BASE_DIR, so all build directories of a job and all jobs share one download.
+# - A changed pin is still applied: FetchContent re-clones for a changed GIT_TAG and re-downloads for a changed URL or
+#   URL_HASH. FETCHCONTENT_UPDATES_DISCONNECTED must stay off, because it skips the step that applies a changed tag.
+# - The key follows the two files that pin the versions, so that a branch with other pins does not overwrite the
+#   cache of the others.
+# - Only the build job uploads the cache (pull-push); the other jobs only download it, which saves an upload of about
+#   50 MB (compressed) per job. A job that runs without a cache downloads the dependencies as before.
+# - The before_script deletes the CMake caches of the FetchContent sub-builds. They contain the absolute path of the
+#   directory, and a cache restored to a different checkout path would stop the configure with an error. Without
+#   them, an unchanged path reuses the download, and a different path downloads again.
+variables:
+  FETCHCONTENT_BASE_DIR: "$CI_PROJECT_DIR/.fetchcontent"
+
+default:
+  cache: &fetchcontent_cache
+    key:
+      prefix: fetchcontent
+      files:
+        - CMakeLists.txt
+        - tests/CMakeLists.txt
+    paths:
+      - .fetchcontent/
+    policy: pull
+  before_script:
+    - rm -rf .fetchcontent/*-subbuild/CMakeCache.txt .fetchcontent/*-subbuild/CMakeFiles
+
 # Builds the art-core static library target, the same one downstream
 # projects consume via add_subdirectory(). This still configures and
 # fetches tests/ too (CMakeLists.txt adds it whenever not cross-compiling),
@@ -20,24 +48,27 @@ workflow:
 # "Requirements"), by the -std flag and the definition that CMake generates for art-core.
 build:
   stage: build
+  cache:
+    <<: *fetchcontent_cache
+    policy: pull-push
   variables:
     GIT_DEPTH: 0
   script:
-    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
+    - cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
     - cmake --build build --target art-core -j$(nproc)
-    - cmake -B build-logging-disabled -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON -D CMAKE_CXX_FLAGS=-DLOGGING_DISABLED
+    - cmake -B build-logging-disabled -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON -D CMAKE_CXX_FLAGS=-DLOGGING_DISABLED
     - cmake --build build-logging-disabled --target art-core art-storage-littlefs -j$(nproc)
     # The minimum standard follows ART_USE_STD_EXPECTED_SPAN. Default (no CMAKE_CXX_STANDARD): std types at C++23.
     - grep -q "ART_USE_STD_EXPECTED_SPAN=1" build/CMakeFiles/art-core.dir/flags.make
     - grep -Eq "std=(gnu|c)\+\+23" build/CMakeFiles/art-core.dir/flags.make
     # OFF set explicitly at C++23: the own types, still compiled at C++23.
-    - cmake -B build-own-cpp23 -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release -D CMAKE_CXX_STANDARD=23 -D ART_USE_STD_EXPECTED_SPAN=OFF
+    - cmake -B build-own-cpp23 -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D CMAKE_CXX_STANDARD=23 -D ART_USE_STD_EXPECTED_SPAN=OFF
     - cmake --build build-own-cpp23 --target art-core -j$(nproc)
     - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
     - grep -Eq "std=(gnu|c)\+\+23" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
     # OFF without CMAKE_CXX_STANDARD: the minimum is cxx_std_17. GCC defaults to gnu++17, so CMake adds no -std flag
     # for C++20 or later (it would add -std=gnu++23 for a cxx_std_23 minimum).
-    - cmake -B build-own-default -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release -D ART_USE_STD_EXPECTED_SPAN=OFF
+    - cmake -B build-own-default -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D ART_USE_STD_EXPECTED_SPAN=OFF
     - cmake --build build-own-default --target art-core -j$(nproc)
     - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-default/CMakeFiles/art-core.dir/flags.make
     - '! grep -Eq "std=(gnu|c)\+\+2[0-9]" build-own-default/CMakeFiles/art-core.dir/flags.make'
@@ -88,7 +119,7 @@ test:
     - if [ "$COMPILER" = clang ]; then export CC=clang CXX=clang++; else export CC=gcc CXX=g++; fi
     - $CXX --version
     - 'if [ "$CXX_STANDARD" -lt 23 ]; then cxx_extensions=OFF; strict_cxx_flags="-Wpedantic -Werror=pedantic -Werror=c++20-extensions -Werror=c++23-extensions"; else cxx_extensions=ON; strict_cxx_flags=""; fi'
-    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug -D CMAKE_CXX_STANDARD=$CXX_STANDARD -D CMAKE_CXX_EXTENSIONS=$cxx_extensions -D CMAKE_CXX_FLAGS="$strict_cxx_flags" -D ART_STORAGE_LITTLEFS=ON
+    - cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Debug -D CMAKE_CXX_STANDARD=$CXX_STANDARD -D CMAKE_CXX_EXTENSIONS=$cxx_extensions -D CMAKE_CXX_FLAGS="$strict_cxx_flags" -D ART_STORAGE_LITTLEFS=ON
     # The default of ART_USE_STD_EXPECTED_SPAN: ON at C++23, OFF below.
     - if [ "$CXX_STANDARD" -ge 23 ]; then expected_option=ON; else expected_option=OFF; fi
     - grep -x "ART_USE_STD_EXPECTED_SPAN:BOOL=$expected_option" build/CMakeCache.txt
@@ -144,7 +175,7 @@ float-exhaustive:
   variables:
     GIT_DEPTH: 0
   script:
-    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug
+    - cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Debug
     - cmake --build build --target libArT-tests -j$(nproc)
     - ./build/tests/libArT-tests --test-case="*exhaustive*" --no-skip=true
 
@@ -164,9 +195,9 @@ floattext-zero-cost:
     REQUIRE_TOOLCHAIN: "1"
   script:
     - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
-    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
-    - CXX_STANDARD=17 ETL_INCLUDE_DIR="$(pwd)/build/_deps/etl-src/include" RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
-    - CXX_STANDARD=23 RYU_SOURCE_DIR="$(pwd)/build/_deps/ryu-src" ./tests/check-floattext-zero-cost.sh
+    - cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
+    - CXX_STANDARD=17 ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" RYU_SOURCE_DIR="$FETCHCONTENT_BASE_DIR/ryu-src" ./tests/check-floattext-zero-cost.sh
+    - CXX_STANDARD=23 RYU_SOURCE_DIR="$FETCHCONTENT_BASE_DIR/ryu-src" ./tests/check-floattext-zero-cost.sh
 
 # Compiles the compat headers (src/utils/compat/) like firmware: arm-none-eabi-g++ with -fno-exceptions and -fno-rtti,
 # at C++17 with the own types and at C++23 with the own and the std types (see tests/check-compat-firmware-build.sh).
@@ -179,8 +210,8 @@ compat-firmware:
     REQUIRE_TOOLCHAIN: "1"
   script:
     - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
-    - cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
-    - ETL_INCLUDE_DIR="$(pwd)/build/_deps/etl-src/include" ./tests/check-compat-firmware-build.sh
+    - cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
+    - ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" ./tests/check-compat-firmware-build.sh
 
 # Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
 # optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the
@@ -192,12 +223,12 @@ littlefs:
     GIT_DEPTH: 0
   script:
     # Default (option off): no binding target, no littlefs symbols in art-core.
-    - cmake -B build-default -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release
+    - cmake -B build-default -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
     - cmake --build build-default --target art-core -j$(nproc)
     - '! cmake --build build-default --target help | grep -q art-storage-littlefs'
     - '! nm build-default/libart-core.a | grep -Eq "lfs_|LittleFs"'
     # Option on: the target builds, and art-core still contains no littlefs code.
-    - cmake -B build-littlefs -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON
+    - cmake -B build-littlefs -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON
     - cmake --build build-littlefs --target art-storage-littlefs art-core -j$(nproc)
     - '! nm build-littlefs/libart-core.a | grep -Eq "lfs_|LittleFs"'
     - nm build-littlefs/libart-storage-littlefs.a | grep -q LittleFsFileSystemBase
