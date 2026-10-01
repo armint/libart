@@ -10,6 +10,11 @@ streams, logging, Modbus, settings, storage and utilities. `AGENTS.md` describes
 - With `ART_USE_STD_EXPECTED_SPAN=ON` (the default unless `CMAKE_CXX_STANDARD` is below 23, see below), C++23:
   `art-core`, `art-rtos` and `art-storage-littlefs` then require `cxx_std_23`. With `OFF` they require
   `cxx_std_17`. Both are minimums, not pins: a superproject may build at a newer standard.
+  - A build without `CMAKE_CXX_STANDARD` keeps `ON`, so art-core and its consumers build at C++23.
+  - A consumer that sets `-DART_USE_STD_EXPECTED_SPAN=OFF` at C++23 gets the minimum `cxx_std_17`. It still builds
+    at C++23, but with the own types.
+  - The ESP-IDF component build sets no compile feature and does not define the option. `utils/compat/config.h`
+    then chooses from the standard library of the `-std=` flag of the project (see below).
 
 ## Using libArT in a CMake project
 
