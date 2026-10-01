@@ -45,6 +45,10 @@ class LogManager {
       globalLevel_ = level;
    }
 
+   // The Logger list is not synchronised: construct and destroy Loggers before other threads use findLogger(),
+   // typically as statics at start-up, or serialise these calls yourself.
    void registerLogger(logging::Logger *logger);
+   // Removes a Logger from the list; called by ~Logger(). A Logger that is not in the list is ignored.
+   void unregisterLogger(logging::Logger *logger);
    logging::Logger *findLogger(const char *topic);
 };

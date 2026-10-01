@@ -2,7 +2,9 @@
 #include "utils/compat/span.h"
 #include <cstring>
 #include <doctest/doctest.h>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <logging/Level.h>
@@ -53,6 +55,36 @@ TEST_CASE("[Logging] Multiple loggers can be found by topic") {
 
    CHECK(LogManager::getInstance().findLogger("TopicAlpha") == &loggerA);
    CHECK(LogManager::getInstance().findLogger("TopicBeta") == &loggerB);
+}
+
+// A Logger is linked into the LogManager list by address, so it cannot be copied or moved.
+static_assert(!std::is_copy_constructible_v<logging::Logger>);
+static_assert(!std::is_copy_assignable_v<logging::Logger>);
+static_assert(!std::is_move_constructible_v<logging::Logger>);
+static_assert(!std::is_move_assignable_v<logging::Logger>);
+
+// A destroyed Logger must leave the LogManager list (#37). std::optional controls the lifetimes without the heap;
+// its storage outlives the Logger in it, so a dangling entry would be found again instead of crashing.
+TEST_CASE("[Logging] Destroyed logger is no longer found") {
+   std::optional<logging::Logger> first;
+   std::optional<logging::Logger> middle;
+   std::optional<logging::Logger> last;
+   first.emplace("DestroyFirst");
+   middle.emplace("DestroyMiddle");
+   last.emplace("DestroyLast");
+
+   middle.reset();
+   CHECK(LogManager::getInstance().findLogger("DestroyMiddle") == nullptr);
+   CHECK(LogManager::getInstance().findLogger("DestroyFirst") == &*first);
+   CHECK(LogManager::getInstance().findLogger("DestroyLast") == &*last);
+
+   // The most recently registered Logger is the head of the list.
+   last.reset();
+   CHECK(LogManager::getInstance().findLogger("DestroyLast") == nullptr);
+   CHECK(LogManager::getInstance().findLogger("DestroyFirst") == &*first);
+
+   first.reset();
+   CHECK(LogManager::getInstance().findLogger("DestroyFirst") == nullptr);
 }
 
 // --- Logger level control ---

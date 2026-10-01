@@ -29,6 +29,17 @@ class Logger {
       LogManager::getInstance().registerLogger(this);
    }
 
+   // LogManager links the Logger itself into its list, so a copy (or a move) would never be found by findLogger().
+   // Hold a reference or a pointer to the Logger instead, or make it a static.
+   Logger(const Logger &) = delete;
+   Logger &operator=(const Logger &) = delete;
+
+   // Leaves the LogManager list, so findLogger() never returns a destroyed Logger. Like registering, this is not
+   // synchronised: destroying a Logger while another thread logs through it or calls findLogger() is a data race.
+   ~Logger() {
+      LogManager::getInstance().unregisterLogger(this);
+   }
+
    [[nodiscard]] const char *topic() const noexcept {
       return topic_;
    }
