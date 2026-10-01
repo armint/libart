@@ -385,7 +385,7 @@ art::expected<void, Error> LittleFsFileSystemBase::mountLocked() {
    deviceError_.reset();
    int result = lfs_mount(&lfs_, &config_);
    if(result == LFS_ERR_CORRUPT) {
-      LOG_WARN(logger(), "%s", "no valid volume found, formatting");
+      LOG_WARN(logger(), "no valid volume found, formatting");
       result = lfs_format(&lfs_, &config_);
       if(result == LFS_ERR_OK) {
          result = lfs_mount(&lfs_, &config_);
@@ -419,7 +419,7 @@ art::expected<void, Error> LittleFsFileSystemBase::unmountLocked() {
       // for every slot on purpose: a close that fails here can poison the mount, and the writers after it are then
       // dropped like on any poisoned mount. unmount() reports that first error.
       if(poisoned_) {
-         LOG_WARN(logger(), "%s", "dropping a file that was open on a poisoned mount, its unsynced data is lost");
+         LOG_WARN(logger(), "dropping a file that was open on a poisoned mount, its unsynced data is lost");
          releaseSlot(slot);
       } else if(const auto closed = closeSlot(slot); !closed && outcome) {
          outcome = closed;
