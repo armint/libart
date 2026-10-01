@@ -223,7 +223,7 @@ void LittleFsFileSystemBase::dropReadCaches() {
 // Filled with 0xFF like lfs_cache_zero() does: lfs_bd_prog() programs the bytes in front of the first one it
 // writes as they are, and 0xFF leaves the cells untouched.
 void LittleFsFileSystemBase::resetProgramCache() {
-   std::ranges::fill(buffers_.programCache, uint8_t{ 0xFFu });
+   std::fill(buffers_.programCache.begin(), buffers_.programCache.end(), uint8_t{ 0xFFu });
    lfs_.pcache.block = kNoCachedBlock;
 }
 
@@ -245,8 +245,8 @@ Error LittleFsFileSystemBase::failed(int lfsError) {
 // A failure that littlefs reports before it changed anything (failsBeforeAnyChange()) is not one of them; the
 // same call on a healthy device would have failed in the same way.
 bool LittleFsFileSystemBase::hasOtherWriter(const FileSlot *self) const {
-   return std::ranges::any_of(buffers_.slots,
-                              [self](const FileSlot &slot) { return slot.used && slot.writable && &slot != self; });
+   return std::any_of(buffers_.slots.begin(), buffers_.slots.end(),
+                      [self](const FileSlot &slot) { return slot.used && slot.writable && &slot != self; });
 }
 
 // Like failed(), for a call that mutates: poisons the mount if the failure can have left littlefs undefined.
@@ -512,8 +512,8 @@ void LittleFsFileSystemBase::releaseSlot(FileSlot &slot) {
 }
 
 bool LittleFsFileSystemBase::isPathOpen(uint32_t pathHash) const {
-   return std::ranges::any_of(buffers_.slots,
-                              [pathHash](const FileSlot &slot) { return slot.used && slot.pathHash == pathHash; });
+   return std::any_of(buffers_.slots.begin(), buffers_.slots.end(),
+                      [pathHash](const FileSlot &slot) { return slot.used && slot.pathHash == pathHash; });
 }
 
 // ---- namespace operations ----
@@ -533,7 +533,8 @@ art::expected<File, Error> LittleFsFileSystemBase::open(const char *path, OpenMo
          return failure(mode == OpenMode::CreateNew ? Error::Exists : Error::Busy);
       }
    }
-   const auto freeSlot = std::ranges::find_if(buffers_.slots, [](const FileSlot &slot) { return !slot.used; });
+   const auto isFree = [](const FileSlot &slot) { return !slot.used; };
+   const auto freeSlot = std::find_if(buffers_.slots.begin(), buffers_.slots.end(), isFree);
    if(freeSlot == buffers_.slots.end()) {
       return failure(Error::NoMemory);
    }
