@@ -29,8 +29,11 @@ if (NOT DEFINED PROJECT_NAME)
     project(libArT-tests C CXX)
 endif ()
 
-# Compiler settings
-set(CMAKE_CXX_STANDARD 23)
+# Compiler settings. C++23 by default; a build can ask for another standard with -DCMAKE_CXX_STANDARD=17 or 20 (CI
+# runs all three, see .gitlab-ci.yml). Below C++23 the binaries below use the own art::expected and etl::span.
+if (NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 23)
+endif ()
 set(CXX_DIALECT gnu)
 
 # Unit libArT-tests
@@ -62,6 +65,13 @@ file(GLOB TEST_SOURCES
         TestRingBuffer.cpp
         TestFloatText.cpp
         TestCompat.cpp
+        storage/TestFatFileReadable.cpp
+        storage/TestFatFileWritable.cpp
+)
+
+# The other storage tests, the BlockDevice contract suite and the device and file system mocks use C++20 (designated
+# initializers, std::ranges). A C++17 build leaves them out; libArT-compat-tests-cpp23-own runs them with the own types.
+set(_ART_CPP20_STORAGE_TESTS
         storage/TestBlockDeviceDecorator.cpp
         storage/BlockDeviceContract.cpp
         storage/TestBlockDevice.cpp
@@ -69,13 +79,26 @@ file(GLOB TEST_SOURCES
         storage/TestFatFile.cpp
         storage/TestFatDir.cpp
         storage/TestFatDiskIo.cpp
-        storage/TestFatFileReadable.cpp
-        storage/TestFatFileWritable.cpp
 )
+# The same holds for the LittleFS tests except TestLittleFsCompat.cpp, and for TestFileStreams.cpp.
+set(_ART_CPP20_LITTLEFS_TESTS
+        storage/TestLittleFsFileSystem.cpp
+        storage/TestLittleFsReadCache.cpp
+        storage/TestLittleFsProgramCache.cpp
+        storage/TestLittleFsPoison.cpp
+        storage/TestLittleFsConsistency.cpp
+        storage/TestFileStreams.cpp
+)
+if (CMAKE_CXX_STANDARD GREATER_EQUAL 20)
+    list(APPEND TEST_SOURCES ${_ART_CPP20_STORAGE_TESTS})
+endif ()
 
 # The LittleFS binding runs the real littlefs; its target is defined by the top-level CMakeLists.txt.
 if (_ART_NEED_LITTLEFS)
-    list(APPEND TEST_SOURCES storage/TestLittleFsFileSystem.cpp storage/TestLittleFsReadCache.cpp storage/TestLittleFsProgramCache.cpp storage/TestLittleFsCompat.cpp storage/TestLittleFsPoison.cpp storage/TestLittleFsConsistency.cpp storage/TestFileStreams.cpp)
+    list(APPEND TEST_SOURCES storage/TestLittleFsCompat.cpp)
+    if (CMAKE_CXX_STANDARD GREATER_EQUAL 20)
+        list(APPEND TEST_SOURCES ${_ART_CPP20_LITTLEFS_TESTS})
+    endif ()
 endif ()
 
 file(GLOB TO_TEST_SOURCES
@@ -159,6 +182,11 @@ foreach(_art_test_target libArT-tests libArT-tests-64bit libArT-tests-float libA
     # Needed for FatFile::MockState/FatFile::state, used by
     # storage/TestFatFileReadable.cpp and storage/TestFatFileWritable.cpp.
     target_compile_definitions(${_art_test_target} PRIVATE UNIT_TESTING)
+    # The same choice as art-core (see ART_USE_STD_EXPECTED_SPAN in the top-level CMakeLists.txt). A standalone
+    # configure of this directory has no such option, and utils/compat/config.h then derives it from the standard.
+    if (DEFINED _ART_USE_STD_EXPECTED_SPAN_VALUE)
+        target_compile_definitions(${_art_test_target} PRIVATE ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
+    endif ()
     target_include_directories(${_art_test_target} PRIVATE
             ../src
             ../src/storage
@@ -230,7 +258,8 @@ set(_ART_COMPAT_STREAM_SOURCES
         ../src/utils/tfp_printf.cpp
 )
 # The same holds for src/storage/ and the file streams on top of it: their sources are built into both binaries, so
-# that they compile with the own types at C++17. The LittleFS binding is added below, with littlefs.
+# that they compile with the own types at C++17, and so are the tests of the FatFs streams, which need only C++17.
+# The LittleFS binding is added below, with littlefs.
 set(_ART_COMPAT_STORAGE_SOURCES
         ../src/streams/FatFileReadable.cpp
         ../src/streams/FatFileWritable.cpp
@@ -245,21 +274,11 @@ set(_ART_COMPAT_STORAGE_SOURCES
         ../src/storage/fatfs/ff.c
         ../src/storage/fatfs/ffsystem.c
         ../src/storage/fatfs/ffunicode.c
-)
-# The storage tests that do not need littlefs, with the BlockDevice contract suite and the device and file system
-# mocks, use C++20 (designated initializers, std::ranges), so they are built into libArT-compat-tests-cpp23-own
-# only: there they run with the own types.
-set(_ART_COMPAT_STORAGE_TESTS
-        storage/TestBlockDeviceDecorator.cpp
-        storage/BlockDeviceContract.cpp
-        storage/TestBlockDevice.cpp
-        storage/TestFileSystem.cpp
-        storage/TestFatFile.cpp
-        storage/TestFatDir.cpp
-        storage/TestFatDiskIo.cpp
         storage/TestFatFileReadable.cpp
         storage/TestFatFileWritable.cpp
 )
+# The other storage tests (_ART_CPP20_STORAGE_TESTS above) use C++20, so they are built into
+# libArT-compat-tests-cpp23-own only: there they run with the own types.
 # The same holds for src/modbus/, src/logging/, src/settings/, src/sensors/, src/utils/ and the header-only
 # src/freertos/ (on the FreeRTOS host stubs): their tests, the sources they need and the remaining sources of these
 # modules are built into both binaries, so that the templates the tests instantiate compile with the own types too.
@@ -307,19 +326,11 @@ set(_ART_COMPAT_MODULE_SOURCES
 )
 # The LittleFS binding (with littlefs) and its tests, if the littlefs target exists (see libArT-tests above).
 # TestLittleFsCompat.cpp runs in both binaries, so that LittleFsFileSystem<> is instantiated and run at C++17. The
-# other LittleFS tests and TestFileStreams.cpp use C++20 (designated initializers, std::ranges), so they are built
-# into libArT-compat-tests-cpp23-own only.
+# other LittleFS tests and TestFileStreams.cpp (_ART_CPP20_LITTLEFS_TESTS above) use C++20, so they are built into
+# libArT-compat-tests-cpp23-own only.
 set(_ART_COMPAT_LITTLEFS_SOURCES
         ../src/storage/littlefs/LittleFsFileSystem.cpp
         storage/TestLittleFsCompat.cpp
-)
-set(_ART_COMPAT_LITTLEFS_TESTS
-        storage/TestLittleFsFileSystem.cpp
-        storage/TestLittleFsReadCache.cpp
-        storage/TestLittleFsProgramCache.cpp
-        storage/TestLittleFsPoison.cpp
-        storage/TestLittleFsConsistency.cpp
-        storage/TestFileStreams.cpp
 )
 # These files have warnings that are older than the compat binaries and that the strict flags below make fatal.
 # Keep them as warnings, for these files only: the variable length array in Readable::readUntil(), the unused
@@ -361,9 +372,9 @@ foreach(_art_compat_standard 17 23)
     endif ()
 endforeach()
 target_compile_definitions(libArT-compat-tests-cpp23-own PRIVATE ART_USE_STD_EXPECTED_SPAN=0)
-target_sources(libArT-compat-tests-cpp23-own PRIVATE ${_ART_COMPAT_STORAGE_TESTS})
+target_sources(libArT-compat-tests-cpp23-own PRIVATE ${_ART_CPP20_STORAGE_TESTS})
 if (_ART_NEED_LITTLEFS)
-    target_sources(libArT-compat-tests-cpp23-own PRIVATE ${_ART_COMPAT_LITTLEFS_TESTS})
+    target_sources(libArT-compat-tests-cpp23-own PRIVATE ${_ART_CPP20_LITTLEFS_TESTS})
 endif ()
 
 # Discover all libArT-tests
