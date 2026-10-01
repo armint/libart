@@ -45,6 +45,7 @@ with the standard library headers that libArT includes.
 | `ART_USE_STD_EXPECTED_SPAN` | `ON`, unless `CMAKE_CXX_STANDARD` is below 23 | Selects what `art::expected`, `art::unexpected` and `art::span` are, and the minimum standard of the targets (`ON`: C++23, `OFF`: C++17). See below. |
 | `ART_STORAGE_LITTLEFS` | `OFF` | Builds the LittleFS file system binding (`art-storage-littlefs`). |
 | `ART_LITTLEFS_NO_ASSERT` | `ON` when cross-compiling | Builds littlefs with `LFS_NO_ASSERT`. |
+| `ART_CLANG_FORMAT` | `clang-format-20`, else `clang-format` | The clang-format executable of the `clangformat` and `clangformat-check` targets (see `cmake/clang-format.cmake`). |
 
 ### `ART_USE_STD_EXPECTED_SPAN`: `std` or own vocabulary types
 

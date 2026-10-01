@@ -130,6 +130,11 @@ else ()
     add_subdirectory(tests)
 endif ()
 
+# clangformat and clangformat-check (see cmake/clang-format.cmake). Not for a superproject, which may have its own.
+if (CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/clang-format.cmake")
+endif ()
+
 file(GLOB_RECURSE PROJECT_SOURCES
         "${PROJECT_SOURCE_DIR}/src/*.c"
         "${PROJECT_SOURCE_DIR}/src/*.cpp"
