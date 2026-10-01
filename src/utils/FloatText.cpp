@@ -1,5 +1,5 @@
 #include "FloatText.h"
-#include <bit>
+#include "utils/compat/bit.h"
 #include <cstdint>
 
 extern "C" {
@@ -59,13 +59,13 @@ bool iequals(std::string_view text, const char *lower) {
 }
 
 float bitsToFloat(uint32_t bits) {
-   return std::bit_cast<float>(bits);
+   return art::bit_cast<float>(bits);
 }
 
 } // namespace
 
 size_t formatFloat(float value, art::span<char> dest) {
-   const uint32_t bits = std::bit_cast<uint32_t>(value);
+   const uint32_t bits = art::bit_cast<uint32_t>(value);
    const uint32_t ieeeExponent = (bits >> 23) & 0xFFu;
    const uint32_t ieeeMantissa = bits & 0x7FFFFFu;
 
