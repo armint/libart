@@ -56,7 +56,8 @@ test:
     - ./build/tests/libArT-tests-float --reporters=junit --out=build/junit-float.xml
     - ./build/tests/libArT-tests-float-64bit
     - ./build/tests/libArT-tests-float-64bit --reporters=junit --out=build/junit-float-64bit.xml
-    # The compat headers (src/utils/compat/) and the ported src/streams/ tests at C++17 and with the own types at
+    # The compat headers (src/utils/compat/) and the tests of the ported modules (src/streams/, src/modbus/,
+    # src/logging/, src/settings/, src/sensors/, src/utils/, src/freertos/) at C++17 and with the own types at
     # C++23. src/storage/ is compiled into both, its tests (which need C++20) run in the C++23 one only. See
     # tests/CMakeLists.txt.
     - ./build/tests/libArT-compat-tests-cpp17
