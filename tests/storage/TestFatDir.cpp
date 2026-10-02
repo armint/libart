@@ -187,6 +187,14 @@ TEST_CASE("[FatDir] seek advances past directory entries [FatDir]") {
    }
 }
 
+TEST_CASE("[FatDir] seek in a directory that could not be opened returns the open error [FatDir]") {
+   DirFsFixture fs;
+   FatDir dir("0:/nosuchdir");
+   REQUIRE_FALSE(dir.exists());
+   CHECK(dir.seek(0) == FR_NO_PATH);
+   CHECK(dir.seek(32) == FR_NO_PATH);
+}
+
 TEST_CASE("[FatDir] seek on subdirectory works [FatDir]") {
    DirFsFixture fs;
    REQUIRE(f_mkdir("0:/mydir") == FR_OK);

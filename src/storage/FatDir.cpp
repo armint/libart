@@ -19,6 +19,10 @@ FatDir::~FatDir() {
 }
 
 FRESULT FatDir::seek(size_t offset) {
+   // _dir holds no valid directory if opening failed
+   if(_res != FR_OK) {
+      return _res;
+   }
    size_t dptr = static_cast<size_t>(_dir.dptr);
 
    if(offset < dptr) {

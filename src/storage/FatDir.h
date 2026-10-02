@@ -62,7 +62,8 @@ class FatDir {
     *
     * @param offset The offset to seek to within the directory.
     *
-    * @return FRESULT Returns FR_OK on success, or an appropriate error code on failure.
+    * @return FRESULT Returns FR_OK on success, or an appropriate error code on failure. If the constructor failed
+    * (see exists()), it returns the error of opening the directory.
     */
    FRESULT seek(size_t offset);
    /**
