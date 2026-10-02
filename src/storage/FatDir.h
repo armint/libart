@@ -5,9 +5,12 @@
 /**
  * @class FatDir
  * @brief A class for handling directory operations in a FAT filesystem.
+ *
+ * The directory stays open for the lifetime of the object and is closed by the destructor. The FatFileSystem that
+ * holds the directory must outlive the FatDir.
  */
 class FatDir {
-   DIR _dir;
+   DIR _dir{};
    FRESULT _res;
 
    public:
@@ -19,6 +22,12 @@ class FatDir {
     * @return None. The constructor initializes the directory object with the given path.
     */
    FatDir(const char *path);
+   /**
+    * @brief Closes the directory, if it was opened.
+    */
+   ~FatDir();
+   FatDir(const FatDir &) = delete;
+   FatDir &operator=(const FatDir &) = delete;
    /**
     * @brief Checks if the directory object is valid.
     *

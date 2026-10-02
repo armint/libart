@@ -8,6 +8,12 @@ FatDir::FatDir(const char *path) {
    _res = f_opendir(&_dir, path);
 }
 
+FatDir::~FatDir() {
+   if(_res == FR_OK) {
+      f_closedir(&_dir);
+   }
+}
+
 FRESULT FatDir::seek(size_t offset) {
    size_t dptr = static_cast<size_t>(_dir.dptr);
 
