@@ -337,12 +337,11 @@ set(_ART_COMPAT_LITTLEFS_SOURCES
 )
 # These files have warnings that are older than the compat binaries and that the strict flags below make fatal.
 # Keep them as warnings, for these files only: the variable length array in Readable::readUntil(), the unused
-# putstr() in tfp_printf.cpp, the unused parameter of FatDir::read(), the unused parameters of mocks in
-# TestModbusSlave.cpp and TestAsymmetricKey.cpp, the unused variables in TestRingBuffer.cpp and TestIBMCRC16.cpp
-# (the latter reported by Clang only) and the unused putf_etl() in TestSHA256.cpp.
+# putstr() in tfp_printf.cpp, the unused parameters of mocks in TestModbusSlave.cpp and TestAsymmetricKey.cpp, the
+# unused variables in TestRingBuffer.cpp and TestIBMCRC16.cpp (the latter reported by Clang only) and the unused
+# putf_etl() in TestSHA256.cpp.
 set_source_files_properties(../src/streams/Readable.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=vla")
 set_source_files_properties(../src/utils/tfp_printf.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-function")
-set_source_files_properties(../src/storage/FatDir.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-parameter")
 set_source_files_properties(TestModbusSlave.cpp TestAsymmetricKey.cpp PROPERTIES COMPILE_OPTIONS
         "-Wno-error=unused-parameter")
 set_source_files_properties(TestRingBuffer.cpp PROPERTIES COMPILE_OPTIONS "-Wno-error=unused-variable")
