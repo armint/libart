@@ -2,8 +2,11 @@
 #include "storage/FatDir.h"
 #include "storage/FatFileSystem.h"
 #include "storage/fatfs/ff.h"
+#include <algorithm>
 #include <array>
 #include <doctest/doctest.h>
+#include <string>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // Fixture: formats and mounts a fresh FAT volume before each test case.
@@ -69,15 +72,79 @@ TEST_CASE("[FatDir] tell returns 0 on freshly opened directory [FatDir]") {
 }
 
 // ---------------------------------------------------------------------------
-// read() — currently an unimplemented stub
+// read()
 // ---------------------------------------------------------------------------
-TEST_CASE("[FatDir] read returns FR_DENIED (stub not yet implemented) [FatDir]") {
+namespace {
+// Reads all entries of the directory into `names` (sorted), and returns the result of the last read().
+FRESULT readAll(FatDir &dir, std::vector<std::string> &names) {
+   FILINFO info{};
+   FRESULT res;
+   while((res = dir.read(info)) == FR_OK && info.fname[0] != '\0') {
+      names.emplace_back(info.fname);
+   }
+   std::sort(names.begin(), names.end());
+   return res;
+}
+} // namespace
+
+TEST_CASE("[FatDir] read of an empty directory reports the end at once [FatDir]") {
    DirFsFixture fs;
-   FatDir dir("0:/");
+   REQUIRE(f_mkdir("0:/empty") == FR_OK);
+   FatDir dir("0:/empty");
    REQUIRE(dir.exists());
    FILINFO info{};
-   // FatDir::read() is a known stub that always returns FR_DENIED.
-   CHECK(dir.read(info) == FR_DENIED);
+   info.fname[0] = 'x';
+   // "." and ".." are not reported
+   CHECK(dir.read(info) == FR_OK);
+   CHECK(info.fname[0] == '\0');
+}
+
+TEST_CASE("[FatDir] read reports every entry, then the end [FatDir]") {
+   DirFsFixture fs;
+   fs.touch("0:/A.TXT");
+   fs.touch("0:/long file name.json");
+   REQUIRE(f_mkdir("0:/subdir") == FR_OK);
+
+   FatDir dir("0:/");
+   REQUIRE(dir.exists());
+   std::vector<std::string> names;
+   REQUIRE(readAll(dir, names) == FR_OK);
+   CHECK(names == std::vector<std::string>{ "A.TXT", "long file name.json", "subdir" });
+
+   SUBCASE("read after the end keeps reporting the end") {
+      FILINFO info{};
+      info.fname[0] = 'x';
+      CHECK(dir.read(info) == FR_OK);
+      CHECK(info.fname[0] == '\0');
+   }
+
+   SUBCASE("seek(0) rewinds, so read starts again") {
+      REQUIRE(dir.seek(0) == FR_OK);
+      std::vector<std::string> again;
+      REQUIRE(readAll(dir, again) == FR_OK);
+      CHECK(again == names);
+   }
+}
+
+TEST_CASE("[FatDir] read reports the attributes of an entry [FatDir]") {
+   DirFsFixture fs;
+   REQUIRE(f_mkdir("0:/parent") == FR_OK);
+   REQUIRE(f_mkdir("0:/parent/child") == FR_OK);
+
+   FatDir dir("0:/parent");
+   REQUIRE(dir.exists());
+   FILINFO info{};
+   REQUIRE(dir.read(info) == FR_OK);
+   CHECK(std::string(info.fname) == "child");
+   CHECK((info.fattrib & AM_DIR) != 0);
+}
+
+TEST_CASE("[FatDir] read of a directory that could not be opened returns the open error [FatDir]") {
+   DirFsFixture fs;
+   FatDir dir("0:/nosuchdir");
+   REQUIRE_FALSE(dir.exists());
+   FILINFO info{};
+   CHECK(dir.read(info) == FR_NO_PATH);
 }
 
 // ---------------------------------------------------------------------------

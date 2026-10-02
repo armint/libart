@@ -1,7 +1,11 @@
 #include "FatDir.h"
 
 FRESULT FatDir::read(FILINFO &info) {
-   return FR_DENIED;
+   // _dir holds no valid directory if opening failed
+   if(_res != FR_OK) {
+      return _res;
+   }
+   return f_readdir(&_dir, &info);
 }
 
 FatDir::FatDir(const char *path) {

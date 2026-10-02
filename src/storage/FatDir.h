@@ -42,13 +42,16 @@ class FatDir {
    /**
     * @brief Reads the next directory entry.
     *
-    * This method populates the provided FILINFO structure with information about the next directory entry.
+    * This method populates the provided FILINFO structure with information about the next directory entry. The
+    * entries "." and ".." are never reported. At the end of the directory, the method returns FR_OK and info.fname is
+    * an empty string; further calls do the same.
     *
     * @param info Reference to a FILINFO structure to be filled with directory entry data.
     * @return A FRESULT enumeration value indicating the result of the operation. Possible values include:
-    * - FR_OK: Successful read of the directory entry.
-    * - FR_DENIED: Access to the directory or entry is denied.
-    * Additional error codes may be returned based on the underlying filesystem implementation.
+    * - FR_OK: An entry was read, or the end of the directory was reached (info.fname is empty).
+    * - The error of opening the directory, if the constructor failed (see exists()).
+    * Additional error codes may be returned based on the underlying filesystem implementation (for example
+    * FR_DISK_ERR or FR_NOT_READY).
     */
    FRESULT read(FILINFO &info);
    /**
