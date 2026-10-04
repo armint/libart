@@ -139,3 +139,34 @@ first:
   breakpoint fault.
 - `std::expected` (`ON`): `value()` throws `std::bad_expected_access`. In a build with `-fno-exceptions`,
   libstdc++ calls `abort()` instead.
+
+## USB device stack
+
+`src/usb/` contains a platform-independent USB 2.0 full-speed device stack, namespace `art::usb`. It has no
+hardware dependency, so the protocol code runs in the host tests. A port connects it to the USB peripheral of an MCU.
+
+| Header | Content |
+|---|---|
+| `usb/UsbTypes.h` | Chapter 9 constants (request codes, descriptor types, feature selectors), `SetupPacket` with `fromBytes()`, `EndpointConfig` and `DeviceState`. |
+| `usb/DeviceController.h` | `DeviceController`: the interface to the USB peripheral. `ControllerEvents`: the events that the controller reports to the protocol layer. |
+| `usb/Function.h` | `Function`: base class of a USB function (for example CDC-ACM or mass storage) that owns a contiguous range of interfaces. |
+
+### Controller contract
+
+`DeviceController` works on single packets. `startInTransfer()` sends one packet on an IN endpoint, and the
+controller reports `inPacketSent()` when the host has acknowledged it. `armOutTransfer()` lets an OUT endpoint
+accept one packet, and the controller reports `outPacketReceived()`. An open endpoint that is not armed answers
+with NAK. The protocol layer splits transfers into packets and adds zero-length packets (ZLP).
+
+- The controller accepts a SETUP packet also when EP0 is stalled. Before it reports the packet, it sets both
+  directions of EP0 to NAK.
+- `setEndpointStall(false)` resets the data toggle to DATA0.
+- `setAddress()` is called after the status stage of SET_ADDRESS.
+- A control endpoint is opened once, with its OUT address, and covers both directions.
+
+### Threading
+
+The events and the calls run in one context, normally the main loop. They must not overlap. A controller that
+takes the events in an interrupt handler queues them, and delivers them from its `poll()` in the main loop. While
+the main loop has not armed an endpoint, the endpoint answers with NAK. Slow processing therefore only reduces the
+throughput; it does not break the protocol.
