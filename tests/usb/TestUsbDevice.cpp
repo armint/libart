@@ -334,9 +334,11 @@ TEST_CASE("[usb::Device] SET_ADDRESS takes effect after the status stage") {
    controller.busReset();
 
    controller.sendSetup(setupPacket(kStandardDeviceOut, kSetAddress, 9u, 0u, 0u));
-   // The status stage is queued but the host has not acknowledged it: the device still answers at address 0.
+   // The controller knows the address before the status stage, but must not use it yet: the status stage is queued,
+   // the host has not acknowledged it, and the device still answers at address 0.
    CHECK(controller.hasInPacket(0x80u));
-   CHECK(controller.setAddressCalls() == 0);
+   CHECK(controller.pendingAddress() == std::optional<uint8_t>(9u));
+   CHECK(controller.address() == 0u);
    CHECK(fixture.device.state() == DeviceState::Default);
    CHECK(fixture.device.address() == 0u);
 
@@ -345,14 +347,25 @@ TEST_CASE("[usb::Device] SET_ADDRESS takes effect after the status stage") {
    CHECK(status->empty());
    CHECK(controller.setAddressCalls() == 1);
    CHECK(controller.address() == 9u);
+   CHECK(fixture.device.address() == 9u);
    CHECK(fixture.device.state() == DeviceState::Address);
 
    SUBCASE("a SETUP before the status stage completes cancels the address") {
       controller.sendSetup(setupPacket(kStandardDeviceOut, kSetAddress, 11u, 0u, 0u));
       // The host aborts and starts a new transfer instead of acknowledging the status stage.
       CHECK(fixture.getDescriptor(DescriptorType::Device, 0u, 18u).size() == 18u);
-      CHECK(controller.setAddressCalls() == 1);
+      CHECK_FALSE(controller.pendingAddress().has_value());
+      CHECK(controller.address() == 9u);
       CHECK(fixture.device.address() == 9u);
+   }
+
+   SUBCASE("a bus reset before the status stage completes cancels the address") {
+      controller.sendSetup(setupPacket(kStandardDeviceOut, kSetAddress, 11u, 0u, 0u));
+      controller.busReset();
+      CHECK_FALSE(controller.pendingAddress().has_value());
+      CHECK(controller.address() == 0u);
+      CHECK(fixture.device.address() == 0u);
+      CHECK(fixture.device.state() == DeviceState::Default);
    }
 
    SUBCASE("SET_ADDRESS 0 returns to the Default state") {
@@ -360,6 +373,24 @@ TEST_CASE("[usb::Device] SET_ADDRESS takes effect after the status stage") {
       CHECK(fixture.device.state() == DeviceState::Default);
       CHECK(controller.address() == 0u);
    }
+}
+
+TEST_CASE("[usb::Device] SET_ADDRESS works when the main loop sees the status stage late") {
+   Fixture fixture;
+   FakeDeviceController &controller = fixture.controller;
+   controller.busReset();
+   controller.queueInEvents(true);
+
+   controller.sendSetup(setupPacket(kStandardDeviceOut, kSetAddress, 9u, 0u, 0u));
+   REQUIRE(controller.takeIn(0x80u).has_value());
+   // The interrupt has applied the address; the main loop has not seen the acknowledgement yet. The host can
+   // already reach the device at the new address.
+   CHECK(controller.address() == 9u);
+   CHECK(fixture.device.state() == DeviceState::Default);
+
+   controller.deliverQueuedEvents();
+   CHECK(fixture.device.address() == 9u);
+   CHECK(fixture.device.state() == DeviceState::Address);
 }
 
 TEST_CASE("[usb::Device] EP0 sends a zero-length packet only after a full packet shorter than wLength") {

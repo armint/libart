@@ -280,11 +280,11 @@ void Device::inPacketSent(uint8_t endpointAddress) {
       break;
    case ControlStage::StatusIn:
       controlStage_ = ControlStage::Idle;
-      // USB 2.0 section 9.4.6: the device uses the new address only after the status stage of SET_ADDRESS.
+      // USB 2.0 section 9.4.6: the device uses the new address only after the status stage of SET_ADDRESS. The
+      // controller has already applied it in hardware (DeviceController::setAddress()).
       if(addressPending_) {
          addressPending_ = false;
          address_ = pendingAddress_;
-         controller_.setAddress(address_);
          state_ = address_ != 0u ? DeviceState::Address : DeviceState::Default;
       }
       break;
@@ -370,6 +370,9 @@ bool Device::handleDeviceRequest(const SetupPacket &setup) {
       }
       pendingAddress_ = static_cast<uint8_t>(setup.wValue);
       addressPending_ = true;
+      // The controller applies the address when the host acknowledges the status stage. It must know the address
+      // now: the main loop sees that acknowledgement later, and the host uses the new address 2 ms after it.
+      controller_.setAddress(pendingAddress_);
       startStatusIn();
       return true;
    case StandardRequest::GetDescriptor:

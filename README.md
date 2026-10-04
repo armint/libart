@@ -171,7 +171,8 @@ device.start();                                    // pull-up on
 - **STALL**: DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION (the device is full-speed only), SET_DESCRIPTOR,
   SYNCH_FRAME, TEST_MODE, unknown interfaces and endpoints, and requests in a state where USB 2.0 does not define
   them. The next SETUP packet ends the stall.
-- **SET_ADDRESS**: the new address applies after the status stage, as USB 2.0 section 9.4.6 requires.
+- **SET_ADDRESS**: the new address applies after the status stage, as USB 2.0 section 9.4.6 requires. The
+  controller applies it in hardware (see "Controller contract").
 - **Control transfers**: replies longer than one packet go out in packets of `bMaxPacketSize0`. If a reply is
   shorter than `wLength` and fills its last packet, a ZLP ends the data stage. Host-to-device data stages are
   collected in a buffer of `Device::kControlBufferSize` (64) bytes. A longer data stage stalls.
@@ -198,7 +199,11 @@ with NAK. The protocol layer splits transfers into packets and adds zero-length 
 - The controller accepts a SETUP packet also when EP0 is stalled. Before it reports the packet, it sets both
   directions of EP0 to NAK.
 - `setEndpointStall(false)` resets the data toggle to DATA0.
-- `setAddress()` is called after the status stage of SET_ADDRESS.
+- `Device` calls `setAddress()` when it accepts SET_ADDRESS, before the status stage. The controller applies the
+  address in hardware when the host acknowledges the zero-length status packet on EP0 (STM32 FS: in the handler of
+  that IN completion). A peripheral that needs the address before the status stage writes it at once. The
+  controller drops a pending address on the next SETUP packet and on a bus reset. With queued events, the main loop
+  sees the acknowledgement too late for the host, which uses the new address 2 ms after the status stage.
 - A control endpoint is opened once, with its OUT address, and covers both directions.
 
 ### Threading

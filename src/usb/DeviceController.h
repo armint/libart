@@ -91,10 +91,20 @@ class DeviceController {
    virtual void disconnect() = 0;
 
    /**
-    * @brief Sets the device address (0 to 127).
+    * @brief Sets the device address (0 to 127) that SET_ADDRESS requests.
     *
-    * usb::Device calls this after the status stage of SET_ADDRESS has completed, as USB 2.0 section 9.4.6
-    * requires. A controller whose hardware needs the address earlier must defer the call to the hardware itself.
+    * usb::Device calls this when it accepts SET_ADDRESS, before it starts the status stage. USB 2.0 section 9.4.6
+    * requires the old address until the status stage completes, and the host uses the new address 2 ms later
+    * (section 9.2.6.3). The events reach usb::Device later than that when they are queued, so the controller
+    * applies the address itself:
+    * - A peripheral that matches tokens against the address register (STM32 FS: DADDR) writes the register when the
+    *   host acknowledges the zero-length status packet on EP0, in the handler of that IN completion.
+    * - A peripheral that needs the address before the status stage (for example Synopsys OTG: DCFG) writes it at
+    *   once.
+    *
+    * A controller of the first kind drops a pending address on the next SETUP packet and on a bus reset: the host
+    * aborted the SET_ADDRESS. usb::Device changes its own address and state when it receives
+    * ControllerEvents::inPacketSent() for the status stage.
     */
    virtual void setAddress(uint8_t address) = 0;
 

@@ -20,7 +20,9 @@ namespace art::usb::test {
  * - one IN packet per endpoint at a time: startInTransfer() fails while the last one is not acknowledged;
  * - a SETUP packet ends a stall of EP0 and sets both directions of EP0 to NAK (drops a queued IN packet and the
  *   OUT arm) before it is reported;
- * - startInTransfer() and armOutTransfer() on EP0 end a protocol stall of EP0.
+ * - startInTransfer() and armOutTransfer() on EP0 end a protocol stall of EP0;
+ * - setAddress() keeps the address pending until the host acknowledges the zero-length status packet on EP0; a
+ *   SETUP packet or a bus reset drops it.
  *
  * The host part (bus*(), controlIn(), controlOut(), sendOut(), takeIn()) plays the host side of the bus and checks
  * the device against the rules of the host: it reads a control data stage until wLength bytes or a short packet, and
@@ -50,8 +52,9 @@ class FakeDeviceController : public DeviceController {
       connected_ = false;
    }
 
+   /// Like an STM32 FS peripheral: the address is pending until the host acknowledges the status stage on EP0.
    void setAddress(uint8_t address) override {
-      address_ = address;
+      pendingAddress_ = address;
       ++setAddressCalls_;
    }
 
@@ -118,6 +121,11 @@ class FakeDeviceController : public DeviceController {
       return address_;
    }
 
+   /// The address that setAddress() requested and that waits for the status stage, if any.
+   [[nodiscard]] std::optional<uint8_t> pendingAddress() const {
+      return pendingAddress_;
+   }
+
    [[nodiscard]] int setAddressCalls() const {
       return setAddressCalls_;
    }
@@ -169,6 +177,8 @@ class FakeDeviceController : public DeviceController {
       armed_.clear();
       inPackets_.clear();
       address_ = 0u;
+      pendingAddress_.reset();
+      queuedInEvents_.clear();
       handler_->busReset();
    }
 
@@ -186,6 +196,7 @@ class FakeDeviceController : public DeviceController {
       stalled_.erase(kEndpointDirectionIn);
       armed_.erase(0x00u);
       inPackets_.erase(kEndpointDirectionIn);
+      pendingAddress_.reset();
       handler_->setupReceived(setup);
    }
 
@@ -206,8 +217,34 @@ class FakeDeviceController : public DeviceController {
       }
       std::vector<uint8_t> packet = std::move(pending->second);
       inPackets_.erase(pending);
-      handler_->inPacketSent(endpointAddress);
+      // The acknowledgement of the status stage applies a pending address at once, as the interrupt handler of a
+      // real controller does, before the event reaches the protocol layer.
+      if(endpointAddress == kEndpointDirectionIn && packet.empty() && pendingAddress_.has_value()) {
+         address_ = *pendingAddress_;
+         pendingAddress_.reset();
+      }
+      if(queueInEvents_) {
+         queuedInEvents_.push_back(endpointAddress);
+      } else {
+         handler_->inPacketSent(endpointAddress);
+      }
       return packet;
+   }
+
+   /**
+    * @brief Holds back the inPacketSent() events, as a controller does that queues them in the interrupt handler
+    * until the main loop polls. deliverQueuedEvents() passes them on.
+    */
+   void queueInEvents(bool queue) {
+      queueInEvents_ = queue;
+   }
+
+   void deliverQueuedEvents() {
+      std::vector<uint8_t> events;
+      events.swap(queuedInEvents_);
+      for(const uint8_t endpointAddress : events) {
+         handler_->inPacketSent(endpointAddress);
+      }
    }
 
    /**
@@ -301,6 +338,9 @@ class FakeDeviceController : public DeviceController {
    bool connected_{ false };
    uint8_t address_{ 0u };
    int setAddressCalls_{ 0 };
+   std::optional<uint8_t> pendingAddress_;
+   bool queueInEvents_{ false };
+   std::vector<uint8_t> queuedInEvents_;
    std::map<uint8_t, EndpointConfig> endpoints_;
    std::set<uint8_t> stalled_;
    std::set<uint8_t> armed_;
