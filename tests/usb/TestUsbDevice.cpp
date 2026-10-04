@@ -428,6 +428,40 @@ TEST_CASE("[usb::Device] EP0 sends a zero-length packet only after a full packet
    }
 }
 
+TEST_CASE("[usb::Device] the host can end a data-in stage early") {
+   Fixture fixture;
+   FakeDeviceController &controller = fixture.controller;
+   controller.busReset();
+
+   // 128 bytes for wLength 255: 64, 64 and a ZLP. The host takes the first packet and sends the status stage.
+   controller.sendSetup(setupPacket(kStandardDeviceIn, kGetDescriptor, descriptorValue(DescriptorType::String, 3u), 0x0409u, 255u));
+   const std::optional<std::vector<uint8_t>> first = controller.takeIn(0x80u);
+   REQUIRE(first.has_value());
+   CHECK(first->size() == 64u);
+   CHECK(controller.sendOut(0x00u, art::span<const uint8_t>()));
+
+   // The device stops the data stage, and the next request works.
+   CHECK(fixture.getDescriptor(DescriptorType::Device, 0u, 18u).size() == 18u);
+}
+
+TEST_CASE("[usb::Device] the status stage of a data-in transfer does not wait for the main loop") {
+   Fixture fixture;
+   FakeDeviceController &controller = fixture.controller;
+   controller.busReset();
+   controller.queueInEvents(true);
+
+   controller.sendSetup(setupPacket(kStandardDeviceIn, kGetDescriptor, descriptorValue(DescriptorType::Device), 0u, 18u));
+   const std::optional<std::vector<uint8_t>> data = controller.takeIn(0x80u);
+   REQUIRE(data.has_value());
+   CHECK(data->size() == 18u);
+   // The acknowledgement of the data packet is still queued, but EP0 OUT already accepts the status stage.
+   CHECK(controller.sendOut(0x00u, art::span<const uint8_t>()));
+   controller.deliverQueuedEvents();
+
+   controller.queueInEvents(false);
+   CHECK(fixture.getDescriptor(DescriptorType::Device, 0u, 18u).size() == 18u);
+}
+
 TEST_CASE("[usb::Device] an empty function reply is a zero-length data packet") {
    Fixture fixture;
    fixture.enumerate();

@@ -251,7 +251,9 @@ void Device::outPacketReceived(uint8_t endpointAddress, art::span<const uint8_t>
    }
    case ControlStage::StatusOut:
    case ControlStage::DataIn:
-      // The status stage of a device-to-host transfer. During DataIn the host ended the data stage early.
+      // The status stage of a device-to-host transfer. During DataIn the host ended the data stage early, or the
+      // event of the last data packet is still on its way. A data packet that is still queued on EP0 IN is never
+      // read: the controller drops it on the next SETUP packet (ControllerEvents::setupReceived()).
       controlStage_ = ControlStage::Idle;
       controlInData_ = {};
       controlZlpPending_ = false;
@@ -595,6 +597,9 @@ void Device::sendControlData(art::span<const uint8_t> data) {
    // maxPacketSize0_ is a power of two (maxPacketSize0Of()), so the mask is the remainder.
    controlZlpPending_ = length < controlSetup_.wLength && (length & (maxPacketSize0_ - 1u)) == 0u;
    controlStage_ = ControlStage::DataIn;
+   // Accept the status stage from the start of the data stage: the host may end the data stage early, and with
+   // queued events the host sends the status before the main loop has seen the last data packet acknowledged.
+   controller_.armOutTransfer(kEndpoint0Out);
    sendNextControlPacket();
 }
 
