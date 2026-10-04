@@ -689,6 +689,15 @@ TEST_CASE("[usb::Device] multi-packet host-to-device data stage") {
    CHECK_FALSE(result.stalled);
    CHECK(fixture.msc.received == data);
 
+   SUBCASE("a data stage shorter than wLength stalls") {
+      fixture.msc.requests.clear();
+      fixture.controller.sendSetup(setupPacket(kClassInterfaceOut, 0x20u, 0u, 2u, 20u));
+      CHECK(fixture.controller.sendOut(0x00u, art::span<const uint8_t>(data.data(), 8u)));
+      CHECK(fixture.controller.sendOut(0x00u, art::span<const uint8_t>(data.data(), 3u)));
+      CHECK(fixture.controller.isStalled(0x80u));
+      CHECK(fixture.msc.requests.empty());
+   }
+
    // And the device-to-host direction: 16 bytes for wLength 32 end with a ZLP.
    fixture.msc.reply.assign(16u, 0xAAu);
    CHECK(fixture.in(kClassInterfaceIn, 0xFEu, 0u, 2u, 32u).packetSizes == std::vector<size_t>{ 8u, 8u, 0u });

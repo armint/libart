@@ -241,9 +241,12 @@ void Device::outPacketReceived(uint8_t endpointAddress, art::span<const uint8_t>
       const size_t count = std::min<size_t>(packet.size(), controlSetup_.wLength - controlOutReceived_);
       std::copy_n(packet.begin(), count, controlBuffer_.begin() + controlOutReceived_);
       controlOutReceived_ = static_cast<uint16_t>(controlOutReceived_ + count);
-      // A short packet ends the data stage early.
-      if(controlOutReceived_ >= controlSetup_.wLength || packet.size() < maxPacketSize0_) {
+      if(controlOutReceived_ >= controlSetup_.wLength) {
          finishControlOut();
+      } else if(packet.size() < maxPacketSize0_) {
+         // A short packet before wLength bytes: the host must send exactly wLength bytes (USB 2.0 section 8.5.3.2),
+         // and Function::controlRequest() relies on that.
+         stallControl();
       } else {
          controller_.armOutTransfer(kEndpoint0Out);
       }

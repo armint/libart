@@ -62,7 +62,7 @@ class Function {
     * the function writes its reply into `data`.
     *
     * @param setup The request.
-    * @param data Host-to-device: the received data stage (setup.wLength bytes; empty without data stage).
+    * @param data Host-to-device: the received data stage (exactly setup.wLength bytes; empty without data stage). A shorter data stage stalls without a call.
     * Device-to-host: a buffer of min(setup.wLength, Device::kControlBufferSize) bytes for the reply.
     * @return The number of reply bytes in `data` (device-to-host; at most data.size()) or 0 (host-to-device) to
     * accept the request. std::nullopt stalls it.

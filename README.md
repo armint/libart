@@ -175,7 +175,8 @@ device.start();                                    // pull-up on
   controller applies it in hardware (see "Controller contract").
 - **Control transfers**: replies longer than one packet go out in packets of `bMaxPacketSize0`. If a reply is
   shorter than `wLength` and fills its last packet, a ZLP ends the data stage. Host-to-device data stages are
-  collected in a buffer of `Device::kControlBufferSize` (64) bytes. A longer data stage stalls.
+  collected in a buffer of `Device::kControlBufferSize` (64) bytes. A longer data stage stalls, and so does a
+  data stage that ends with a short packet before `wLength` bytes.
 - **Endpoints**: `Device` reads the configuration descriptor. SET_CONFIGURATION opens the endpoints of alternate
   setting 0 of every interface, and SET_INTERFACE replaces the endpoints of one interface. Both reset the halt and
   the data toggle.
