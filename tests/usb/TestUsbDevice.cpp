@@ -102,11 +102,13 @@ const std::array<art::span<const uint8_t>, 5> kStrings{
    art::span<const uint8_t>(kString100.data(), kString100.size()),
 };
 
-Descriptors makeDescriptors(art::span<const uint8_t> device = art::span<const uint8_t>(kDeviceDescriptor.data(),
-                                                                                       kDeviceDescriptor.size())) {
+Descriptors
+makeDescriptors(art::span<const uint8_t> device = art::span<const uint8_t>(kDeviceDescriptor.data(), kDeviceDescriptor.size()),
+                art::span<const uint8_t> configuration = art::span<const uint8_t>(kConfigurationDescriptor.data(),
+                                                                                  kConfigurationDescriptor.size())) {
    Descriptors descriptors{};
    descriptors.device = device;
-   descriptors.configuration = art::span<const uint8_t>(kConfigurationDescriptor.data(), kConfigurationDescriptor.size());
+   descriptors.configuration = configuration;
    descriptors.strings = art::span<const art::span<const uint8_t>>(kStrings.data(), kStrings.size());
    return descriptors;
 }
@@ -754,6 +756,56 @@ TEST_CASE("[usb::Device] suspend, resume and bus reset") {
       // Only EP0 is open again.
       CHECK(controller.openEndpointCount() == 2u);
    }
+
+   SUBCASE("a SETUP packet ends the suspend") {
+      CHECK(fixture.in(kStandardDeviceIn, kGetConfiguration, 0u, 0u, 1u).data == std::vector<uint8_t>{ 1u });
+      CHECK(fixture.device.state() == DeviceState::Configured);
+      CHECK(fixture.cdc.resumedCount == 1);
+      CHECK(fixture.msc.resumedCount == 1);
+   }
+}
+
+TEST_CASE("[usb::Device] suspend and resume before the configuration") {
+   Fixture fixture;
+   FakeDeviceController &controller = fixture.controller;
+   controller.busReset();
+
+   controller.busSuspend();
+   CHECK(fixture.device.state() == DeviceState::Suspended);
+   controller.busResume();
+   CHECK(fixture.device.state() == DeviceState::Default);
+
+   REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 5u, 0u));
+   controller.busSuspend();
+   CHECK(fixture.device.state() == DeviceState::Suspended);
+   CHECK_FALSE(fixture.device.isConfigured());
+   controller.busResume();
+   CHECK(fixture.device.state() == DeviceState::Address);
+   CHECK(fixture.device.address() == 5u);
+   CHECK(fixture.cdc.suspendedCount == 2);
+   CHECK(fixture.cdc.resumedCount == 2);
+}
+
+TEST_CASE("[usb::Device] remote wakeup on a configuration that declares it") {
+   // The same configuration, but bus-powered with remote wakeup (bmAttributes 0xA0).
+   std::array<uint8_t, kConfigurationDescriptor.size()> configuration = kConfigurationDescriptor;
+   configuration[7] = 0xA0u;
+   Fixture fixture(makeDescriptors(art::span<const uint8_t>(kDeviceDescriptor.data(), kDeviceDescriptor.size()),
+                                   art::span<const uint8_t>(configuration.data(), configuration.size())));
+   fixture.controller.busReset();
+   REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 3u, 0u));
+
+   CHECK(fixture.in(kStandardDeviceIn, kGetStatus, 0u, 0u, 2u).data == std::vector<uint8_t>{ 0u, 0u });
+   CHECK(fixture.out(kStandardDeviceOut, kSetFeature, 1u, 0u));
+   CHECK(fixture.in(kStandardDeviceIn, kGetStatus, 0u, 0u, 2u).data == std::vector<uint8_t>{ 2u, 0u });
+   CHECK(fixture.out(kStandardDeviceOut, kClearFeature, 1u, 0u));
+   CHECK(fixture.in(kStandardDeviceIn, kGetStatus, 0u, 0u, 2u).data == std::vector<uint8_t>{ 0u, 0u });
+
+   // A bus reset disables remote wakeup.
+   CHECK(fixture.out(kStandardDeviceOut, kSetFeature, 1u, 0u));
+   fixture.controller.busReset();
+   REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 3u, 0u));
+   CHECK(fixture.in(kStandardDeviceIn, kGetStatus, 0u, 0u, 2u).data == std::vector<uint8_t>{ 0u, 0u });
 }
 
 TEST_CASE("[usb::Device] addFunction checks the interface ranges") {
