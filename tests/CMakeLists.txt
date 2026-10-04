@@ -70,6 +70,7 @@ file(GLOB TEST_SOURCES
         TestCompat.cpp
         storage/TestFatFileReadable.cpp
         storage/TestFatFileWritable.cpp
+        usb/TestUsbDevice.cpp
 )
 
 # The other storage tests, the BlockDevice contract suite and the device and file system mocks use C++20 (designated
@@ -137,6 +138,7 @@ file(GLOB TO_TEST_SOURCES
         ../src/storage/fatfs/ffunicode.c
         ../src/sensors/ThermocoupleSensor.cpp
         ../src/sensors/CompensatedThermocoupleSensor.cpp
+        ../src/usb/Device.cpp
 )
 
 file(GLOB ADDITIONAL_SOURCES
@@ -157,6 +159,7 @@ file(GLOB ADDITIONAL_SOURCES
         storage/InMemoryFileSystem.h
         storage/MockCipherBlockDevice.h
         storage/BlockDeviceContract.h
+        usb/FakeDeviceController.h
 )
 
 
@@ -282,7 +285,7 @@ set(_ART_COMPAT_STORAGE_SOURCES
 )
 # The other storage tests (_ART_CPP20_STORAGE_TESTS above) use C++20, so they are built into
 # libArT-compat-tests-cpp23-own only: there they run with the own types.
-# The same holds for src/modbus/, src/logging/, src/settings/, src/sensors/, src/utils/ and the header-only
+# The same holds for src/modbus/, src/logging/, src/settings/, src/sensors/, src/usb/, src/utils/ and the header-only
 # src/freertos/ (on the FreeRTOS host stubs): their tests, the sources they need and the remaining sources of these
 # modules are built into both binaries, so that the templates the tests instantiate compile with the own types too.
 set(_ART_COMPAT_MODULE_SOURCES
@@ -302,6 +305,7 @@ set(_ART_COMPAT_MODULE_SOURCES
         TestCompensatedThermocoupleSensor.cpp
         TestRingBuffer.cpp
         TestFloatText.cpp
+        usb/TestUsbDevice.cpp
         stubs/timestamp.cpp
         stubs/delay.cpp
         ../src/streams/CountingWritableWrapper.cpp
@@ -316,6 +320,7 @@ set(_ART_COMPAT_MODULE_SOURCES
         ../src/settings/SettingsManager.cpp
         ../src/sensors/ThermocoupleSensor.cpp
         ../src/sensors/CompensatedThermocoupleSensor.cpp
+        ../src/usb/Device.cpp
         ../src/utils/cstring.cpp
         ../src/utils/lists.cpp
         ../src/utils/JSONReader.cpp

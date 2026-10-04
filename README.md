@@ -150,6 +150,43 @@ hardware dependency, so the protocol code runs in the host tests. A port connect
 | `usb/UsbTypes.h` | Chapter 9 constants (request codes, descriptor types, feature selectors), `SetupPacket` with `fromBytes()`, `EndpointConfig` and `DeviceState`. |
 | `usb/DeviceController.h` | `DeviceController`: the interface to the USB peripheral. `ControllerEvents`: the events that the controller reports to the protocol layer. |
 | `usb/Function.h` | `Function`: base class of a USB function (for example CDC-ACM or mass storage) that owns a contiguous range of interfaces. |
+| `usb/Device.h` | `Device`: the chapter 9 state machine, the standard requests on EP0 and the routing to the functions. `Descriptors`: the descriptors that `Device` serves. |
+
+Use it like this:
+
+```cpp
+art::usb::Device device(controller, descriptors); // registers itself as the event handler of the controller
+device.addFunction(cdcFunction);                   // before start()
+device.start();                                    // pull-up on
+```
+
+### `usb::Device`
+
+- **States**: Detached, Powered, Default, Address, Configured and Suspended (USB 2.0 section 9.1.1). The device has
+  no VBUS sense, so Attached and Powered are one state. A bus reset returns to Default. Resume returns to the state
+  before the suspend.
+- **Standard requests**: GET_DESCRIPTOR (device, configuration, string), SET_ADDRESS, GET_CONFIGURATION,
+  SET_CONFIGURATION, GET_STATUS, CLEAR_FEATURE and SET_FEATURE (endpoint halt; device remote wakeup only if the
+  configuration descriptor declares it), GET_INTERFACE and SET_INTERFACE.
+- **STALL**: DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION (the device is full-speed only), SET_DESCRIPTOR,
+  SYNCH_FRAME, TEST_MODE, unknown interfaces and endpoints, and requests in a state where USB 2.0 does not define
+  them. The next SETUP packet ends the stall.
+- **SET_ADDRESS**: the new address applies after the status stage, as USB 2.0 section 9.4.6 requires.
+- **Control transfers**: replies longer than one packet go out in packets of `bMaxPacketSize0`. If a reply is
+  shorter than `wLength` and fills its last packet, a ZLP ends the data stage. Host-to-device data stages are
+  collected in a buffer of `Device::kControlBufferSize` (64) bytes. A longer data stage stalls.
+- **Endpoints**: `Device` reads the configuration descriptor. SET_CONFIGURATION opens the endpoints of alternate
+  setting 0 of every interface, and SET_INTERFACE replaces the endpoints of one interface. Both reset the halt and
+  the data toggle.
+- **Functions**: class and vendor requests to an interface, or to an endpoint of an interface, go to the `Function`
+  that owns the interface. So do standard requests to an interface that `Device` does not handle (for example a
+  class-specific GET_DESCRIPTOR). The packets of an endpoint go to the function of its interface. Functions send
+  with `Device::startInTransfer()`, receive with `Device::armOutTransfer()` and halt with `Device::haltEndpoint()`.
+- **Limits**: one configuration, at most `Device::kMaxInterfaces` (8) interfaces and `Device::kMaxFunctions` (4)
+  functions. No heap: all state is in the object (196 bytes on Cortex-M0+).
+
+`tests/usb/FakeDeviceController.h` is a `DeviceController` test double that also plays the host. Use it to test a
+`Function` through `Device`.
 
 ### Controller contract
 
