@@ -139,3 +139,77 @@ first:
   breakpoint fault.
 - `std::expected` (`ON`): `value()` throws `std::bad_expected_access`. In a build with `-fno-exceptions`,
   libstdc++ calls `abort()` instead.
+
+## USB device stack
+
+`src/usb/` contains a platform-independent USB 2.0 full-speed device stack, namespace `art::usb`. It has no
+hardware dependency, so the protocol code runs in the host tests. A port connects it to the USB peripheral of an MCU.
+
+| Header | Content |
+|---|---|
+| `usb/UsbTypes.h` | Chapter 9 constants (request codes, descriptor types, feature selectors), `SetupPacket` with `fromBytes()`, `EndpointConfig` and `DeviceState`. |
+| `usb/DeviceController.h` | `DeviceController`: the interface to the USB peripheral. `ControllerEvents`: the events that the controller reports to the protocol layer. |
+| `usb/Function.h` | `Function`: base class of a USB function (for example CDC-ACM or mass storage) that owns a contiguous range of interfaces. |
+| `usb/Device.h` | `Device`: the chapter 9 state machine, the standard requests on EP0 and the routing to the functions. `Descriptors`: the descriptors that `Device` serves. |
+
+Use it like this:
+
+```cpp
+art::usb::Device device(controller, descriptors); // registers itself as the event handler of the controller
+device.addFunction(cdcFunction);                   // before start()
+device.start();                                    // pull-up on
+```
+
+### `usb::Device`
+
+- **States**: Detached, Powered, Default, Address, Configured and Suspended (USB 2.0 section 9.1.1). The device has
+  no VBUS sense, so Attached and Powered are one state. A bus reset returns to Default. Resume returns to the state
+  before the suspend.
+- **Standard requests**: GET_DESCRIPTOR (device, configuration, string), SET_ADDRESS, GET_CONFIGURATION,
+  SET_CONFIGURATION, GET_STATUS, CLEAR_FEATURE and SET_FEATURE (endpoint halt; device remote wakeup only if the
+  configuration descriptor declares it), GET_INTERFACE and SET_INTERFACE.
+- **STALL**: DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION (the device is full-speed only), SET_DESCRIPTOR,
+  SYNCH_FRAME, TEST_MODE, unknown interfaces and endpoints, and requests in a state where USB 2.0 does not define
+  them. The next SETUP packet ends the stall.
+- **SET_ADDRESS**: the new address applies after the status stage, as USB 2.0 section 9.4.6 requires. The
+  controller applies it in hardware (see "Controller contract").
+- **Control transfers**: replies longer than one packet go out in packets of `bMaxPacketSize0`. If a reply is
+  shorter than `wLength` and fills its last packet, a ZLP ends the data stage. Host-to-device data stages are
+  collected in a buffer of `Device::kControlBufferSize` (64) bytes. A longer data stage stalls, and so does a
+  data stage that ends with a short packet before `wLength` bytes.
+- **Endpoints**: `Device` reads the configuration descriptor. SET_CONFIGURATION opens the endpoints of alternate
+  setting 0 of every interface, and SET_INTERFACE replaces the endpoints of one interface. Both reset the halt and
+  the data toggle.
+- **Functions**: class and vendor requests to an interface, or to an endpoint of an interface, go to the `Function`
+  that owns the interface. So do standard requests to an interface that `Device` does not handle (for example a
+  class-specific GET_DESCRIPTOR). The packets of an endpoint go to the function of its interface. Functions send
+  with `Device::startInTransfer()`, receive with `Device::armOutTransfer()` and halt with `Device::haltEndpoint()`.
+- **Limits**: one configuration, at most `Device::kMaxInterfaces` (8) interfaces and `Device::kMaxFunctions` (4)
+  functions. No heap: all state is in the object (196 bytes on Cortex-M0+).
+
+`tests/usb/FakeDeviceController.h` is a `DeviceController` test double that also plays the host. Use it to test a
+`Function` through `Device`.
+
+### Controller contract
+
+`DeviceController` works on single packets. `startInTransfer()` sends one packet on an IN endpoint, and the
+controller reports `inPacketSent()` when the host has acknowledged it. `armOutTransfer()` lets an OUT endpoint
+accept one packet, and the controller reports `outPacketReceived()`. An open endpoint that is not armed answers
+with NAK. The protocol layer splits transfers into packets and adds zero-length packets (ZLP).
+
+- The controller accepts a SETUP packet also when EP0 is stalled. Before it reports the packet, it sets both
+  directions of EP0 to NAK.
+- `setEndpointStall(false)` resets the data toggle to DATA0.
+- `Device` calls `setAddress()` when it accepts SET_ADDRESS, before the status stage. The controller applies the
+  address in hardware when the host acknowledges the zero-length status packet on EP0 (STM32 FS: in the handler of
+  that IN completion). A peripheral that needs the address before the status stage writes it at once. The
+  controller drops a pending address on the next SETUP packet and on a bus reset. With queued events, the main loop
+  sees the acknowledgement too late for the host, which uses the new address 2 ms after the status stage.
+- A control endpoint is opened once, with its OUT address, and covers both directions.
+
+### Threading
+
+The events and the calls run in one context, normally the main loop. They must not overlap. A controller that
+takes the events in an interrupt handler queues them, and delivers them from its `poll()` in the main loop. While
+the main loop has not armed an endpoint, the endpoint answers with NAK. Slow processing therefore only reduces the
+throughput; it does not break the protocol.
