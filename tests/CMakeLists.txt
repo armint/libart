@@ -71,6 +71,7 @@ file(GLOB TEST_SOURCES
         storage/TestFatFileReadable.cpp
         storage/TestFatFileWritable.cpp
         usb/TestUsbDevice.cpp
+        usb/TestDescriptorBuilder.cpp
 )
 
 # The other storage tests, the BlockDevice contract suite and the device and file system mocks use C++20 (designated
@@ -306,6 +307,7 @@ set(_ART_COMPAT_MODULE_SOURCES
         TestRingBuffer.cpp
         TestFloatText.cpp
         usb/TestUsbDevice.cpp
+        usb/TestDescriptorBuilder.cpp
         stubs/timestamp.cpp
         stubs/delay.cpp
         ../src/streams/CountingWritableWrapper.cpp

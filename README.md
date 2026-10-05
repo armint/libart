@@ -151,6 +151,7 @@ hardware dependency, so the protocol code runs in the host tests. A port connect
 | `usb/DeviceController.h` | `DeviceController`: the interface to the USB peripheral. `ControllerEvents`: the events that the controller reports to the protocol layer. |
 | `usb/Function.h` | `Function`: base class of a USB function (for example CDC-ACM or mass storage) that owns a contiguous range of interfaces. |
 | `usb/Device.h` | `Device`: the chapter 9 state machine, the standard requests on EP0 and the routing to the functions. `Descriptors`: the descriptors that `Device` serves. |
+| `usb/DescriptorBuilder.h` | `constexpr` builders for the device, configuration, interface association (IAD), interface, endpoint, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
 
 Use it like this:
 
@@ -189,6 +190,50 @@ device.start();                                    // pull-up on
 
 `tests/usb/FakeDeviceController.h` is a `DeviceController` test double that also plays the host. Use it to test a
 `Function` through `Device`.
+
+### Descriptor builders
+
+The builders in `usb/DescriptorBuilder.h` (namespace `art::usb::descriptor`) return `std::array<uint8_t, N>` in
+wire format. Use them in `constexpr` variables, so that the descriptors are built by the compiler and stay in flash.
+
+- `configuration()` and `interfaceDescriptor()` take the descriptors that follow them as arguments. They compute
+  `wTotalLength`, `bNumInterfaces` (the interfaces with alternate setting 0) and `bNumEndpoints`.
+- `configuration()` sets bit 7 of `bmAttributes` and converts `maxPowerMilliamps` to units of 2 mA.
+- `stringDescriptor(u"...")` takes a UTF-16 literal of at most 126 code units. `languages(kLanguageEnglishUs)` builds
+  string descriptor 0.
+- `SerialNumber<IdBytes>` holds a string descriptor in RAM. `set(id)` writes each byte of `id` as two upper-case
+  hexadecimal digits, for example the 12-byte UID of an STM32 as a 24-digit serial number. `id` is a
+  `std::array`, a C array or a fixed-extent span of exactly `IdBytes` bytes, so an ID of another length does not
+  compile. A span of dynamic extent does not compile either. Call `set()` before `Device::start()`: the host
+  can read the string at any time after the device connects.
+- `asSpan()` makes the spans for `Descriptors`.
+- Build the descriptors in `constexpr` variables. These errors then fail the build, with an error that names a
+  function in `detail::`:
+  - `maxPowerMilliamps` above 500 mA (`maxPowerAbove500Milliamps`);
+  - a `char16_t` array for `stringDescriptor()` whose last element is not a null (`stringDescriptorNeedsNullTerminatedLiteral`);
+  - a descriptor sequence in `configuration()` or `interfaceDescriptor()` with a `bLength` below 2 or a descriptor that
+    runs past the end (`malformedDescriptorSequence`), for example from a hand-written array.
+
+  These functions are not `constexpr`. At run time they trap (`__builtin_trap()`), so a builder that runs at run time
+  with such a value traps instead of returning a wrong descriptor. Valid values work at run time at every
+  optimization level.
+- `tests/usb/compile_fail/check.cmake` checks that each of these errors, and an ID of the wrong length for
+  `SerialNumber::set()`, fails the build with the expected diagnostic. A positive control must compile. Run it with
+  `cmake -D CXX=g++ -D ETL_INCLUDE_DIR=<build>/_deps/etl-src/include -P tests/usb/compile_fail/check.cmake`. The C++17
+  cells of the CI job `test` run it.
+- The builders do not check other field values. The application supplies its own values, for example `idVendor`,
+  `idProduct`, `bcdDevice` and the maximum power.
+
+```cpp
+using namespace art::usb::descriptor;
+constexpr auto kConfiguration = configuration(ConfigurationFields{ 1, 0, true, false, 100 },
+   interfaceAssociation(0, 2, classcode::kCdc, cdc::kSubclassAcm, 0),
+   interfaceDescriptor(InterfaceFields{ 0, 0, classcode::kCdc, cdc::kSubclassAcm, 0, 0 },
+      cdcHeader(), cdcCallManagement(0, 1), cdcAcm(), cdcUnion(0, 1),
+      endpoint(0x81, art::usb::EndpointType::Interrupt, 16, 16)),
+   interfaceDescriptor(InterfaceFields{ 1, 0, classcode::kCdcData, 0, 0, 0 },
+      endpoint(0x02, art::usb::EndpointType::Bulk, 64), endpoint(0x82, art::usb::EndpointType::Bulk, 64)));
+```
 
 ### Controller contract
 
