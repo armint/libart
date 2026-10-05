@@ -198,13 +198,25 @@ wire format. Use them in `constexpr` variables, so that the descriptors are buil
 
 - `configuration()` and `interfaceDescriptor()` take the descriptors that follow them as arguments. They compute
   `wTotalLength`, `bNumInterfaces` (the interfaces with alternate setting 0) and `bNumEndpoints`.
-- `configuration()` sets bit 7 of `bmAttributes` and converts `maxPowerMilliamps` to units of 2 mA (at most 500 mA).
+- `configuration()` sets bit 7 of `bmAttributes` and converts `maxPowerMilliamps` to units of 2 mA.
 - `stringDescriptor(u"...")` takes a UTF-16 literal of at most 126 code units. `languages(kLanguageEnglishUs)` builds
   string descriptor 0.
 - `SerialNumber<IdBytes>` holds a string descriptor in RAM. `set(id)` writes each byte of `id` as two upper-case
-  hexadecimal digits, for example the 12-byte UID of an STM32 as a 24-digit serial number.
+  hexadecimal digits, for example the 12-byte UID of an STM32 as a 24-digit serial number. `id` is a
+  `std::array`, a C array or a fixed-extent span of exactly `IdBytes` bytes, so an ID of another length does not
+  compile. A span of dynamic extent does not compile either. Call `set()` before `Device::start()`: the host
+  can read the string at any time after the device connects.
 - `asSpan()` makes the spans for `Descriptors`.
-- The builders do not check the field values. The application supplies its own values, for example `idVendor`,
+- Evaluate the builders at compile time only, in `constexpr` variables. These errors then fail the build, with an
+  error that names a function in `detail::`:
+  - `maxPowerMilliamps` above 500 mA (`maxPowerAbove500Milliamps`);
+  - a `char16_t` array for `stringDescriptor()` whose last element is not a null (`stringDescriptorNeedsNullTerminatedLiteral`);
+  - a descriptor sequence in `configuration()` or `interfaceDescriptor()` with a `bLength` below 2 or a descriptor that
+    runs past the end (`malformedDescriptorSequence`), for example from a hand-written array.
+
+  These functions are declared but not defined. A run-time call of a builder with a check therefore does not link,
+  unless the optimizer removes the check.
+- The builders do not check other field values. The application supplies its own values, for example `idVendor`,
   `idProduct`, `bcdDevice` and the maximum power.
 
 ```cpp

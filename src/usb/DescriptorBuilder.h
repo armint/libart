@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 /**
  * @file
@@ -25,8 +26,16 @@
  *    ...);
  * @endcode
  *
- * The builders check what they can at compile time (sizes that must fit into a length byte) with `static_assert`.
- * Field values are not checked: the descriptor carries what the caller passes.
+ * @par Checks
+ * Sizes that must fit into a length field are checked with `static_assert`. Some values are checked too: a maximum
+ * power above 500 mA, a string that is not a null-terminated literal, and a malformed descriptor sequence in
+ * configuration() or interfaceDescriptor(). Such a value calls a function of detail:: that is declared but neither
+ * `constexpr` nor defined, so a constant evaluation fails with a compile error that names the problem.
+ *
+ * Evaluate the builders at compile time only, in `constexpr` variables. A builder with such a check that is called
+ * at run time references the undefined function. The program then does not link, also if the values are valid,
+ * unless the optimizer removes the check. Other
+ * field values are not checked: the descriptor carries what the caller passes.
  */
 
 namespace art::usb::descriptor {
@@ -89,8 +98,8 @@ struct ConfigurationFields {
    bool selfPowered{ false };
    /// bmAttributes bit 5.
    bool remoteWakeup{ false };
-   /// The maximum current from the bus in mA. bMaxPower is in units of 2 mA, so an odd value is rounded up; values
-   /// above 500 mA are limited to 500 mA.
+   /// The maximum current from the bus in mA, at most 500 (a larger value fails the build). bMaxPower is in units of
+   /// 2 mA, so an odd value is rounded up.
    uint16_t maxPowerMilliamps{ 100u };
 };
 
@@ -106,6 +115,12 @@ struct InterfaceFields {
 
 namespace detail {
 
+// Declared, never defined, and not constexpr: calling one of them makes a constant evaluation fail with an error that
+// names it, and a run-time call fails to link. See "Checks" above.
+void maxPowerAbove500Milliamps();
+void stringDescriptorNeedsNullTerminatedLiteral();
+void malformedDescriptorSequence();
+
 constexpr uint8_t lowByte(uint16_t value) {
    return static_cast<uint8_t>(value & 0xFFu);
 }
@@ -115,7 +130,8 @@ constexpr uint8_t highByte(uint16_t value) {
 }
 
 /// Counts the descriptors of a type in a sequence of descriptors. With `alternateSettingZero`, it counts only
-/// interface descriptors of alternate setting 0, that is, the interfaces.
+/// interface descriptors of alternate setting 0, that is, the interfaces. The sequence from `offset` must consist of
+/// whole descriptors (bLength at least 2, the last one ends at the end of the array); otherwise the build fails.
 template <size_t Size>
 constexpr uint8_t
 countDescriptors(const std::array<uint8_t, Size> &descriptors, size_t offset, DescriptorType type, bool alternateSettingZero = false) {
@@ -126,6 +142,9 @@ countDescriptors(const std::array<uint8_t, Size> &descriptors, size_t offset, De
          ++count;
       }
       offset += descriptors[offset];
+   }
+   if(offset != Size) {
+      malformedDescriptorSequence();
    }
    return count;
 }
@@ -181,7 +200,10 @@ constexpr std::array<uint8_t, (9u + ... + Sizes)>
 configuration(const ConfigurationFields &fields, const std::array<uint8_t, Sizes> &...parts) {
    constexpr size_t totalLength = (9u + ... + Sizes);
    static_assert(totalLength <= 0xFFFFu, "wTotalLength does not fit into 16 bits");
-   const uint16_t milliamps = fields.maxPowerMilliamps > 500u ? 500u : fields.maxPowerMilliamps;
+   if(fields.maxPowerMilliamps > 500u) {
+      // USB 2.0 allows at most 500 mA (bMaxPower 250).
+      detail::maxPowerAbove500Milliamps();
+   }
    const std::array<uint8_t, 9> header{ 9u,
                                         static_cast<uint8_t>(DescriptorType::Configuration),
                                         detail::lowByte(static_cast<uint16_t>(totalLength)),
@@ -191,7 +213,7 @@ configuration(const ConfigurationFields &fields, const std::array<uint8_t, Sizes
                                         fields.iConfiguration,
                                         static_cast<uint8_t>(0x80u | (fields.selfPowered ? 0x40u : 0u) |
                                                              (fields.remoteWakeup ? 0x20u : 0u)),
-                                        static_cast<uint8_t>((milliamps + 1u) / 2u) };
+                                        static_cast<uint8_t>((fields.maxPowerMilliamps + 1u) / 2u) };
    std::array<uint8_t, totalLength> result = concat(header, parts...);
    result[4] = detail::countDescriptors(result, 9u, DescriptorType::Interface, true);
    return result;
@@ -291,14 +313,18 @@ constexpr std::array<uint8_t, 2u + 2u * sizeof...(LanguageIds)> languages(Langua
 /**
  * @brief A string descriptor from a UTF-16 string literal, for example `stringDescriptor(u"Oven controller")`.
  *
- * The terminating null is not part of the descriptor. A string has at most 126 UTF-16 code units, the limit of the
- * one-byte bLength. Characters outside the basic multilingual plane need two code units (a surrogate pair), as the
+ * The terminating null is not part of the descriptor. An array whose last element is not a null (not a literal) fails
+ * the build, so that no character is lost. A string has at most 126 UTF-16 code units, the limit of the one-byte
+ * bLength. Characters outside the basic multilingual plane need two code units (a surrogate pair), as the
  * literal stores them.
  */
 template <size_t Length>
 constexpr std::array<uint8_t, 2u * Length> stringDescriptor(const char16_t (&text)[Length]) {
    static_assert(Length >= 1u, "expects a string literal");
    static_assert(2u * Length <= 255u, "a string descriptor has at most 126 UTF-16 code units");
+   if(text[Length - 1u] != u'\0') {
+      detail::stringDescriptorNeedsNullTerminatedLiteral();
+   }
    std::array<uint8_t, 2u * Length> result{};
    result[0] = static_cast<uint8_t>(2u * Length);
    result[1] = static_cast<uint8_t>(DescriptorType::String);
@@ -315,6 +341,9 @@ constexpr std::array<uint8_t, 2u * Length> stringDescriptor(const char16_t (&tex
  *
  * Each byte becomes two upper-case hexadecimal digits, in the order of the input. Use a string of hexadecimal digits
  * only: Windows uses the serial number as part of a device instance ID and rejects some other characters.
+ *
+ * Call set() before Device::start(). usb::Descriptors::strings references the buffer of the object, and the host can
+ * read the string at any time after the device connects.
  *
  * @tparam IdBytes The number of bytes of the ID (12 for the STM32 UID). The descriptor has 2 + 4 * IdBytes bytes.
  */
@@ -335,13 +364,26 @@ class SerialNumber {
       }
    }
 
-   /// Sets the digits from `id`. Missing bytes count as 0, extra bytes are ignored.
-   constexpr void set(art::span<const uint8_t> id) {
-      for(size_t index = 0u; index < IdBytes; ++index) {
-         const uint8_t value = index < id.size() ? id[index] : 0u;
-         descriptor_[2u + 4u * index] = hexDigit(static_cast<uint8_t>(value >> 4u));
-         descriptor_[4u + 4u * index] = hexDigit(static_cast<uint8_t>(value & 0x0Fu));
-      }
+   /**
+    * @brief Sets the digits from `id`, an array or a span of exactly IdBytes bytes.
+    *
+    * An ID of another length does not compile, and neither does a span of dynamic extent (use `first<IdBytes>()`
+    * when the length is checked). The overloads check the length themselves, because the fixed-extent etl::span
+    * (ART_USE_STD_EXPECTED_SPAN=0) converts from containers and spans of any length.
+    */
+   constexpr void set(const std::array<uint8_t, IdBytes> &id) {
+      setDigits(id.data());
+   }
+
+   /// @copydoc set(const std::array<uint8_t, IdBytes> &)
+   constexpr void set(const uint8_t (&id)[IdBytes]) {
+      setDigits(id);
+   }
+
+   /// @copydoc set(const std::array<uint8_t, IdBytes> &)
+   template <typename Byte, size_t Extent, typename std::enable_if<Extent == IdBytes && std::is_same<typename std::remove_const<Byte>::type, uint8_t>::value, int>::type = 0>
+   constexpr void set(art::span<Byte, Extent> id) {
+      setDigits(id.data());
    }
 
    /// The descriptor, for usb::Descriptors::strings. The span stays valid as long as the object.
@@ -350,6 +392,13 @@ class SerialNumber {
    }
 
    private:
+   constexpr void setDigits(const uint8_t *id) {
+      for(size_t index = 0u; index < IdBytes; ++index) {
+         descriptor_[2u + 4u * index] = hexDigit(static_cast<uint8_t>(id[index] >> 4u));
+         descriptor_[4u + 4u * index] = hexDigit(static_cast<uint8_t>(id[index] & 0x0Fu));
+      }
+   }
+
    static constexpr uint8_t hexDigit(uint8_t value) {
       return static_cast<uint8_t>(value < 10u ? '0' + value : 'A' + (value - 10u));
    }

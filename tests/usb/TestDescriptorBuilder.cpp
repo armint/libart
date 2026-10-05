@@ -4,6 +4,8 @@
 #include <array>
 #include <cstdint>
 #include <doctest/doctest.h>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 using namespace art::usb;
@@ -98,16 +100,25 @@ TEST_CASE("[usb::descriptor] the CDC + mass storage configuration matches the re
    CHECK(bytesOf(kConfiguration) == kReferenceConfiguration);
 }
 
-TEST_CASE("[usb::descriptor] configuration attributes and power") {
+namespace {
+
+constexpr ConfigurationFields makeConfigurationFields(uint16_t maxPowerMilliamps) {
    ConfigurationFields fields{};
    fields.selfPowered = true;
    fields.remoteWakeup = true;
-   fields.maxPowerMilliamps = 99u;
-   const auto selfPowered = configuration(fields);
-   CHECK(bytesOf(selfPowered) == std::vector<uint8_t>{ 0x09, 0x02, 0x09, 0x00, 0x00, 0x01, 0x00, 0xE0, 50u });
+   fields.maxPowerMilliamps = maxPowerMilliamps;
+   return fields;
+}
 
-   fields.maxPowerMilliamps = 900u;
-   CHECK(configuration(fields)[8] == 250u);
+constexpr auto kOddPower = configuration(makeConfigurationFields(99u));
+constexpr auto kMaxPower = configuration(makeConfigurationFields(500u));
+// configuration(makeConfigurationFields(501u)) does not compile (maxPowerAbove500Milliamps).
+
+} // namespace
+
+TEST_CASE("[usb::descriptor] configuration attributes and power") {
+   CHECK(bytesOf(kOddPower) == std::vector<uint8_t>{ 0x09, 0x02, 0x09, 0x00, 0x00, 0x01, 0x00, 0xE0, 50u });
+   CHECK(kMaxPower[8] == 0xFAu);
 }
 
 TEST_CASE("[usb::descriptor] alternate settings do not count as interfaces") {
@@ -128,15 +139,43 @@ TEST_CASE("[usb::descriptor] CDC functional descriptors") {
    CHECK(bytesOf(cdcUnion(0u, 1u, 2u)) == std::vector<uint8_t>{ 0x06, 0x24, 0x06, 0x00, 0x01, 0x02 });
 }
 
+namespace {
+
+// A character outside ASCII: U+00B0 DEGREE SIGN, and one outside the BMP as a surrogate pair.
+constexpr auto kDegreeCelsius = stringDescriptor(u"\u00B0C");
+constexpr auto kFire = stringDescriptor(u"\U0001F525");
+constexpr auto kEmpty = stringDescriptor(u"");
+// A char16_t array without a terminating null does not compile (stringDescriptorNeedsNullTerminatedLiteral):
+// constexpr char16_t kName[3]{ u'a', u'b', u'c' }; stringDescriptor(kName);
+
+} // namespace
+
 TEST_CASE("[usb::descriptor] string descriptors") {
    CHECK(bytesOf(kLanguages) == std::vector<uint8_t>{ 0x04, 0x03, 0x09, 0x04 });
    CHECK(bytesOf(languages(0x0409u, 0x0407u)) == std::vector<uint8_t>{ 0x06, 0x03, 0x09, 0x04, 0x07, 0x04 });
    CHECK(bytesOf(kManufacturer) == std::vector<uint8_t>{ 0x10, 0x03, 'T', 0, 'i', 0, 'n', 0, 'y', 0, 'U', 0, 'S', 0, 'B', 0 });
-   // A character outside ASCII: U+00B0 DEGREE SIGN, and one outside the BMP as a surrogate pair.
-   CHECK(bytesOf(stringDescriptor(u"°C")) == std::vector<uint8_t>{ 0x06, 0x03, 0xB0, 0x00, 'C', 0 });
-   CHECK(bytesOf(stringDescriptor(u"\U0001F525")) == std::vector<uint8_t>{ 0x06, 0x03, 0x3D, 0xD8, 0x25, 0xDD });
-   CHECK(bytesOf(stringDescriptor(u"")) == std::vector<uint8_t>{ 0x02, 0x03 });
+   CHECK(bytesOf(kDegreeCelsius) == std::vector<uint8_t>{ 0x06, 0x03, 0xB0, 0x00, 'C', 0 });
+   CHECK(bytesOf(kFire) == std::vector<uint8_t>{ 0x06, 0x03, 0x3D, 0xD8, 0x25, 0xDD });
+   CHECK(bytesOf(kEmpty) == std::vector<uint8_t>{ 0x02, 0x03 });
 }
+
+// The ID length is part of the type: an ID of another length, or a span of dynamic extent, does not compile.
+template <typename Id, typename = void>
+struct AcceptsId : std::false_type {};
+
+template <typename Id>
+struct AcceptsId<Id, decltype(std::declval<SerialNumber<3> &>().set(std::declval<Id>()))> : std::true_type {};
+
+static_assert(AcceptsId<const std::array<uint8_t, 3> &>::value, "an array of the ID length");
+static_assert(AcceptsId<const uint8_t (&)[3]>::value, "a C array of the ID length");
+static_assert(AcceptsId<art::span<const uint8_t, 3>>::value, "a span of the ID length");
+static_assert(AcceptsId<art::span<uint8_t, 3>>::value, "a span of mutable bytes of the ID length");
+static_assert(!AcceptsId<const std::array<uint8_t, 4> &>::value, "a longer array");
+static_assert(!AcceptsId<const std::array<uint8_t, 2> &>::value, "a shorter array");
+static_assert(!AcceptsId<const uint8_t (&)[4]>::value, "a longer C array");
+static_assert(!AcceptsId<art::span<const uint8_t, 4>>::value, "a longer span");
+static_assert(!AcceptsId<art::span<const uint8_t>>::value, "a span of dynamic extent");
+static_assert(!AcceptsId<const std::array<uint16_t, 3> &>::value, "an array of other elements");
 
 TEST_CASE("[usb::descriptor] the serial number is filled at run time") {
    SerialNumber<3> serial;
@@ -144,18 +183,14 @@ TEST_CASE("[usb::descriptor] the serial number is filled at run time") {
          std::vector<uint8_t>{ 0x0E, 0x03, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0 });
 
    const std::array<uint8_t, 3> id{ 0x12u, 0xABu, 0x0Fu };
-   serial.set(art::span<const uint8_t>(id.data(), id.size()));
+   serial.set(id);
    CHECK(std::vector<uint8_t>(serial.bytes().begin(), serial.bytes().end()) ==
          std::vector<uint8_t>{ 0x0E, 0x03, '1', 0, '2', 0, 'A', 0, 'B', 0, '0', 0, 'F', 0 });
 
-   // A shorter ID leaves zeros, a longer one is cut.
-   serial.set(art::span<const uint8_t>(id.data(), 1u));
+   const std::array<uint8_t, 3> other{ 0xC0u, 0xFFu, 0xEEu };
+   serial.set(art::span<const uint8_t, 3>(other.data(), other.size()));
    CHECK(std::vector<uint8_t>(serial.bytes().begin(), serial.bytes().end()) ==
-         std::vector<uint8_t>{ 0x0E, 0x03, '1', 0, '2', 0, '0', 0, '0', 0, '0', 0, '0', 0 });
-   SerialNumber<1> shortSerial;
-   shortSerial.set(art::span<const uint8_t>(id.data(), id.size()));
-   CHECK(std::vector<uint8_t>(shortSerial.bytes().begin(), shortSerial.bytes().end()) ==
-         std::vector<uint8_t>{ 0x06, 0x03, '1', 0, '2', 0 });
+         std::vector<uint8_t>{ 0x0E, 0x03, 'C', 0, '0', 0, 'F', 0, 'F', 0, 'E', 0, 'E', 0 });
 
    CHECK(SerialNumber<12>::kSize == 50u);
 }
@@ -164,7 +199,7 @@ TEST_CASE("[usb::descriptor] usb::Device serves and uses the built descriptors")
    static constexpr auto kProduct = stringDescriptor(u"Oven controller");
    SerialNumber<12> serial;
    const std::array<uint8_t, 12> uid{ 0x01u, 0x23u, 0x45u, 0x67u, 0x89u, 0xABu, 0xCDu, 0xEFu, 0x00u, 0x11u, 0x22u, 0x33u };
-   serial.set(art::span<const uint8_t>(uid.data(), uid.size()));
+   serial.set(uid);
    const std::array<art::span<const uint8_t>, 4> strings{ asSpan(kLanguages), asSpan(kManufacturer), asSpan(kProduct),
                                                           serial.bytes() };
    Descriptors descriptors{};
