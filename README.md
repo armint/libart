@@ -151,6 +151,7 @@ hardware dependency, so the protocol code runs in the host tests. A port connect
 | `usb/DeviceController.h` | `DeviceController`: the interface to the USB peripheral. `ControllerEvents`: the events that the controller reports to the protocol layer. |
 | `usb/Function.h` | `Function`: base class of a USB function (for example CDC-ACM or mass storage) that owns a contiguous range of interfaces. |
 | `usb/Device.h` | `Device`: the chapter 9 state machine, the standard requests on EP0 and the routing to the functions. `Descriptors`: the descriptors that `Device` serves. |
+| `usb/CdcAcmFunction.h` | `CdcAcmFunction`: the CDC-ACM function (virtual COM port) with its RX and TX queues. |
 | `usb/DescriptorBuilder.h` | `constexpr` builders for the device, configuration, interface association (IAD), interface, endpoint, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
 
 Use it like this:
@@ -192,6 +193,37 @@ device.start();                                    // pull-up on
 `Function` through `Device`. With `queueEvents(true)`, it holds the events until `deliverQueuedEvents()`, as a
 controller does that queues them in its interrupt handler for the main loop. `tests/usb/TestUsbEnumeration.cpp` runs
 the enumeration sequences of Linux and Windows in both modes.
+
+### `usb::CdcAcmFunction`
+
+`CdcAcmFunction<RxSize, TxSize>` is a CDC-ACM (Abstract Control Model) function: a virtual COM port. Linux, macOS
+and Windows 10 or later need no driver for it. It owns two interfaces: the communication interface and the data
+interface after it. Build its descriptors with `usb/DescriptorBuilder.h`, as in the example of that header.
+
+```cpp
+art::usb::CdcAcmFunction<256, 256> serial(0, art::usb::CdcAcmEndpoints{ 0x81, 16, 0x02, 0x82 });
+device.addFunction(serial);
+// In the main loop:
+size_t received = serial.read(buffer);
+size_t taken = serial.write(data);
+```
+
+- **Class requests**: SET_LINE_CODING and GET_LINE_CODING store and return the line coding (default 115200 8N1).
+  The function does not use it. SET_CONTROL_LINE_STATE sets DTR and RTS. DTR set means that a terminal program
+  has the port open (`isTerminalOpen()`). All other requests stall, SEND_BREAK too.
+- **Queues**: two `etl::circular_buffer` queues, with the capacities `RxSize` and `TxSize` in bytes. `RxSize` must
+  be at least 64. `CdcAcmFunctionBase` has the API without the sizes, for code that only reads and writes.
+- **TX**: `write()` takes the data that fits into the TX queue and never waits. The function sends the queue in
+  packets of 64 bytes. If the last packet is a full packet, a zero-length packet (ZLP) ends the transfer.
+- **RX and flow control**: the OUT endpoint accepts a packet only while the RX queue has at least 64 free bytes.
+  Otherwise the endpoint NAKs and the host waits until `read()` makes room. No received byte is lost.
+- **SERIAL_STATE**: `notifySerialState()` sends the optional notification on the interrupt endpoint.
+- **State**: `write()` takes nothing before SET_CONFIGURATION. A bus reset or SET_CONFIGURATION 0 clears both
+  queues and the control line state. The line coding stays.
+- **Threading**: call `read()` and `write()` from the context that delivers the controller events (normally the
+  main loop). The function does no locking.
+- **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64. `CdcAcmFunction<256, 256>` uses 612 bytes of
+  RAM on Cortex-M0+.
 
 ### Descriptor builders
 
