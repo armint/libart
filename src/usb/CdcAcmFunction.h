@@ -37,6 +37,9 @@ struct CdcAcmEndpoints {
    /// notification.
    uint8_t notification{ 0x81u };
    /// wMaxPacketSize of the notification endpoint. A notification longer than this goes out in several packets.
+   /// No zero-length packet follows the last one, so the size must not divide kSerialStateNotificationSize (10):
+   /// use 8, 16 or 64, not 1, 2, 5 or 10. Otherwise a host that reads more than one packet does not see the end of
+   /// the notification.
    uint16_t notificationMaxPacketSize{ 16u };
    /// The bulk OUT endpoint of the data interface (bit 7 clear). Its wMaxPacketSize must be kDataPacketSize.
    uint8_t dataOut{ 0x02u };

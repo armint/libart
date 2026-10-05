@@ -226,8 +226,9 @@ size_t taken = serial.write(data);
   queues and the control line state. The line coding stays.
 - **Threading**: call `read()` and `write()` from the context that delivers the controller events (normally the
   main loop). The function does no locking.
-- **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64. `CdcAcmFunction<256, 256>` uses 620 bytes of
-  RAM on Cortex-M0+.
+- **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64. The `wMaxPacketSize` of the notification
+  endpoint must not divide 10 (use 8, 16 or 64), because no ZLP follows the notification.
+  `CdcAcmFunction<256, 256>` uses 620 bytes of RAM on Cortex-M0+.
 
 ### Descriptor builders
 
