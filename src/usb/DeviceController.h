@@ -74,6 +74,12 @@ class ControllerEvents {
  * protocol stall: the next SETUP packet ends it (see ControllerEvents::setupReceived()), and so does the next
  * startInTransfer() or armOutTransfer() on EP0.
  *
+ * Both setEndpointStall(true) and setEndpointStall(false) drop the transfer state of the endpoint: an IN packet of
+ * startInTransfer() that the host has not acknowledged, and the arm of armOutTransfer(). No event is reported for
+ * them. After setEndpointStall(false) the endpoint NAKs until the next startInTransfer() or armOutTransfer(). (On the
+ * STM32 FS peripheral, STALL, NAK and VALID share one STAT field, so a port cannot keep them.) A packet that the
+ * host acknowledged before the call is not dropped: its event is still reported.
+ *
  * Calls come from the same context as the events (normally the main loop). An implementation that runs the
  * hardware in an interrupt protects its shared state itself.
  */

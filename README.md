@@ -279,6 +279,10 @@ with NAK. The protocol layer splits transfers into packets and adds zero-length 
 - The controller accepts a SETUP packet also when EP0 is stalled. Before it reports the packet, it sets both
   directions of EP0 to NAK.
 - `setEndpointStall(false)` resets the data toggle to DATA0.
+- `setEndpointStall(true)` and `setEndpointStall(false)` drop an IN packet that the host has not acknowledged,
+  and the arm of an OUT endpoint. No event is reported for them. After `setEndpointStall(false)` the endpoint NAKs
+  until the next `startInTransfer()` or `armOutTransfer()`. A function restarts its transfers in
+  `Function::endpointHaltCleared()`.
 - `Device` calls `setAddress()` when it accepts SET_ADDRESS, before the status stage. The controller applies the
   address in hardware when the host acknowledges the zero-length status packet on EP0 (STM32 FS: in the handler of
   that IN completion). A peripheral that needs the address before the status stage writes it at once. The
