@@ -189,7 +189,9 @@ device.start();                                    // pull-up on
   functions. No heap: all state is in the object (196 bytes on Cortex-M0+).
 
 `tests/usb/FakeDeviceController.h` is a `DeviceController` test double that also plays the host. Use it to test a
-`Function` through `Device`.
+`Function` through `Device`. With `queueEvents(true)`, it holds the events until `deliverQueuedEvents()`, as a
+controller does that queues them in its interrupt handler for the main loop. `tests/usb/TestUsbEnumeration.cpp` runs
+the enumeration sequences of Linux and Windows in both modes.
 
 ### Descriptor builders
 

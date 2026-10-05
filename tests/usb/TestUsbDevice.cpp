@@ -381,9 +381,11 @@ TEST_CASE("[usb::Device] SET_ADDRESS works when the main loop sees the status st
    Fixture fixture;
    FakeDeviceController &controller = fixture.controller;
    controller.busReset();
-   controller.queueInEvents(true);
+   controller.queueEvents(true);
 
    controller.sendSetup(setupPacket(kStandardDeviceOut, kSetAddress, 9u, 0u, 0u));
+   // The main loop handles the SETUP packet and queues the status stage.
+   controller.deliverQueuedEvents();
    REQUIRE(controller.takeIn(0x80u).has_value());
    // The interrupt has applied the address; the main loop has not seen the acknowledgement yet. The host can
    // already reach the device at the new address.
@@ -450,17 +452,19 @@ TEST_CASE("[usb::Device] the status stage of a data-in transfer does not wait fo
    Fixture fixture;
    FakeDeviceController &controller = fixture.controller;
    controller.busReset();
-   controller.queueInEvents(true);
+   controller.queueEvents(true);
 
    controller.sendSetup(setupPacket(kStandardDeviceIn, kGetDescriptor, descriptorValue(DescriptorType::Device), 0u, 18u));
+   controller.deliverQueuedEvents();
    const std::optional<std::vector<uint8_t>> data = controller.takeIn(0x80u);
    REQUIRE(data.has_value());
    CHECK(data->size() == 18u);
    // The acknowledgement of the data packet is still queued, but EP0 OUT already accepts the status stage.
    CHECK(controller.sendOut(0x00u, art::span<const uint8_t>()));
+   CHECK(controller.queuedEventCount() == 2u);
    controller.deliverQueuedEvents();
 
-   controller.queueInEvents(false);
+   controller.queueEvents(false);
    CHECK(fixture.getDescriptor(DescriptorType::Device, 0u, 18u).size() == 18u);
 }
 
