@@ -73,6 +73,7 @@ file(GLOB TEST_SOURCES
         usb/TestUsbDevice.cpp
         usb/TestDescriptorBuilder.cpp
         usb/TestUsbEnumeration.cpp
+        usb/TestCdcAcmFunction.cpp
 )
 
 # The other storage tests, the BlockDevice contract suite and the device and file system mocks use C++20 (designated
@@ -141,6 +142,7 @@ file(GLOB TO_TEST_SOURCES
         ../src/sensors/ThermocoupleSensor.cpp
         ../src/sensors/CompensatedThermocoupleSensor.cpp
         ../src/usb/Device.cpp
+        ../src/usb/CdcAcmFunction.cpp
 )
 
 file(GLOB ADDITIONAL_SOURCES
@@ -310,6 +312,7 @@ set(_ART_COMPAT_MODULE_SOURCES
         usb/TestUsbDevice.cpp
         usb/TestDescriptorBuilder.cpp
         usb/TestUsbEnumeration.cpp
+        usb/TestCdcAcmFunction.cpp
         stubs/timestamp.cpp
         stubs/delay.cpp
         ../src/streams/CountingWritableWrapper.cpp
@@ -325,6 +328,7 @@ set(_ART_COMPAT_MODULE_SOURCES
         ../src/sensors/ThermocoupleSensor.cpp
         ../src/sensors/CompensatedThermocoupleSensor.cpp
         ../src/usb/Device.cpp
+        ../src/usb/CdcAcmFunction.cpp
         ../src/utils/cstring.cpp
         ../src/utils/lists.cpp
         ../src/utils/JSONReader.cpp

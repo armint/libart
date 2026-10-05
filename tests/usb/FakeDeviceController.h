@@ -22,6 +22,7 @@ namespace art::usb::test {
  * - a SETUP packet ends a stall of EP0 and sets both directions of EP0 to NAK (drops a queued IN packet and the
  *   OUT arm) before it is reported;
  * - startInTransfer() and armOutTransfer() on EP0 end a protocol stall of EP0;
+ * - setEndpointStall() (true and false) drops a queued IN packet and the OUT arm of the endpoint;
  * - setAddress() keeps the address pending until the host acknowledges the zero-length status packet on EP0; a
  *   SETUP packet or a bus reset drops it.
  *
@@ -89,6 +90,8 @@ class FakeDeviceController : public DeviceController {
    }
 
    void setEndpointStall(uint8_t endpointAddress, bool stall) override {
+      armed_.erase(endpointAddress);
+      inPackets_.erase(endpointAddress);
       if(stall) {
          stalled_.insert(endpointAddress);
       } else {
