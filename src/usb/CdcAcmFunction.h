@@ -71,6 +71,13 @@ struct CdcAcmEndpoints {
  * deconfigured() (bus reset, SET_CONFIGURATION 0, Device::stop()) clears both queues and the control line state.
  * The line coding stays. A suspend changes nothing: the IN packet that is on its way stays pending.
  *
+ * @par Endpoint halt
+ * The function sends and arms nothing on a halted endpoint. When the host clears the halt of a data endpoint, or
+ * SET_INTERFACE reopens the data interface, the controller has dropped the transfer of the endpoint (see
+ * DeviceController, "Endpoint halt"). The function then arms the OUT endpoint again and sends the dropped IN packet
+ * again: the bytes of an IN packet stay in the TX queue until the host acknowledges it, so no byte is lost or sent
+ * twice. A notification on its way is dropped.
+ *
  * @par Threading
  * All calls, read() and write() included, must come from the context that delivers the controller events
  * (normally the main loop). The function does no locking.
@@ -118,6 +125,7 @@ class CdcAcmFunctionBase : public Function {
     * It never waits: the data that does not fit is not taken.
     *
     * @return The number of bytes taken from `data`; 0 if the function is not configured or the TX queue is full.
+    * The packet on its way still takes its room in the TX queue.
     */
    size_t write(art::span<const uint8_t> data);
 
@@ -178,6 +186,7 @@ class CdcAcmFunctionBase : public Function {
    void alternateSettingChanged(uint8_t interfaceNumber, uint8_t alternateSetting) override;
    void outPacketReceived(uint8_t endpointAddress, art::span<const uint8_t> packet) override;
    void inPacketSent(uint8_t endpointAddress) override;
+   void endpointHaltCleared(uint8_t endpointAddress) override;
 
    protected:
    /**
@@ -198,8 +207,14 @@ class CdcAcmFunctionBase : public Function {
    void sendNextInPacket();
    /// Sends the next packet of the notification.
    void sendNextNotificationPacket();
-   /// Forgets the endpoint state of the data interface (its endpoints were closed).
+   /// Forgets the endpoint state of the data interface and the pending ZLP (configuration change).
    void resetDataEndpoints();
+   /// Arms the OUT endpoint again after the controller dropped its arm.
+   void restartOut();
+   /// Sends the IN packet again that the controller dropped, or the next one.
+   void restartIn();
+   /// Forgets the notification on its way.
+   void dropNotification();
 
    CdcAcmEndpoints endpoints_;
    etl::icircular_buffer<uint8_t> &rxQueue_;
@@ -212,7 +227,9 @@ class CdcAcmFunctionBase : public Function {
    bool outArmed_{ false };
    /// An IN data packet waits for its acknowledgement.
    bool txBusy_{ false };
-   /// The last data packet was a full packet: a ZLP must follow if the TX queue is empty.
+   /// The size of that packet. Its bytes are still at the front of the TX queue.
+   size_t txInFlight_{ 0u };
+   /// The last acknowledged data packet was a full packet: a ZLP must follow if the TX queue is empty.
    bool zlpPending_{ false };
 
    std::array<uint8_t, kSerialStateNotificationSize> notification_{};

@@ -105,8 +105,7 @@ void CdcAcmFunctionBase::configured() {
    rxQueue_.clear();
    txQueue_.clear();
    resetDataEndpoints();
-   notificationSent_ = notification_.size();
-   notificationBusy_ = false;
+   dropNotification();
    armOutIfRoom();
 }
 
@@ -116,21 +115,30 @@ void CdcAcmFunctionBase::deconfigured() {
    rxQueue_.clear();
    txQueue_.clear();
    resetDataEndpoints();
-   notificationSent_ = notification_.size();
-   notificationBusy_ = false;
+   dropNotification();
 }
 
 void CdcAcmFunctionBase::alternateSettingChanged(uint8_t interfaceNumber, uint8_t alternateSetting) {
    static_cast<void>(alternateSetting);
-   // SET_INTERFACE closed and reopened the endpoints of the interface: a packet on its way is lost, and the OUT
-   // endpoint is no longer armed. The data in the queues stays.
+   // SET_INTERFACE closed and reopened the endpoints of the interface: the controller dropped the packet on its way
+   // and the OUT arm. The packet is still in the TX queue, so it goes out again.
    if(interfaceNumber == dataInterface()) {
-      resetDataEndpoints();
-      armOutIfRoom();
-      sendNextInPacket();
+      restartOut();
+      restartIn();
    } else if(interfaceNumber == firstInterface()) {
-      notificationSent_ = notification_.size();
-      notificationBusy_ = false;
+      dropNotification();
+   }
+}
+
+void CdcAcmFunctionBase::endpointHaltCleared(uint8_t endpointAddress) {
+   // The controller dropped the transfer of the endpoint (DeviceController, "Endpoint halt"). The host can clear the
+   // halt of an endpoint that is not halted, too.
+   if(endpointAddress == endpoints_.dataOut) {
+      restartOut();
+   } else if(endpointAddress == endpoints_.dataIn) {
+      restartIn();
+   } else if(endpointAddress == endpoints_.notification) {
+      dropNotification();
    }
 }
 
@@ -150,6 +158,14 @@ void CdcAcmFunctionBase::outPacketReceived(uint8_t endpointAddress, art::span<co
 
 void CdcAcmFunctionBase::inPacketSent(uint8_t endpointAddress) {
    if(endpointAddress == endpoints_.dataIn) {
+      if(!txBusy_) {
+         return;
+      }
+      // The packet leaves the queue only now, so a packet that the controller drops is sent again.
+      txQueue_.pop(txInFlight_);
+      // A full packet does not end a bulk transfer for the host; a short packet or a ZLP does.
+      zlpPending_ = txInFlight_ == kDataPacketSize;
+      txInFlight_ = 0u;
       txBusy_ = false;
       sendNextInPacket();
    } else if(endpointAddress == endpoints_.notification) {
@@ -159,7 +175,8 @@ void CdcAcmFunctionBase::inPacketSent(uint8_t endpointAddress) {
 }
 
 void CdcAcmFunctionBase::armOutIfRoom() {
-   if(!configured_ || outArmed_ || rxQueue_.available() < kDataPacketSize || device() == nullptr) {
+   if(!configured_ || outArmed_ || rxQueue_.available() < kDataPacketSize || device() == nullptr ||
+      device()->isEndpointHalted(endpoints_.dataOut)) {
       return;
    }
    device()->armOutTransfer(endpoints_.dataOut);
@@ -167,15 +184,15 @@ void CdcAcmFunctionBase::armOutIfRoom() {
 }
 
 void CdcAcmFunctionBase::sendNextInPacket() {
-   if(!configured_ || txBusy_ || device() == nullptr) {
+   if(!configured_ || txBusy_ || device() == nullptr || device()->isEndpointHalted(endpoints_.dataIn)) {
       return;
    }
    const size_t count = std::min<size_t>(txQueue_.size(), kDataPacketSize);
    if(count == 0u && !zlpPending_) {
       return;
    }
-   // The controller copies the packet, so it can be built on the stack. The bytes leave the queue only when the
-   // controller took them.
+   // The controller copies the packet, so it can be built on the stack. The bytes stay in the queue until the host
+   // acknowledges the packet (inPacketSent()).
    std::array<uint8_t, kDataPacketSize> packet{};
    for(size_t index = 0u; index < count; ++index) {
       packet[index] = txQueue_[index];
@@ -183,21 +200,23 @@ void CdcAcmFunctionBase::sendNextInPacket() {
    if(!device()->startInTransfer(endpoints_.dataIn, art::span<const uint8_t>(packet.data(), count))) {
       return;
    }
-   txQueue_.pop(count);
+   txInFlight_ = count;
    txBusy_ = true;
-   // A full packet does not end a bulk transfer for the host; a short packet or a ZLP does.
-   zlpPending_ = count == kDataPacketSize;
 }
 
 void CdcAcmFunctionBase::sendNextNotificationPacket() {
    if(notificationBusy_ || notificationSent_ >= notification_.size() || device() == nullptr) {
       return;
    }
+   if(device()->isEndpointHalted(endpoints_.notification)) {
+      dropNotification();
+      return;
+   }
    const size_t count =
    std::min<size_t>(notification_.size() - notificationSent_, std::max<uint16_t>(endpoints_.notificationMaxPacketSize, 1u));
    if(!device()->startInTransfer(endpoints_.notification, art::span<const uint8_t>(notification_.data() + notificationSent_, count))) {
       // The endpoint is not open: drop the notification, so that the next one can go.
-      notificationSent_ = notification_.size();
+      dropNotification();
       return;
    }
    notificationSent_ += count;
@@ -207,7 +226,25 @@ void CdcAcmFunctionBase::sendNextNotificationPacket() {
 void CdcAcmFunctionBase::resetDataEndpoints() {
    outArmed_ = false;
    txBusy_ = false;
+   txInFlight_ = 0u;
    zlpPending_ = false;
+}
+
+void CdcAcmFunctionBase::restartOut() {
+   outArmed_ = false;
+   armOutIfRoom();
+}
+
+void CdcAcmFunctionBase::restartIn() {
+   // zlpPending_ stays: it belongs to the last acknowledged packet.
+   txBusy_ = false;
+   txInFlight_ = 0u;
+   sendNextInPacket();
+}
+
+void CdcAcmFunctionBase::dropNotification() {
+   notificationSent_ = notification_.size();
+   notificationBusy_ = false;
 }
 
 } // namespace art::usb

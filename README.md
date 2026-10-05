@@ -217,12 +217,16 @@ size_t taken = serial.write(data);
   packets of 64 bytes. If the last packet is a full packet, a zero-length packet (ZLP) ends the transfer.
 - **RX and flow control**: the OUT endpoint accepts a packet only while the RX queue has at least 64 free bytes.
   Otherwise the endpoint NAKs and the host waits until `read()` makes room. No received byte is lost.
+- **Endpoint halt**: the function sends and arms nothing on a halted endpoint. After CLEAR_FEATURE(ENDPOINT_HALT)
+  on a data endpoint, or SET_INTERFACE on the data interface, it arms the OUT endpoint again and sends the dropped IN
+  packet again. The bytes of an IN packet stay in the TX queue until the host acknowledges the packet. So no byte is
+  lost or sent twice. A notification on its way is dropped.
 - **SERIAL_STATE**: `notifySerialState()` sends the optional notification on the interrupt endpoint.
 - **State**: `write()` takes nothing before SET_CONFIGURATION. A bus reset or SET_CONFIGURATION 0 clears both
   queues and the control line state. The line coding stays.
 - **Threading**: call `read()` and `write()` from the context that delivers the controller events (normally the
   main loop). The function does no locking.
-- **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64. `CdcAcmFunction<256, 256>` uses 612 bytes of
+- **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64. `CdcAcmFunction<256, 256>` uses 620 bytes of
   RAM on Cortex-M0+.
 
 ### Descriptor builders

@@ -21,6 +21,9 @@ namespace {
 
 constexpr uint8_t kStandardDeviceOut = 0x00u;
 constexpr uint8_t kStandardInterfaceOut = 0x01u;
+constexpr uint8_t kStandardEndpointOut = 0x02u;
+constexpr uint8_t kClearFeature = 1u;
+constexpr uint8_t kSetFeature = 3u;
 constexpr uint8_t kClassInterfaceIn = 0xA1u;
 constexpr uint8_t kClassInterfaceOut = 0x21u;
 constexpr uint8_t kSetAddress = 5u;
@@ -99,6 +102,18 @@ class Bench {
       controller_.controlOut(setupPacket(requestType, request, value, index, 0u), art::span<const uint8_t>(), &ok);
       CHECK(ok);
       return !result.stalled;
+   }
+
+   /// SET_FEATURE(ENDPOINT_HALT).
+   void halt(uint8_t endpointAddress) {
+      CHECK(out(kStandardEndpointOut, kSetFeature, 0u, endpointAddress));
+      poll();
+   }
+
+   /// CLEAR_FEATURE(ENDPOINT_HALT), as a host sends it after a stall, or when it opens the pipe.
+   void clearHalt(uint8_t endpointAddress) {
+      CHECK(out(kStandardEndpointOut, kClearFeature, 0u, endpointAddress));
+      poll();
    }
 
    /// A host-to-device request with a data stage. Returns false if the device stalled it.
@@ -255,14 +270,14 @@ TEST_CASE("[usb::CdcAcmFunction] a write while a full packet is on its way conti
 TEST_CASE("[usb::CdcAcmFunction] write takes only what fits into the TX queue") {
    Bench bench(false);
    bench.enumerate();
-   // The queue takes 256 bytes. The first packet then leaves it, which makes room for 64 more.
+   // The queue takes 256 bytes. The packet on its way keeps its room until the host acknowledges it.
    const std::vector<uint8_t> data = pattern(400u);
    CHECK(bench.cdc.write(art::span<const uint8_t>(data.data(), data.size())) == 256u);
+   CHECK(bench.cdc.writeAvailable() == 0u);
+   CHECK(bench.cdc.write(art::span<const uint8_t>(data.data() + 256, 1u)) == 0u);
+   std::vector<uint8_t> received = *bench.takeIn(kDataIn);
    CHECK(bench.cdc.writeAvailable() == 64u);
    CHECK(bench.cdc.write(art::span<const uint8_t>(data.data() + 256, 144u)) == 64u);
-   CHECK(bench.cdc.writeAvailable() == 0u);
-   CHECK(bench.cdc.write(art::span<const uint8_t>(data.data() + 320, 1u)) == 0u);
-   std::vector<uint8_t> received;
    bench.readTransfer(received);
    CHECK(received == std::vector<uint8_t>(data.begin(), data.begin() + 320));
 }
@@ -427,10 +442,12 @@ TEST_CASE("[usb::CdcAcmFunction] SET_INTERFACE on the data interface restarts th
    bench.enumerate();
    const std::vector<uint8_t> data = pattern(70u);
    REQUIRE(bench.cdc.write(art::span<const uint8_t>(data.data(), data.size())) == 70u);
-   // The endpoints are reopened: the first packet, which the host did not read, is lost, the rest goes out.
+   // The endpoints are reopened: the first packet, which the host did not read, goes out again.
    CHECK(bench.out(kStandardInterfaceOut, kSetInterface, 0u, 1u));
    CHECK(bench.controller().isArmed(kDataOut));
-   CHECK(bench.takeIn(kDataIn) == pattern(6u, 64u));
+   std::vector<uint8_t> received;
+   CHECK(bench.readTransfer(received) == std::vector<size_t>{ 64u, 6u });
+   CHECK(received == data);
    CHECK_FALSE(bench.takeIn(kDataIn).has_value());
    REQUIRE(bench.sendOut(pattern(5u)));
    CHECK(readAll(bench.cdc) == pattern(5u));
@@ -452,4 +469,101 @@ TEST_CASE("[usb::CdcAcmFunction] SERIAL_STATE notification") {
    CHECK(bench.cdc.notifySerialState(CdcAcmFunctionBase::kSerialStateOverrun));
    CHECK(bench.takeIn(kNotification) == std::vector<uint8_t>{ 0xA1u, 0x20u, 0u, 0u, 0u, 0u, 2u, 0u });
    CHECK(bench.takeIn(kNotification) == std::vector<uint8_t>{ 0x40u, 0x00u });
+}
+
+namespace {
+
+/// Halts and clears the endpoints in different states. The SUBCASEs are in a function, not in a loop, so that
+/// doctest runs each of them once per event mode.
+void checkEndpointHalt(bool queueEvents) {
+   Bench bench(queueEvents);
+   bench.enumerate();
+
+   SUBCASE("halt of the IN endpoint with a packet on its way") {
+      const std::vector<uint8_t> data = pattern(110u);
+      REQUIRE(bench.cdc.write(art::span<const uint8_t>(data.data(), 100u)) == 100u);
+      bench.halt(kDataIn);
+      CHECK_FALSE(bench.takeIn(kDataIn).has_value());
+      // Data written while the endpoint is halted waits.
+      REQUIRE(bench.cdc.write(art::span<const uint8_t>(data.data() + 100, 10u)) == 10u);
+      CHECK_FALSE(bench.takeIn(kDataIn).has_value());
+      bench.clearHalt(kDataIn);
+      std::vector<uint8_t> received;
+      CHECK(bench.readTransfer(received) == std::vector<size_t>{ 64u, 46u });
+      CHECK(received == data);
+      CHECK_FALSE(bench.takeIn(kDataIn).has_value());
+      CHECK(bench.cdc.isTxIdle());
+   }
+
+   SUBCASE("halt of the IN endpoint while the ZLP is on its way") {
+      const std::vector<uint8_t> data = pattern(64u);
+      REQUIRE(bench.cdc.write(art::span<const uint8_t>(data.data(), data.size())) == 64u);
+      CHECK(bench.takeIn(kDataIn) == data);
+      bench.halt(kDataIn);
+      bench.clearHalt(kDataIn);
+      CHECK(bench.takeIn(kDataIn) == std::vector<uint8_t>{});
+      CHECK_FALSE(bench.takeIn(kDataIn).has_value());
+      CHECK(bench.cdc.isTxIdle());
+   }
+
+   SUBCASE("CLEAR_FEATURE on the IN endpoint without a halt") {
+      const std::vector<uint8_t> data = pattern(10u);
+      REQUIRE(bench.cdc.write(art::span<const uint8_t>(data.data(), data.size())) == 10u);
+      bench.clearHalt(kDataIn);
+      CHECK(bench.takeIn(kDataIn) == data);
+      CHECK_FALSE(bench.takeIn(kDataIn).has_value());
+   }
+
+   SUBCASE("halt of the OUT endpoint") {
+      REQUIRE(bench.sendOut(pattern(10u)));
+      bench.halt(kDataOut);
+      CHECK_FALSE(bench.sendOut(pattern(10u, 10u)));
+      bench.clearHalt(kDataOut);
+      CHECK(bench.controller().isArmed(kDataOut));
+      REQUIRE(bench.sendOut(pattern(10u, 10u)));
+      CHECK(readAll(bench.cdc) == pattern(20u));
+   }
+
+   SUBCASE("halt of the OUT endpoint while the RX queue is full") {
+      REQUIRE(bench.sendOut(pattern(64u)));
+      REQUIRE(bench.sendOut(pattern(64u, 64u)));
+      bench.halt(kDataOut);
+      bench.clearHalt(kDataOut);
+      // Still no room for a full packet.
+      CHECK_FALSE(bench.controller().isArmed(kDataOut));
+      CHECK(readAll(bench.cdc) == pattern(128u));
+      REQUIRE(bench.sendOut(pattern(64u, 128u)));
+      CHECK(readAll(bench.cdc) == pattern(64u, 128u));
+   }
+
+   SUBCASE("CLEAR_FEATURE on the OUT endpoint without a halt") {
+      bench.clearHalt(kDataOut);
+      REQUIRE(bench.sendOut(pattern(5u)));
+      CHECK(readAll(bench.cdc) == pattern(5u));
+   }
+
+   SUBCASE("halt of the notification endpoint drops the notification") {
+      CHECK(bench.cdc.notifySerialState(CdcAcmFunctionBase::kSerialStateDcd));
+      bench.halt(kNotification);
+      bench.clearHalt(kNotification);
+      CHECK_FALSE(bench.takeIn(kNotification).has_value());
+      CHECK(bench.cdc.notifySerialState(CdcAcmFunctionBase::kSerialStateDcd));
+      CHECK(bench.takeIn(kNotification).has_value());
+   }
+
+   // The loopback works after the halt.
+   REQUIRE(bench.sendOut(pattern(3u, 200u)));
+   const std::vector<uint8_t> received = readAll(bench.cdc);
+   CHECK(bench.cdc.write(art::span<const uint8_t>(received.data(), received.size())) == 3u);
+   CHECK(bench.takeIn(kDataIn) == pattern(3u, 200u));
+}
+
+} // namespace
+
+TEST_CASE("[usb::CdcAcmFunction] the data path survives an endpoint halt (events at once)") {
+   checkEndpointHalt(false);
+}
+
+TEST_CASE("[usb::CdcAcmFunction] the data path survives an endpoint halt (queued events)") {
+   checkEndpointHalt(true);
 }
