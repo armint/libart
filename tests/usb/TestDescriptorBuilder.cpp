@@ -18,10 +18,14 @@ std::vector<uint8_t> bytesOf(const std::array<uint8_t, Size> &descriptor) {
    return std::vector<uint8_t>(descriptor.begin(), descriptor.end());
 }
 
-// The reference: the descriptors of the TinyUSB example "cdc_msc" (examples/device/cdc_msc/src/usb_descriptors.c),
-// a CDC-ACM + mass storage composite device, as the TUD_CONFIG_DESCRIPTOR, TUD_CDC_DESCRIPTOR and TUD_MSC_DESCRIPTOR
-// macros expand them. Interfaces: 0 CDC control (string 4), 1 CDC data, 2 mass storage (string 5). Endpoints: 0x81
+// The reference: the descriptors of the TinyUSB 0.16.0 example "cdc_msc"
+// (examples/device/cdc_msc/src/usb_descriptors.c), a CDC-ACM + mass storage composite device, as the
+// TUD_CONFIG_DESCRIPTOR, TUD_CDC_DESCRIPTOR and TUD_MSC_DESCRIPTOR macros of TinyUSB 0.16.0 (src/device/usbd.h)
+// expand them. Interfaces: 0 CDC control (string 4), 1 CDC data, 2 mass storage (string 5). Endpoints: 0x81
 // notification (8 bytes), 0x02/0x82 CDC data, 0x03/0x83 mass storage (64 bytes).
+// Do not update these bytes to a later TinyUSB: its master expands differently (ACM bmCapabilities 0x06, a 16-byte
+// notification endpoint with bInterval 1, PID 0x4007). ACM bmCapabilities 0x02 (no SEND_BREAK) is the intended
+// library default.
 // clang-format off
 const std::vector<uint8_t> kReferenceDevice{
    0x12, 0x01, 0x00, 0x02, 0xEF, 0x02, 0x01, 0x40, 0xFE, 0xCA, 0x03, 0x40, 0x00, 0x01, 0x01, 0x02, 0x03, 0x01,
