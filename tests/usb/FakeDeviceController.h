@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -27,6 +28,13 @@ namespace art::usb::test {
  * The host part (bus*(), controlIn(), controlOut(), sendOut(), takeIn()) plays the host side of the bus and checks
  * the device against the rules of the host: it reads a control data stage until wLength bytes or a short packet, and
  * it only sends OUT packets to armed endpoints.
+ *
+ * @par Queued events
+ * By default an event reaches the handler at once. With queueEvents(true), the fake behaves like a controller that
+ * queues the events in its interrupt handler: the effect on the hardware state happens at once (NAK on SETUP, the
+ * address on the status acknowledgement, the endpoints on a bus reset), and the handler gets the events, in order,
+ * only from deliverQueuedEvents(), the main loop. takeIn() and sendOut() never deliver. controlIn() and controlOut()
+ * deliver only when the host would otherwise wait for a NAKed endpoint, so the main loop runs as late as possible.
  */
 class FakeDeviceController : public DeviceController {
    public:
@@ -178,16 +186,15 @@ class FakeDeviceController : public DeviceController {
       inPackets_.clear();
       address_ = 0u;
       pendingAddress_.reset();
-      queuedInEvents_.clear();
-      handler_->busReset();
+      emit([this] { handler_->busReset(); });
    }
 
    void busSuspend() {
-      handler_->suspended();
+      emit([this] { handler_->suspended(); });
    }
 
    void busResume() {
-      handler_->resumed();
+      emit([this] { handler_->resumed(); });
    }
 
    /// Sends a SETUP packet, with the effect on EP0 that the contract describes.
@@ -197,7 +204,7 @@ class FakeDeviceController : public DeviceController {
       armed_.erase(0x00u);
       inPackets_.erase(kEndpointDirectionIn);
       pendingAddress_.reset();
-      handler_->setupReceived(setup);
+      emit([this, setup] { handler_->setupReceived(setup); });
    }
 
    /// Sends an OUT packet. Returns false (and sends nothing) if the endpoint is not armed.
@@ -205,7 +212,9 @@ class FakeDeviceController : public DeviceController {
       if(armed_.erase(endpointAddress) == 0u || isStalled(endpointAddress)) {
          return false;
       }
-      handler_->outPacketReceived(endpointAddress, packet);
+      emit([this, endpointAddress, data = std::vector<uint8_t>(packet.begin(), packet.end())] {
+         handler_->outPacketReceived(endpointAddress, art::span<const uint8_t>(data.data(), data.size()));
+      });
       return true;
    }
 
@@ -223,28 +232,29 @@ class FakeDeviceController : public DeviceController {
          address_ = *pendingAddress_;
          pendingAddress_.reset();
       }
-      if(queueInEvents_) {
-         queuedInEvents_.push_back(endpointAddress);
-      } else {
-         handler_->inPacketSent(endpointAddress);
-      }
+      emit([this, endpointAddress] { handler_->inPacketSent(endpointAddress); });
       return packet;
    }
 
-   /**
-    * @brief Holds back the inPacketSent() events, as a controller does that queues them in the interrupt handler
-    * until the main loop polls. deliverQueuedEvents() passes them on.
-    */
-   void queueInEvents(bool queue) {
-      queueInEvents_ = queue;
+   /// Queues the events until deliverQueuedEvents() (true), or delivers them at once (false, the default). See
+   /// "Queued events" above.
+   void queueEvents(bool queue) {
+      queueEvents_ = queue;
    }
 
+   /// The main loop: delivers the queued events in order, including the events that they cause.
    void deliverQueuedEvents() {
-      std::vector<uint8_t> events;
-      events.swap(queuedInEvents_);
-      for(const uint8_t endpointAddress : events) {
-         handler_->inPacketSent(endpointAddress);
+      while(!queuedEvents_.empty()) {
+         std::vector<std::function<void()>> events;
+         events.swap(queuedEvents_);
+         for(const std::function<void()> &event : events) {
+            event();
+         }
       }
+   }
+
+   [[nodiscard]] size_t queuedEventCount() const {
+      return queuedEvents_.size();
    }
 
    /**
@@ -256,20 +266,17 @@ class FakeDeviceController : public DeviceController {
    ControlResult controlIn(const SetupPacket &setup, bool *ok = nullptr) {
       ControlResult result;
       bool success = true;
-      sendSetup(setup);
       const size_t maxPacketSize = endpointMaxPacketSize0();
+      sendSetup(setup);
       if(setup.wLength == 0u) {
          // No data stage: the status stage is IN.
          return finishWithStatusIn(result, ok);
       }
       while(true) {
-         if(isStalled(kEndpointDirectionIn)) {
-            result.stalled = true;
-            break;
-         }
-         std::optional<std::vector<uint8_t>> packet = takeIn(kEndpointDirectionIn);
+         std::optional<std::vector<uint8_t>> packet = takeInWaiting(kEndpointDirectionIn);
          if(!packet.has_value()) {
-            success = false;
+            result.stalled = isStalled(kEndpointDirectionIn);
+            success = result.stalled;
             break;
          }
          result.packetSizes.push_back(packet->size());
@@ -280,7 +287,7 @@ class FakeDeviceController : public DeviceController {
       }
       if(!result.stalled && success) {
          // Status stage: a zero-length OUT packet. A device that still has data queued sent too much.
-         success = !hasInPacket(kEndpointDirectionIn) && sendOut(0x00u, art::span<const uint8_t>());
+         success = !hasInPacket(kEndpointDirectionIn) && sendOutWaiting(0x00u, art::span<const uint8_t>());
       }
       if(ok != nullptr) {
          *ok = success;
@@ -291,21 +298,16 @@ class FakeDeviceController : public DeviceController {
    /// Runs a control transfer with a host-to-device data stage (`data`, which must have setup.wLength bytes).
    ControlResult controlOut(const SetupPacket &setup, art::span<const uint8_t> data, bool *ok = nullptr) {
       ControlResult result;
-      sendSetup(setup);
       const size_t maxPacketSize = endpointMaxPacketSize0();
+      sendSetup(setup);
       size_t sent = 0u;
       while(sent < data.size()) {
-         if(isStalled(0x00u)) {
-            result.stalled = true;
-            if(ok != nullptr) {
-               *ok = true;
-            }
-            return result;
-         }
          const size_t length = std::min(maxPacketSize, data.size() - sent);
-         if(!sendOut(0x00u, data.subspan(sent, length))) {
+         if(!sendOutWaiting(0x00u, data.subspan(sent, length))) {
+            // A stall ends the transfer as the device wants it; a NAK forever is a failure.
+            result.stalled = isStalled(0x00u);
             if(ok != nullptr) {
-               *ok = false;
+               *ok = result.stalled;
             }
             return result;
          }
@@ -315,18 +317,55 @@ class FakeDeviceController : public DeviceController {
    }
 
    private:
-   size_t endpointMaxPacketSize0() const {
+   /// Delivers the event at once, or queues it (queueEvents()).
+   void emit(std::function<void()> event) {
+      if(queueEvents_) {
+         queuedEvents_.push_back(std::move(event));
+      } else {
+         event();
+      }
+   }
+
+   /// takeIn(), but if the endpoint NAKs, the main loop runs once (the queued events are delivered) and the host
+   /// tries again.
+   std::optional<std::vector<uint8_t>> takeInWaiting(uint8_t endpointAddress) {
+      std::optional<std::vector<uint8_t>> packet = takeIn(endpointAddress);
+      if(!packet.has_value() && !queuedEvents_.empty()) {
+         deliverQueuedEvents();
+         packet = takeIn(endpointAddress);
+      }
+      return packet;
+   }
+
+   /// sendOut(), with the same retry as takeInWaiting().
+   bool sendOutWaiting(uint8_t endpointAddress, art::span<const uint8_t> packet) {
+      if(sendOut(endpointAddress, packet)) {
+         return true;
+      }
+      if(queuedEvents_.empty()) {
+         return false;
+      }
+      deliverQueuedEvents();
+      return sendOut(endpointAddress, packet);
+   }
+
+   /// The EP0 packet size. After a queued bus reset the device has not opened EP0 yet, so the main loop runs first.
+   size_t endpointMaxPacketSize0() {
+      if(endpoints_.count(0x00u) == 0u) {
+         deliverQueuedEvents();
+      }
       const auto endpoint = endpoints_.find(0x00u);
       return endpoint == endpoints_.end() ? 0u : endpoint->second.maxPacketSize;
    }
 
    ControlResult &finishWithStatusIn(ControlResult &result, bool *ok) {
       bool success = true;
-      if(isStalled(kEndpointDirectionIn)) {
-         result.stalled = true;
+      std::optional<std::vector<uint8_t>> status = takeInWaiting(kEndpointDirectionIn);
+      if(status.has_value()) {
+         success = status->empty();
       } else {
-         std::optional<std::vector<uint8_t>> status = takeIn(kEndpointDirectionIn);
-         success = status.has_value() && status->empty();
+         result.stalled = isStalled(kEndpointDirectionIn);
+         success = result.stalled;
       }
       if(ok != nullptr) {
          *ok = success;
@@ -339,8 +378,8 @@ class FakeDeviceController : public DeviceController {
    uint8_t address_{ 0u };
    int setAddressCalls_{ 0 };
    std::optional<uint8_t> pendingAddress_;
-   bool queueInEvents_{ false };
-   std::vector<uint8_t> queuedInEvents_;
+   bool queueEvents_{ false };
+   std::vector<std::function<void()>> queuedEvents_;
    std::map<uint8_t, EndpointConfig> endpoints_;
    std::set<uint8_t> stalled_;
    std::set<uint8_t> armed_;
