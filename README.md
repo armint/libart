@@ -217,6 +217,10 @@ wire format. Use them in `constexpr` variables, so that the descriptors are buil
   These functions are not `constexpr`. At run time they trap (`__builtin_trap()`), so a builder that runs at run time
   with such a value traps instead of returning a wrong descriptor. Valid values work at run time at every
   optimization level.
+- `tests/usb/compile_fail/check.cmake` checks that each of these errors, and an ID of the wrong length for
+  `SerialNumber::set()`, fails the build with the expected diagnostic. A positive control must compile. Run it with
+  `cmake -D CXX=g++ -D ETL_INCLUDE_DIR=<build>/_deps/etl-src/include -P tests/usb/compile_fail/check.cmake`. The C++17
+  cells of the CI job `test` run it.
 - The builders do not check other field values. The application supplies its own values, for example `idVendor`,
   `idProduct`, `bcdDevice` and the maximum power.
 

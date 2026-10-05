@@ -141,6 +141,8 @@ test:
     - test_binaries="libArT-tests libArT-tests-64bit libArT-tests-float libArT-tests-float-64bit"
     - if [ "$CXX_STANDARD" = 23 ]; then test_binaries="$test_binaries libArT-compat-tests-cpp17 libArT-compat-tests-cpp23-own"; fi
     - cmake --build build --target art-core art-storage-littlefs $test_binaries -j$(nproc)
+    # The invalid inputs of the USB descriptor builders must fail to compile (tests/usb/compile_fail/check.cmake).
+    - 'if [ "$CXX_STANDARD" = 17 ]; then cmake -D CXX=$CXX -D ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" -P tests/usb/compile_fail/check.cmake; fi'
     # Each binary runs once, with the JUnit reporter: its exit code determines pass/fail, and its XML feeds the MR
     # widget. doctest writes every active reporter to the same stream, so the console reporter cannot run alongside
     # it. Only after a failure does the binary run a second time, with the console reporter, so that the job log
