@@ -207,15 +207,16 @@ wire format. Use them in `constexpr` variables, so that the descriptors are buil
   compile. A span of dynamic extent does not compile either. Call `set()` before `Device::start()`: the host
   can read the string at any time after the device connects.
 - `asSpan()` makes the spans for `Descriptors`.
-- Evaluate the builders at compile time only, in `constexpr` variables. These errors then fail the build, with an
-  error that names a function in `detail::`:
+- Build the descriptors in `constexpr` variables. These errors then fail the build, with an error that names a
+  function in `detail::`:
   - `maxPowerMilliamps` above 500 mA (`maxPowerAbove500Milliamps`);
   - a `char16_t` array for `stringDescriptor()` whose last element is not a null (`stringDescriptorNeedsNullTerminatedLiteral`);
   - a descriptor sequence in `configuration()` or `interfaceDescriptor()` with a `bLength` below 2 or a descriptor that
     runs past the end (`malformedDescriptorSequence`), for example from a hand-written array.
 
-  These functions are declared but not defined. A run-time call of a builder with a check therefore does not link,
-  unless the optimizer removes the check.
+  These functions are not `constexpr`. At run time they trap (`__builtin_trap()`), so a builder that runs at run time
+  with such a value traps instead of returning a wrong descriptor. Valid values work at run time at every
+  optimization level.
 - The builders do not check other field values. The application supplies its own values, for example `idVendor`,
   `idProduct`, `bcdDevice` and the maximum power.
 

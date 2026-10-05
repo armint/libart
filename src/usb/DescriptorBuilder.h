@@ -29,13 +29,11 @@
  * @par Checks
  * Sizes that must fit into a length field are checked with `static_assert`. Some values are checked too: a maximum
  * power above 500 mA, a string that is not a null-terminated literal, and a malformed descriptor sequence in
- * configuration() or interfaceDescriptor(). Such a value calls a function of detail:: that is declared but neither
- * `constexpr` nor defined, so a constant evaluation fails with a compile error that names the problem.
- *
- * Evaluate the builders at compile time only, in `constexpr` variables. A builder with such a check that is called
- * at run time references the undefined function. The program then does not link, also if the values are valid,
- * unless the optimizer removes the check. Other
- * field values are not checked: the descriptor carries what the caller passes.
+ * configuration() or interfaceDescriptor(). Such a value calls a function of detail:: that is not `constexpr`, so a
+ * constant evaluation fails with a compile error that names the problem. Build the descriptors in `constexpr`
+ * variables to get that error. A builder that runs at run time with such a value traps (`__builtin_trap()`) instead
+ * of returning a wrong descriptor; valid values work at run time at every optimization level. Other field values are
+ * not checked: the descriptor carries what the caller passes.
  */
 
 namespace art::usb::descriptor {
@@ -115,11 +113,19 @@ struct InterfaceFields {
 
 namespace detail {
 
-// Declared, never defined, and not constexpr: calling one of them makes a constant evaluation fail with an error that
-// names it, and a run-time call fails to link. See "Checks" above.
-void maxPowerAbove500Milliamps();
-void stringDescriptorNeedsNullTerminatedLiteral();
-void malformedDescriptorSequence();
+// Not constexpr: calling one of them makes a constant evaluation fail with an error that names it. At run time they
+// trap, like expected_bad_access() in utils/compat/expected.h. See "Checks" above.
+[[noreturn]] inline void maxPowerAbove500Milliamps() noexcept {
+   __builtin_trap();
+}
+
+[[noreturn]] inline void stringDescriptorNeedsNullTerminatedLiteral() noexcept {
+   __builtin_trap();
+}
+
+[[noreturn]] inline void malformedDescriptorSequence() noexcept {
+   __builtin_trap();
+}
 
 constexpr uint8_t lowByte(uint16_t value) {
    return static_cast<uint8_t>(value & 0xFFu);

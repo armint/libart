@@ -120,6 +120,16 @@ constexpr auto kMaxPower = configuration(makeConfigurationFields(500u));
 
 } // namespace
 
+TEST_CASE("[usb::descriptor] a builder with valid values works at run time") {
+   // The checks trap only for invalid values; this binary is built at -O0, so nothing optimizes the checks away.
+   volatile uint16_t milliamps = 100u;
+   ConfigurationFields fields{};
+   fields.maxPowerMilliamps = milliamps;
+   const auto runtime = configuration(fields, interfaceDescriptor(InterfaceFields{}));
+   CHECK(runtime[4] == 1u);
+   CHECK(runtime[8] == 50u);
+}
+
 TEST_CASE("[usb::descriptor] configuration attributes and power") {
    CHECK(bytesOf(kOddPower) == std::vector<uint8_t>{ 0x09, 0x02, 0x09, 0x00, 0x00, 0x01, 0x00, 0xE0, 50u });
    CHECK(kMaxPower[8] == 0xFAu);
