@@ -115,10 +115,10 @@ else ()
 endif ()
 option(ART_LITTLEFS_NO_ASSERT "Build littlefs with LFS_NO_ASSERT" ${_ART_LITTLEFS_NO_ASSERT_DEFAULT})
 
-# art::expected, art::unexpected and art::span (src/utils/compat/) alias the std types when this is ON, and are
-# libArT's own expected and the own span of span-compat when it is OFF. The choice is exported as a PUBLIC compile definition, so that
-# libArT, libArT-proto and the application agree on it: Readable/Writable have virtual functions that take and return
-# these types, and mixing both in one program is a silent ODR violation. Default: ON unless the superproject asks
+# art::expected, art::unexpected and art::span (src/utils/compat/) alias the std types when this is ON, and are libArT's
+# own expected and the own span of span-compat when it is OFF. The choice is exported as a PUBLIC compile definition, so
+# that libArT, libArT-proto and the application agree on it: Readable/Writable have virtual functions that take and
+# return these types, and mixing both in one program is a silent ODR violation. Default: ON unless the superproject asks
 # for a standard below C++23. The minimum standard of art-core, art-rtos and art-storage-littlefs follows the choice:
 # C++23 with the std types (std::expected needs it), C++17 with the own types (see _ART_MIN_CXX_STD below).
 if (DEFINED CMAKE_CXX_STANDARD AND CMAKE_CXX_STANDARD LESS 23)
@@ -367,10 +367,10 @@ endif ()
 
 # Ensure the exported interface does not pull non-exported targets.
 set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
-# ETL is a PUBLIC dependency: public headers use ETL (for example storage/FileSystem.h). It is added after the reset above
-# and only for the build tree: the etl target of FetchContent is not in an export set, and CMake refuses to export a
-# link to it (also inside $<INSTALL_INTERFACE:...>). The installed art-coreConfig.cmake finds the installed ETL package
-# (find_dependency(etl)) and links etl::etl to art::core itself.
+# ETL is a PUBLIC dependency: public headers use ETL (for example storage/FileSystem.h). It is added after the reset
+# above and only for the build tree: the etl target of FetchContent is not in an export set, and CMake refuses to export
+# a link to it (also inside $<INSTALL_INTERFACE:...>). The installed art-coreConfig.cmake finds the installed ETL
+# package (find_dependency(etl)) and links etl::etl to art::core itself.
 target_link_libraries(art-core INTERFACE $<BUILD_INTERFACE:etl::etl>)
 # span-compat is a PUBLIC dependency with ART_USE_STD_EXPECTED_SPAN=OFF (utils/compat/span.h), for the same reason
 # linked for the build tree only. The link also gives every consumer the SPAN_COMPAT_USE_STD_SPAN=0 definition.

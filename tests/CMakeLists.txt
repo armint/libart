@@ -57,7 +57,8 @@ if (NOT DEFINED PROJECT_NAME)
 endif ()
 
 # Compiler settings. C++23 by default; a build can ask for another standard with -DCMAKE_CXX_STANDARD=17 or 20 (CI
-# runs all three, see .gitlab-ci.yml). Below C++23 the binaries below use the own art::expected and the span of span-compat.
+# runs all three, see .gitlab-ci.yml). Below C++23 the binaries below use the own art::expected and the span of
+# span-compat.
 if (NOT DEFINED CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 23)
 endif ()

@@ -230,7 +230,8 @@ floattext-zero-cost:
 # Compiles the compat headers (src/utils/compat/) like firmware: arm-none-eabi-g++ with -fno-exceptions and -fno-rtti,
 # at C++17 with the own types and at C++23 with the own and the std types (see tests/check-compat-firmware-build.sh).
 # The native test binaries build with exceptions and RTTI, so they cannot notice a throw or a typeid in these
-# headers. The configure step fetches ETL and the span-compat sources (for the compat test binaries). Same toolchain path and REQUIRE_TOOLCHAIN as floattext-zero-cost.
+# headers. The configure step fetches ETL and the span-compat sources (for the compat test binaries). Same toolchain
+# path and REQUIRE_TOOLCHAIN as floattext-zero-cost.
 compat-firmware:
   stage: build
   variables:

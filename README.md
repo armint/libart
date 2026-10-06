@@ -46,8 +46,8 @@ public headers. After `find_package(art-core)`, link `art::core` and `art::rtos`
 - **Usage requirements**: as with `add_subdirectory()`, `art::core` carries the ETL include path, the compile
   definition `ART_USE_STD_EXPECTED_SPAN` and the minimum C++ standard of the build that was installed (see
   "Requirements"). With `OFF`, it also carries `span-compat::span-compat`, with the definition
-  `SPAN_COMPAT_USE_STD_SPAN=0`. It does not carry ArduinoJson: a consumer that includes `settings/` or `utils/JSONWriter.h` links
-  `ArduinoJson` itself.
+  `SPAN_COMPAT_USE_STD_SPAN=0`. It does not carry ArduinoJson: a consumer that includes `settings/` or
+  `utils/JSONWriter.h` links `ArduinoJson` itself.
 - **Dependencies**: the package finds ETL and ArduinoJson with `find_package()`, so both must be installed where
   CMake finds them, for example in the same prefix. The install of libArT installs ArduinoJson as well. ETL installs
   its package only when it is built as the top-level project, so install it separately:
@@ -148,7 +148,7 @@ libArT sets this option. libArT does not define the macro itself.
 | `ON` (C++23) | `std::span` | not fetched, not linked | must be `ON` in a superproject that adds span-compat; `AUTO` or `OFF` stops the configure |
 | `OFF` (C++17 or later) | `span_compat::span`, the own span | fetched and linked **PUBLIC** | must be `OFF`; libArT sets `OFF` when it is not set |
 
-- With `OFF`, the own span is used also at C++20 or later. Thus `art::span` does not change when one target of
+- With `OFF`, libArT uses the own span also at C++20 or later. Thus `art::span` does not change when one target of
   the build uses a newer standard.
 - A superproject that adds span-compat itself (for example for system-stm32) must add it before libArT, with
   `FetchContent`, `add_subdirectory()` or `find_package(span-compat)`. Set `-DSPAN_COMPAT_USE_STD_SPAN=OFF` when
