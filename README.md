@@ -152,6 +152,11 @@ libArT sets this option. libArT does not define the macro itself.
 - `utils/compat/span.h` has an `#error` for the case that CMake cannot see: `ART_USE_STD_EXPECTED_SPAN=0` while
   span-compat selects `std::span`.
 
+`tests/check-subproject.sh` adds libArT to the superproject `tests/subproject-consumer/` with `add_subdirectory()`.
+At C++17 an application passes `art::span` to a library that links only span-compat. At C++23 the script checks that
+span-compat is not fetched. It also checks that two mixed configurations stop the configure step. The CI job
+`subproject` runs it.
+
 The own `art::expected` is used instead of `etl::expected` because `etl::expected` stores its value in an
 `etl::variant`: `sizeof(etl::expected<char, E>)` is 24 bytes (2 bytes for `std::expected`), and the code of a
 typical call chain grows by 69 %. The own type has the same size and code size as `std::expected`. It implements
