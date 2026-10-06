@@ -50,6 +50,8 @@ constexpr uint8_t kCdcData = 0x0Au;
 constexpr uint8_t kMiscellaneous = 0xEFu;
 constexpr uint8_t kMiscellaneousSubclassCommon = 0x02u;
 constexpr uint8_t kMiscellaneousProtocolIad = 0x01u;
+/// Vendor-specific: the class, subclass and protocol of a vendor (bInterfaceClass of a VendorBulkFunction).
+constexpr uint8_t kVendorSpecific = 0xFFu;
 } // namespace classcode
 
 /// Codes of the CDC 1.20 specification and its PSTN subclass specification.
@@ -66,6 +68,8 @@ constexpr uint8_t kSubtypeUnion = 0x06u;
 /// bmCapabilities of the ACM descriptor: SET_LINE_CODING, GET_LINE_CODING, SET_CONTROL_LINE_STATE and the
 /// SERIAL_STATE notification are supported.
 constexpr uint8_t kAcmLineCoding = 0x02u;
+/// bmCapabilities of the ACM descriptor: SEND_BREAK is supported. Combine it with kAcmLineCoding.
+constexpr uint8_t kAcmSendBreak = 0x04u;
 } // namespace cdc
 
 /// LANGID of US English, the language that hosts ask for first.

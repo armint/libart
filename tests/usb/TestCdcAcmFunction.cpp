@@ -395,7 +395,7 @@ TEST_CASE("[usb::CdcAcmFunction] SET_LINE_CODING is stored and returned by GET_L
 TEST_CASE("[usb::CdcAcmFunction] unsupported requests stall") {
    Bench bench(false);
    bench.enumerate();
-   // SEND_BREAK is not declared in the ACM functional descriptor.
+   // SEND_BREAK without an event handler.
    CHECK_FALSE(bench.out(kClassInterfaceOut, kSendBreak, 100u, 0u));
    // GET_LINE_CODING to the data interface.
    CHECK(bench.in(CdcAcmFunctionBase::kGetLineCoding, 1u, 7u).stalled);
@@ -404,6 +404,185 @@ TEST_CASE("[usb::CdcAcmFunction] unsupported requests stall") {
    // A vendor request to the communication interface.
    CHECK_FALSE(bench.out(0x41u, CdcAcmFunctionBase::kSetControlLineState, 1u, 0u));
    CHECK_FALSE(bench.cdc.isTerminalOpen());
+}
+
+namespace {
+
+/// Records the calls of the CDC-ACM event handler.
+class RecordingEvents final : public CdcAcmEvents {
+   public:
+   struct ControlLineChange {
+      uint16_t state;
+      uint16_t previousState;
+      /// isTerminalOpen() of the function during the call.
+      bool terminalOpen;
+      /// isConfigured() of the function during the call.
+      bool configured;
+
+      bool operator==(const ControlLineChange &other) const {
+         return state == other.state && previousState == other.previousState && terminalOpen == other.terminalOpen &&
+                configured == other.configured;
+      }
+   };
+
+   explicit RecordingEvents(const CdcAcmFunctionBase &cdc)
+      : cdc_(cdc) {
+   }
+
+   bool lineCodingRequested(const LineCoding &requested) override {
+      lineCodings.push_back(requested);
+      // The function stores the line coding only after the call.
+      lineCodingDuringCall = cdc_.lineCoding();
+      return acceptLineCoding;
+   }
+
+   void controlLineStateChanged(uint16_t state, uint16_t previousState) override {
+      CHECK(cdc_.controlLineState() == state);
+      controlLineChanges.push_back(ControlLineChange{ state, previousState, cdc_.isTerminalOpen(), cdc_.isConfigured() });
+   }
+
+   bool breakRequested(uint16_t durationMilliseconds) override {
+      breaks.push_back(durationMilliseconds);
+      return acceptBreak;
+   }
+
+   bool acceptLineCoding{ true };
+   bool acceptBreak{ true };
+   std::vector<LineCoding> lineCodings;
+   LineCoding lineCodingDuringCall{};
+   std::vector<ControlLineChange> controlLineChanges;
+   std::vector<uint16_t> breaks;
+
+   private:
+   const CdcAcmFunctionBase &cdc_;
+};
+
+} // namespace
+
+TEST_CASE("[usb::CdcAcmFunction] the event handler gets SET_LINE_CODING") {
+   Bench bench(false);
+   RecordingEvents events(bench.cdc);
+   bench.cdc.setEventHandler(&events);
+   bench.enumerate();
+
+   // 9600 baud, 1 stop bit, odd parity, 7 data bits.
+   const std::vector<uint8_t> coding{ 0x80u, 0x25u, 0x00u, 0x00u, 0u, 1u, 7u };
+   CHECK(bench.outData(CdcAcmFunctionBase::kSetLineCoding, 0u, coding));
+   REQUIRE(events.lineCodings.size() == 1u);
+   CHECK(events.lineCodings[0].dwDTERate == 9600u);
+   CHECK(events.lineCodings[0].bCharFormat == 0u);
+   CHECK(events.lineCodings[0].bParityType == 1u);
+   CHECK(events.lineCodings[0].bDataBits == 7u);
+   CHECK(events.lineCodingDuringCall == LineCoding{});
+   CHECK(bench.cdc.lineCoding() == events.lineCodings[0]);
+
+   SUBCASE("the same line coding again calls the handler again") {
+      CHECK(bench.outData(CdcAcmFunctionBase::kSetLineCoding, 0u, coding));
+      CHECK(events.lineCodings.size() == 2u);
+      CHECK(events.lineCodingDuringCall == bench.cdc.lineCoding());
+   }
+
+   SUBCASE("a refused line coding stalls and keeps the old one") {
+      events.acceptLineCoding = false;
+      CHECK_FALSE(bench.outData(CdcAcmFunctionBase::kSetLineCoding, 0u, { 0x00u, 0x10u, 0x0Eu, 0x00u, 0u, 0u, 5u }));
+      REQUIRE(events.lineCodings.size() == 2u);
+      CHECK(events.lineCodings[1].dwDTERate == 921600u);
+      CHECK(bench.cdc.lineCoding().dwDTERate == 9600u);
+      CHECK(bench.in(CdcAcmFunctionBase::kGetLineCoding, 0u, 7u).data == coding);
+   }
+
+   SUBCASE("a malformed request does not reach the handler") {
+      CHECK_FALSE(bench.outData(CdcAcmFunctionBase::kSetLineCoding, 0u, { 0x80u, 0x25u, 0u, 0u, 0u, 0u }));
+      CHECK_FALSE(bench.outData(CdcAcmFunctionBase::kSetLineCoding, 1u, coding));
+      CHECK(events.lineCodings.size() == 1u);
+   }
+
+   SUBCASE("without the handler the line coding is stored") {
+      bench.cdc.setEventHandler(nullptr);
+      CHECK(bench.outData(CdcAcmFunctionBase::kSetLineCoding, 0u, { 0x00u, 0x10u, 0x0Eu, 0x00u, 0u, 0u, 8u }));
+      CHECK(events.lineCodings.size() == 1u);
+      CHECK(bench.cdc.lineCoding().dwDTERate == 921600u);
+   }
+}
+
+TEST_CASE("[usb::CdcAcmFunction] the event handler gets each change of the control lines") {
+   using Change = RecordingEvents::ControlLineChange;
+   constexpr uint16_t kDtr = CdcAcmFunctionBase::kControlLineDtr;
+   constexpr uint16_t kRts = CdcAcmFunctionBase::kControlLineRts;
+   Bench bench(false);
+   RecordingEvents events(bench.cdc);
+   bench.cdc.setEventHandler(&events);
+   bench.enumerate();
+   CHECK(events.controlLineChanges.empty());
+
+   // A terminal opens the port (Linux sets DTR and RTS), sets the same state again, and drops RTS.
+   CHECK(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSetControlLineState, kDtr | kRts, 0u));
+   CHECK(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSetControlLineState, kDtr | kRts, 0u));
+   CHECK(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSetControlLineState, kDtr, 0u));
+   CHECK(events.controlLineChanges ==
+         std::vector<Change>{ Change{ kDtr | kRts, 0u, true, true }, Change{ kDtr, kDtr | kRts, true, true } });
+   events.controlLineChanges.clear();
+
+   SUBCASE("the terminal closes the port") {
+      CHECK(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSetControlLineState, 0u, 0u));
+      CHECK(events.controlLineChanges == std::vector<Change>{ Change{ 0u, kDtr, false, true } });
+   }
+
+   SUBCASE("unknown bits of wValue are not a change") {
+      CHECK(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSetControlLineState, kDtr | 0x0100u, 0u));
+      CHECK(events.controlLineChanges.empty());
+   }
+
+   SUBCASE("a bus reset clears the state, after the function is deconfigured") {
+      bench.controller().busReset();
+      CHECK(events.controlLineChanges == std::vector<Change>{ Change{ 0u, kDtr, false, false } });
+      // A second reset changes nothing.
+      bench.controller().busReset();
+      CHECK(events.controlLineChanges.size() == 1u);
+   }
+
+   SUBCASE("SET_CONFIGURATION 0 clears the state") {
+      CHECK(bench.out(kStandardDeviceOut, kSetConfiguration, 0u, 0u));
+      CHECK(events.controlLineChanges == std::vector<Change>{ Change{ 0u, kDtr, false, false } });
+   }
+
+   SUBCASE("the request to the data interface stalls without a call") {
+      CHECK_FALSE(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSetControlLineState, 0u, 1u));
+      CHECK(events.controlLineChanges.empty());
+   }
+}
+
+TEST_CASE("[usb::CdcAcmFunction] SEND_BREAK goes to the event handler") {
+   Bench bench(false);
+   RecordingEvents events(bench.cdc);
+   bench.enumerate();
+
+   SUBCASE("without the handler it stalls") {
+      CHECK_FALSE(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSendBreak, 100u, 0u));
+   }
+
+   SUBCASE("the handler accepts it") {
+      bench.cdc.setEventHandler(&events);
+      CHECK(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSendBreak, 250u, 0u));
+      CHECK(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSendBreak, 0xFFFFu, 0u));
+      CHECK(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSendBreak, 0u, 0u));
+      CHECK(events.breaks == std::vector<uint16_t>{ 250u, 0xFFFFu, 0u });
+   }
+
+   SUBCASE("the handler refuses it") {
+      bench.cdc.setEventHandler(&events);
+      events.acceptBreak = false;
+      CHECK_FALSE(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSendBreak, 100u, 0u));
+      CHECK(events.breaks == std::vector<uint16_t>{ 100u });
+   }
+
+   SUBCASE("a malformed request does not reach the handler") {
+      bench.cdc.setEventHandler(&events);
+      // To the data interface, and with a data stage.
+      CHECK_FALSE(bench.out(kClassInterfaceOut, CdcAcmFunctionBase::kSendBreak, 100u, 1u));
+      CHECK_FALSE(bench.outData(CdcAcmFunctionBase::kSendBreak, 0u, { 0u }));
+      CHECK(events.breaks.empty());
+   }
 }
 
 TEST_CASE("[usb::CdcAcmFunction] no data path before the configuration") {

@@ -203,6 +203,7 @@ hardware dependency, so the protocol code runs in the host tests. A port connect
 | `usb/Function.h` | `Function`: base class of a USB function (for example CDC-ACM or mass storage) that owns a contiguous range of interfaces. |
 | `usb/Device.h` | `Device`: the chapter 9 state machine, the standard requests on EP0 and the routing to the functions. `Descriptors`: the descriptors that `Device` serves. |
 | `usb/CdcAcmFunction.h` | `CdcAcmFunction`: the CDC-ACM function (virtual COM port) with its RX and TX queues. |
+| `usb/VendorBulkFunction.h` | `VendorBulkFunction`: base of a function with one interface and a bulk OUT and IN endpoint, for a protocol of its own (vendor-specific class). |
 | `usb/DescriptorBuilder.h` | `constexpr` builders for the device, configuration, interface association (IAD), interface, endpoint, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
 
 Use it like this:
@@ -261,7 +262,18 @@ size_t taken = serial.write(data);
 
 - **Class requests**: SET_LINE_CODING and GET_LINE_CODING store and return the line coding (default 115200 8N1).
   The function does not use it. SET_CONTROL_LINE_STATE sets DTR and RTS. DTR set means that a terminal program
-  has the port open (`isTerminalOpen()`). All other requests stall, SEND_BREAK too.
+  has the port open (`isTerminalOpen()`). SEND_BREAK goes to the event handler. All other requests stall.
+- **Event handler**: `setEventHandler()` takes a `CdcAcmEvents` object, for example the UART bridge of a
+  USB-to-UART adapter. The function calls it during the control transfer, before the status stage, so keep the
+  calls short.
+  - `lineCodingRequested()` gets every SET_LINE_CODING, also an unchanged one. It returns `false` to refuse the line
+    coding: the request then stalls, and the old line coding stays.
+  - `controlLineStateChanged()` gets each change of DTR and RTS, with the new and the old state. A bus reset or
+    SET_CONFIGURATION 0 clears a state that is not 0, and the handler sees that change too.
+  - `breakRequested()` gets SEND_BREAK with its duration in ms (0xFFFF: until the next SEND_BREAK with 0). It returns
+    `false` to stall the request. Declare SEND_BREAK in the descriptor with
+    `cdcAcm(cdc::kAcmLineCoding | cdc::kAcmSendBreak)`.
+  - Without an event handler, the function accepts every line coding and stalls SEND_BREAK.
 - **Queues**: two `etl::circular_buffer` queues, with the capacities `RxSize` and `TxSize` in bytes. `RxSize` must
   be at least 64. `CdcAcmFunctionBase` has the API without the sizes, for code that only reads and writes.
 - **TX**: `write()` takes the data that fits into the TX queue and never waits. The function sends the queue in
@@ -279,7 +291,55 @@ size_t taken = serial.write(data);
   main loop). The function does no locking.
 - **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64. The `wMaxPacketSize` of the notification
   endpoint must not divide 10 (use 8, 16 or 64), because no ZLP follows the notification.
-  `CdcAcmFunction<256, 256>` uses 620 bytes of RAM on Cortex-M0+.
+  `CdcAcmFunction<256, 256>` uses 624 bytes of RAM on Cortex-M0+.
+
+### `usb::VendorBulkFunction`
+
+`VendorBulkFunction` is the base of a function with one interface, one bulk OUT and one bulk IN endpoint. It is for a
+protocol of its own, normally in a vendor-specific interface (`classcode::kVendorSpecific`) that the host reaches
+with libusb or WinUSB. The base runs the data path; a subclass implements the protocol.
+
+```cpp
+class CommandFunction final : public art::usb::VendorBulkFunction {
+   public:
+   CommandFunction() : VendorBulkFunction(0, art::usb::VendorBulkEndpoints{ 0x03, 0x82, 64 }) {}
+
+   protected:
+   bool dataReceived(art::span<const uint8_t> packet) override {
+      // Copy the packet. Return false to hold the OUT endpoint until resumeOut().
+      return true;
+   }
+   void transferSent() override {}   // the reply of sendInTransfer() is out
+};
+```
+
+- **Descriptors**: one interface with two bulk endpoints, for example
+  `interfaceDescriptor(InterfaceFields{ 0, 0, classcode::kVendorSpecific, 0, 0, 0 }, endpoint(0x03, Bulk, 64),
+  endpoint(0x82, Bulk, 64))`. The endpoints and `maxPacketSize` (8, 16, 32 or 64) of `VendorBulkEndpoints` must match
+  them.
+- **OUT**: the OUT endpoint is armed after SET_CONFIGURATION. Each packet goes to `dataReceived()`. If it returns
+  `true`, the endpoint is armed again at once. If it returns `false`, the endpoint NAKs until the subclass calls
+  `resumeOut()`. So a command can wait for the main loop, and no packet is lost. The base does not join packets: the
+  protocol knows where a command ends.
+- **IN**: `sendInTransfer(data)` sends a buffer of any size in packets of `maxPacketSize` bytes. The buffer is not
+  copied: keep it valid until `transferSent()` or `dataPathClosed()`. One transfer at a time: a second call returns
+  `false` until `transferSent()`. It also returns `false` if the controller refuses the first packet, for example
+  when `maxPacketSize` is larger than the descriptor. On a halted IN endpoint the transfer starts and waits for the
+  clear. The hook may start the next transfer.
+- **ZLP**: with `ZeroLengthPacket::Auto` (the default), a zero-length packet follows a transfer whose size is a
+  multiple of `maxPacketSize`. Use `ZeroLengthPacket::Never` when the host reads exactly the size of the transfer:
+  then the ZLP would end the next read of the host. An empty buffer sends one ZLP in both modes.
+- **Endpoint halt**: the subclass halts an endpoint with `device()->haltEndpoint()`, for example on a protocol
+  error. After CLEAR_FEATURE(ENDPOINT_HALT) or SET_INTERFACE, the function arms the OUT endpoint again (unless it is
+  held) and sends the dropped IN packet again. The transfer continues where it stopped.
+- **State**: `dataPathOpened()` follows SET_CONFIGURATION. A bus reset or SET_CONFIGURATION 0 drops the IN transfer,
+  ends the hold of the OUT endpoint and calls `dataPathClosed()`; no `transferSent()` follows for the dropped
+  transfer.
+- **Vendor requests**: override `controlRequest()` for vendor requests on EP0. The data path hooks of `Function` are
+  `final`.
+- **Threading**: call `sendInTransfer()` and `resumeOut()` from the context that delivers the controller events
+  (normally the main loop). The hooks run there too. The function does no locking.
+- **Limits**: no buffer of its own; the base uses 40 bytes of RAM on Cortex-M0+.
 
 ### Descriptor builders
 
