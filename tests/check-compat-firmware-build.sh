@@ -11,8 +11,11 @@
 # exception or RTTI runtime (__cxa_throw, __cxa_begin_catch, std::__throw_out_of_range_fmt(), _Unwind_*,
 # __aeabi_unwind_cpp_pr*, the type_info vtables, ...).
 #
-# Needs arm-none-eabi-g++ and arm-none-eabi-nm (override with CROSS_CXX/CROSS_NM) and the ETL include directory
-# (ETL_INCLUDE_DIR, e.g. <build>/_deps/etl-src/include after configuring this project once). Like
+# The own types use the span of span-compat with SPAN_COMPAT_USE_STD_SPAN=0, as the CMake build of art-core does.
+#
+# Needs arm-none-eabi-g++ and arm-none-eabi-nm (override with CROSS_CXX/CROSS_NM), the ETL include directory
+# (ETL_INCLUDE_DIR, e.g. <build>/_deps/etl-src/include after configuring this project once) and the span-compat
+# include directory (SPAN_COMPAT_INCLUDE_DIR, e.g. <build>/_deps/span_compat-src/include). Like
 # check-floattext-zero-cost.sh, it skips (exit 0) when either is missing, unless REQUIRE_TOOLCHAIN=1 (CI sets it).
 set -euo pipefail
 
@@ -37,14 +40,18 @@ done
 if [ -z "${ETL_INCLUDE_DIR:-}" ] || [ ! -f "$ETL_INCLUDE_DIR/etl/span.h" ]; then
    skip_or_fail "ETL_INCLUDE_DIR is not set to the include directory of an ETL checkout (configure this project once and pass <build dir>/_deps/etl-src/include)."
 fi
+if [ -z "${SPAN_COMPAT_INCLUDE_DIR:-}" ] || [ ! -f "$SPAN_COMPAT_INCLUDE_DIR/span-compat/span.h" ]; then
+   skip_or_fail "SPAN_COMPAT_INCLUDE_DIR is not set to the include directory of span-compat (configure this project once and pass <build dir>/_deps/span_compat-src/include)."
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 # Cortex-M4F, as in check-floattext-zero-cost.sh. ETL is a system include, so the strict flags apply to libArT only.
+# span-compat is not: it must compile with the strict flags too.
 MFLAGS="-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard"
-CXXFLAGS="-Os -fno-exceptions -fno-rtti -Wall -Wextra -Wpedantic -Werror $MFLAGS -I$ROOT/src -isystem $ETL_INCLUDE_DIR"
+CXXFLAGS="-Os -fno-exceptions -fno-rtti -Wall -Wextra -Wpedantic -Werror $MFLAGS -I$ROOT/src -isystem $ETL_INCLUDE_DIR -I$SPAN_COMPAT_INCLUDE_DIR"
 
 "$CXX" --version | head -n 1
 
@@ -53,7 +60,7 @@ for config in "17 0" "23 0" "23 1"; do
    read -r std use_std <<<"$config"
    object="$WORK/compat-cpp$std-$use_std.o"
    echo "== C++$std, ART_USE_STD_EXPECTED_SPAN=$use_std =="
-   "$CXX" -c -std=c++$std -DART_USE_STD_EXPECTED_SPAN=$use_std $CXXFLAGS -o "$object" \
+   "$CXX" -c -std=c++$std -DART_USE_STD_EXPECTED_SPAN=$use_std -DSPAN_COMPAT_USE_STD_SPAN=$use_std $CXXFLAGS -o "$object" \
       "$ROOT/tests/firmware/CompatFirmwareBuild.cpp"
    # The exception runtime (__cxa_*, the personality routines, the unwinder, and libstdc++'s std::__throw_*()
    # helpers that a checked accessor such as std::array::at() calls even with -fno-exceptions) and the RTTI runtime.

@@ -9,11 +9,17 @@ include(CMakeFindDependencyMacro)
 #   - ArduinoJson (package: ArduinoJson)
 find_dependency(etl)
 find_dependency(ArduinoJson)
+# ART_USE_STD_EXPECTED_SPAN of the installed build. With 0, art::span is the own span of span-compat, which the
+# cmake --install of libArT installs into the same prefix.
+set(_art_core_use_std_expected_span @_ART_USE_STD_EXPECTED_SPAN_VALUE@)
+if (NOT _art_core_use_std_expected_span)
+    find_dependency(span-compat)
+endif ()
 
 # Load the exported targets for this package (installed by install(EXPORT ...))
 include("${CMAKE_CURRENT_LIST_DIR}/art-core-targets.cmake")
 
-# ETL is a PUBLIC dependency of art::core (utils/compat/span.h aliases etl::span), but the export cannot link it,
+# ETL is a PUBLIC dependency of art::core (public headers use ETL), but the export cannot link it,
 # because the build links the etl target of FetchContent (see CMakeLists.txt). Link the installed etl::etl here, so
 # that a consumer of art::core gets the ETL include path, as with add_subdirectory(). The guard keeps a second
 # find_package(art-core) in the same directory from adding it twice.
@@ -21,7 +27,27 @@ get_target_property(_art_core_links art::core INTERFACE_LINK_LIBRARIES)
 if (NOT "etl::etl" IN_LIST _art_core_links)
     set_property(TARGET art::core APPEND PROPERTY INTERFACE_LINK_LIBRARIES etl::etl)
 endif ()
+# span-compat the same way, for art::core and art::rtos. One span type per build: the installed span-compat must give
+# its own span (SPAN_COMPAT_USE_STD_SPAN=0), as in the build of libArT.
+if (NOT _art_core_use_std_expected_span)
+    get_target_property(_art_span_compat_definitions span-compat::span-compat INTERFACE_COMPILE_DEFINITIONS)
+    if (NOT "SPAN_COMPAT_USE_STD_SPAN=0" IN_LIST _art_span_compat_definitions)
+        set(${CMAKE_FIND_PACKAGE_NAME}_FOUND FALSE)
+        set(${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE
+                "art-core was built with ART_USE_STD_EXPECTED_SPAN=0, but the span-compat package that was found is not configured with SPAN_COMPAT_USE_STD_SPAN=OFF")
+        return()
+    endif ()
+    unset(_art_span_compat_definitions)
+    foreach (_art_target art::core art::rtos)
+        get_target_property(_art_core_links ${_art_target} INTERFACE_LINK_LIBRARIES)
+        if (NOT "span-compat::span-compat" IN_LIST _art_core_links)
+            set_property(TARGET ${_art_target} APPEND PROPERTY INTERFACE_LINK_LIBRARIES span-compat::span-compat)
+        endif ()
+    endforeach ()
+    unset(_art_target)
+endif ()
 unset(_art_core_links)
+unset(_art_core_use_std_expected_span)
 
 # Make shared CMake utility functions available to consumers immediately.
 # After find_package(art-core), callers can use:

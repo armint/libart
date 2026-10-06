@@ -11,10 +11,13 @@
 # every installed header on its own, except freertos/ and storage/fatfs/, and runs a smoke test.
 #
 # ETL is installed into the same prefix from the ETL source of the libArT configure (ETL installs its package only
-# when it is the top-level project); ArduinoJson is installed by the `cmake --install` of libArT itself.
+# when it is the top-level project); ArduinoJson is installed by the `cmake --install` of libArT itself, and so is
+# span-compat with the own types (configured with SPAN_COMPAT_USE_STD_SPAN=OFF). With the std types, span-compat must
+# not be in the prefix.
 #
 # Variables: CXX_STANDARD (17 or 23, required), FETCHCONTENT_BASE_DIR (optional, passed to the libArT configure; the
-# ETL source is taken from it when set), WORK_DIR (optional, default: a new temporary directory; it must not be in the
+# ETL source is taken from it when set), FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT (optional, a local span-compat checkout
+# instead of the clone), WORK_DIR (optional, default: a new temporary directory; it must not be in the
 # source tree).
 set -euo pipefail
 
@@ -42,6 +45,9 @@ esac
 fetchcontent_args=()
 if [ -n "${FETCHCONTENT_BASE_DIR:-}" ]; then
    fetchcontent_args=(-D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR")
+fi
+if [ -n "${FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT:-}" ]; then
+   fetchcontent_args+=(-D FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT="$FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT")
 fi
 
 rm -rf "$build_dir" "$prefix" "$consumer_dir"
@@ -75,6 +81,22 @@ fi
 if [ -e "$prefix/include/libart/storage/littlefs" ]; then
    echo "storage/littlefs/ must not be installed" >&2
    exit 1
+fi
+
+echo "== span-compat in the prefix =="
+span_compat_targets="$prefix/share/cmake/span-compat/span-compatTargets.cmake"
+if [ "$CXX_STANDARD" = 17 ]; then
+   grep -q 'SPAN_COMPAT_USE_STD_SPAN=0' "$span_compat_targets" || {
+      echo "span-compat is not installed with SPAN_COMPAT_USE_STD_SPAN=0 ($span_compat_targets)" >&2
+      exit 1
+   }
+   echo "installed with SPAN_COMPAT_USE_STD_SPAN=0 - OK"
+else
+   if [ -e "$prefix/include/span-compat" ] || [ -e "$prefix/share/cmake/span-compat" ]; then
+      echo "span-compat must not be installed with the std types" >&2
+      exit 1
+   fi
+   echo "not installed - OK"
 fi
 
 echo "== Build the consumer against the installed package =="

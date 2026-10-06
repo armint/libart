@@ -374,8 +374,8 @@ class SerialNumber {
     * @brief Sets the digits from `id`, an array or a span of exactly IdBytes bytes.
     *
     * An ID of another length does not compile, and neither does a span of dynamic extent (use `first<IdBytes>()`
-    * when the length is checked). The overloads check the length themselves, because the fixed-extent etl::span
-    * (ART_USE_STD_EXPECTED_SPAN=0) converts from containers and spans of any length.
+    * when the length is checked). The overloads check the length themselves, so that the rule does not depend on
+    * the conversions of the span type that ART_USE_STD_EXPECTED_SPAN selects.
     */
    constexpr void set(const std::array<uint8_t, IdBytes> &id) {
       setDigits(id.data());

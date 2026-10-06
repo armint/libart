@@ -1,5 +1,5 @@
 # ---------- ESP-IDF component build ----------
-# ETL is exported PUBLIC below (utils/compat/span.h aliases etl::span). There is no CMAKE_CXX_STANDARD here, so
+# ETL is exported PUBLIC below (libArT headers use ETL containers). There is no CMAKE_CXX_STANDARD here, so
 # ART_USE_STD_EXPECTED_SPAN is not defined and utils/compat/config.h derives it from the language standard.
 if(ESP_PLATFORM)
     idf_component_register(
@@ -33,12 +33,29 @@ if(ESP_PLATFORM)
         FetchContent_Populate(ArduinoJson)
     endif()
 
+    # The span of span-compat is art::span when the standard has no std::expected (utils/compat/span.h). config.h
+    # chooses by the standard of each translation unit, so CMake cannot know if the build needs span-compat: it is
+    # always fetched. There is no span-compat target here, and other components get span-compat only through this
+    # component, so this component sets the span type: the own span (as SPAN_COMPAT_USE_STD_SPAN=OFF).
+    include("${CMAKE_CURRENT_LIST_DIR}/cmake/span-compat.cmake")
+    FetchContent_Declare(
+            span_compat
+            GIT_REPOSITORY ${ART_SPAN_COMPAT_GIT_REPOSITORY}
+            GIT_TAG ${ART_SPAN_COMPAT_GIT_TAG}
+    )
+    FetchContent_GetProperties(span_compat)
+    if(NOT span_compat_POPULATED)
+        FetchContent_Populate(span_compat)
+    endif()
+
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/ryu.cmake")
 
     target_include_directories(${COMPONENT_LIB} PUBLIC
             ${etl_SOURCE_DIR}/include
             ${arduinojson_SOURCE_DIR}/src
+            ${span_compat_SOURCE_DIR}/include
     )
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC SPAN_COMPAT_USE_STD_SPAN=0)
     # Private: only ryu_float.c and FloatText.cpp include ryu/*, never a public libArT header.
     target_include_directories(${COMPONENT_LIB} PRIVATE ${ryu_SOURCE_DIR})
 
@@ -98,10 +115,10 @@ else ()
 endif ()
 option(ART_LITTLEFS_NO_ASSERT "Build littlefs with LFS_NO_ASSERT" ${_ART_LITTLEFS_NO_ASSERT_DEFAULT})
 
-# art::expected, art::unexpected and art::span (src/utils/compat/) alias the std types when this is ON, and are
-# libArT's own expected and etl::span when it is OFF. The choice is exported as a PUBLIC compile definition, so that
-# libArT, libArT-proto and the application agree on it: Readable/Writable have virtual functions that take and return
-# these types, and mixing both in one program is a silent ODR violation. Default: ON unless the superproject asks
+# art::expected, art::unexpected and art::span (src/utils/compat/) alias the std types when this is ON, and are libArT's
+# own expected and the own span of span-compat when it is OFF. The choice is exported as a PUBLIC compile definition, so
+# that libArT, libArT-proto and the application agree on it: Readable/Writable have virtual functions that take and
+# return these types, and mixing both in one program is a silent ODR violation. Default: ON unless the superproject asks
 # for a standard below C++23. The minimum standard of art-core, art-rtos and art-storage-littlefs follows the choice:
 # C++23 with the std types (std::expected needs it), C++17 with the own types (see _ART_MIN_CXX_STD below).
 if (DEFINED CMAKE_CXX_STANDARD AND CMAKE_CXX_STANDARD LESS 23)
@@ -118,10 +135,87 @@ else ()
     set(_ART_USE_STD_EXPECTED_SPAN_VALUE 0)
     set(_ART_MIN_CXX_STD cxx_std_17)
 endif ()
+# A mixed configuration stops here instead of in the first translation unit (utils/compat/config.h).
+if (ART_USE_STD_EXPECTED_SPAN AND DEFINED CMAKE_CXX_STANDARD AND CMAKE_CXX_STANDARD LESS 23)
+    message(FATAL_ERROR "ART_USE_STD_EXPECTED_SPAN=ON needs C++23, but CMAKE_CXX_STANDARD is ${CMAKE_CXX_STANDARD}. "
+            "Configure with -DART_USE_STD_EXPECTED_SPAN=OFF, or with -DCMAKE_CXX_STANDARD=23.")
+endif ()
+
+# With ART_USE_STD_EXPECTED_SPAN=OFF, art::span is the span of span-compat (utils/compat/span.h), the span type that
+# system-stm32 uses. One span type per build: span-compat must give its own span to every target, so libArT sets its
+# option SPAN_COMPAT_USE_STD_SPAN to OFF. A superproject that adds span-compat itself must set the option to OFF
+# before it adds span-compat or libArT, or find_package() a span-compat package that was installed with OFF. With ON,
+# span-compat is not fetched or linked, and a span-compat in the same build must be ON, so that span_compat::span is
+# std::span in every target (checked at the end of the configure). AUTO is not enough: it gives the own span to a
+# target below C++20, for example system-stm32 at C++17. The pin is in cmake/span-compat.cmake.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/span-compat.cmake")
+# Sets <out> to the span type of span-compat::span-compat: NONE (no target), OFF, ON or AUTO. It reads the definition
+# on the target, so the alias of add_subdirectory() and the imported target of find_package() give the same result.
+function(_art_span_compat_type out)
+    if (NOT TARGET span-compat::span-compat)
+        set(${out} NONE PARENT_SCOPE)
+        return()
+    endif ()
+    get_target_property(_definitions span-compat::span-compat INTERFACE_COMPILE_DEFINITIONS)
+    if ("SPAN_COMPAT_USE_STD_SPAN=0" IN_LIST _definitions)
+        set(${out} OFF PARENT_SCOPE)
+    elseif ("SPAN_COMPAT_USE_STD_SPAN=1" IN_LIST _definitions)
+        set(${out} ON PARENT_SCOPE)
+    else ()
+        set(${out} AUTO PARENT_SCOPE)
+    endif ()
+endfunction()
+# expected: OFF (ART_USE_STD_EXPECTED_SPAN=OFF) or ON. Without a target, OFF checks the cache option, which decides
+# the type of the span-compat that libArT adds. An undefined option passes: libArT sets it.
+function(_art_check_span_compat expected)
+    _art_span_compat_type(_type)
+    if (_type STREQUAL "NONE" AND DEFINED SPAN_COMPAT_USE_STD_SPAN)
+        set(_value "${SPAN_COMPAT_USE_STD_SPAN}")
+    else ()
+        set(_value "${_type}")
+    endif ()
+    if (expected STREQUAL "OFF" AND NOT _value MATCHES "^(NONE|OFF)$")
+        message(FATAL_ERROR "ART_USE_STD_EXPECTED_SPAN=OFF needs SPAN_COMPAT_USE_STD_SPAN=OFF, but it is '${_value}'. "
+                "Set -DSPAN_COMPAT_USE_STD_SPAN=OFF before span-compat is added, or use a span-compat package that "
+                "was installed with OFF.")
+    elseif (expected STREQUAL "ON" AND NOT _type MATCHES "^(NONE|ON)$")
+        message(FATAL_ERROR "ART_USE_STD_EXPECTED_SPAN=ON makes art::span std::span, but span-compat is configured "
+                "with SPAN_COMPAT_USE_STD_SPAN=${_type}, which gives the own span to some or all targets. Use ON, or "
+                "ART_USE_STD_EXPECTED_SPAN=OFF.")
+    endif ()
+endfunction()
+if (NOT ART_USE_STD_EXPECTED_SPAN)
+    _art_check_span_compat(OFF)
+    set(SPAN_COMPAT_USE_STD_SPAN OFF CACHE STRING "Span type: AUTO (by __cpp_lib_span), ON (std::span) or OFF (own)")
+    # Install the span-compat package with libArT, as ArduinoJson: the installed art::core needs it.
+    if (NOT DEFINED SPAN_COMPAT_INSTALL)
+        set(SPAN_COMPAT_INSTALL ON)
+    endif ()
+    # A superproject may have added span-compat already: add_subdirectory(), FetchContent or find_package().
+    if (NOT TARGET span-compat::span-compat)
+        FetchContent_Declare(
+                span_compat
+                GIT_REPOSITORY ${ART_SPAN_COMPAT_GIT_REPOSITORY}
+                GIT_TAG ${ART_SPAN_COMPAT_GIT_TAG}
+        )
+        FetchContent_MakeAvailable(span_compat)
+    endif ()
+    _art_check_span_compat(OFF)
+else ()
+    cmake_language(DEFER DIRECTORY ${CMAKE_SOURCE_DIR} CALL _art_check_span_compat ON)
+endif ()
 if (ART_STORAGE_LITTLEFS OR NOT CMAKE_CROSSCOMPILING)
     set(_ART_NEED_LITTLEFS ON)
 else ()
     set(_ART_NEED_LITTLEFS OFF)
+endif ()
+
+# The compat test binaries (tests/CMakeLists.txt) need span-compat also with ART_USE_STD_EXPECTED_SPAN=ON. They are
+# built only when libArT is the top-level project, so that a C++23 superproject does not fetch span-compat.
+if (CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    set(_ART_IS_TOP_LEVEL ON)
+else ()
+    set(_ART_IS_TOP_LEVEL OFF)
 endif ()
 
 # Detect if we are crosscompiling, or compiling for our native system.
@@ -170,6 +264,9 @@ target_link_libraries(art-core
         etl::etl
         ArduinoJson
 )
+if (NOT ART_USE_STD_EXPECTED_SPAN)
+    target_link_libraries(art-core PRIVATE span-compat::span-compat)
+endif ()
 
 # If a central build configuration target exists in the superproject,
 # link it so this library is built with the same flags/defines.
@@ -187,6 +284,10 @@ target_include_directories(art-rtos INTERFACE
 )
 target_compile_features(art-rtos INTERFACE ${_ART_MIN_CXX_STD})
 target_compile_definitions(art-rtos INTERFACE ART_USE_STD_EXPECTED_SPAN=${_ART_USE_STD_EXPECTED_SPAN_VALUE})
+# Build tree only, as ETL for art-core below: the installed art-coreConfig.cmake links the installed span-compat.
+if (NOT ART_USE_STD_EXPECTED_SPAN)
+    target_link_libraries(art-rtos INTERFACE $<BUILD_INTERFACE:span-compat::span-compat>)
+endif ()
 if (TARGET freertos)
     target_link_libraries(art-rtos INTERFACE $<BUILD_INTERFACE:freertos>)
 elseif (TARGET freertos_kernel)
@@ -266,11 +367,16 @@ endif ()
 
 # Ensure the exported interface does not pull non-exported targets.
 set_property(TARGET art-core PROPERTY INTERFACE_LINK_LIBRARIES "")
-# ETL is a PUBLIC dependency: the compat header utils/compat/span.h aliases etl::span. It is added after the reset above
-# and only for the build tree: the etl target of FetchContent is not in an export set, and CMake refuses to export a
-# link to it (also inside $<INSTALL_INTERFACE:...>). The installed art-coreConfig.cmake finds the installed ETL package
-# (find_dependency(etl)) and links etl::etl to art::core itself.
+# ETL is a PUBLIC dependency: public headers use ETL (for example storage/FileSystem.h). It is added after the reset
+# above and only for the build tree: the etl target of FetchContent is not in an export set, and CMake refuses to export
+# a link to it (also inside $<INSTALL_INTERFACE:...>). The installed art-coreConfig.cmake finds the installed ETL
+# package (find_dependency(etl)) and links etl::etl to art::core itself.
 target_link_libraries(art-core INTERFACE $<BUILD_INTERFACE:etl::etl>)
+# span-compat is a PUBLIC dependency with ART_USE_STD_EXPECTED_SPAN=OFF (utils/compat/span.h), for the same reason
+# linked for the build tree only. The link also gives every consumer the SPAN_COMPAT_USE_STD_SPAN=0 definition.
+if (NOT ART_USE_STD_EXPECTED_SPAN)
+    target_link_libraries(art-core INTERFACE $<BUILD_INTERFACE:span-compat::span-compat>)
+endif ()
 
 # Export the targets as art::core and art::rtos, the names of the aliases that add_subdirectory() consumers link.
 set_target_properties(art-core PROPERTIES EXPORT_NAME core)

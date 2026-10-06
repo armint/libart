@@ -16,8 +16,13 @@ streams, logging, Modbus, settings, storage and utilities. `AGENTS.md` describes
     example gnu++17 for GCC 14), not at C++23.
   - A consumer that sets `-DART_USE_STD_EXPECTED_SPAN=OFF` at C++23 gets the minimum `cxx_std_17`. It still builds
     at C++23, but with the own types.
+  - `ON` with a `CMAKE_CXX_STANDARD` below 23 stops the configure step with an error.
   - The ESP-IDF component build sets no compile feature and does not define the option. `utils/compat/config.h`
     then chooses from the standard library of the `-std=` flag of the project (see below).
+- With `OFF`, `art::span` is the span of [span-compat](https://gitlab.vandertogt.org/embedded-libraries/span-compat).
+  CMake fetches span-compat only in this case. A build with `ON` does not fetch or link it. The ESP-IDF component
+  is an exception: it always fetches span-compat. See
+  "span-compat: one span type per build" below.
 
 ## Using libArT in a CMake project
 
@@ -40,28 +45,36 @@ public headers. After `find_package(art-core)`, link `art::core` and `art::rtos`
   installed for `art::rtos`; the consumer provides FreeRTOS.
 - **Usage requirements**: as with `add_subdirectory()`, `art::core` carries the ETL include path, the compile
   definition `ART_USE_STD_EXPECTED_SPAN` and the minimum C++ standard of the build that was installed (see
-  "Requirements"). It does not carry ArduinoJson: a consumer that includes `settings/` or `utils/JSONWriter.h` links
-  `ArduinoJson` itself.
+  "Requirements"). With `OFF`, it also carries `span-compat::span-compat`, with the definition
+  `SPAN_COMPAT_USE_STD_SPAN=0`. It does not carry ArduinoJson: a consumer that includes `settings/` or
+  `utils/JSONWriter.h` links `ArduinoJson` itself.
 - **Dependencies**: the package finds ETL and ArduinoJson with `find_package()`, so both must be installed where
   CMake finds them, for example in the same prefix. The install of libArT installs ArduinoJson as well. ETL installs
   its package only when it is built as the top-level project, so install it separately:
   `cmake -S <etl_source> -B <etl_build> && cmake --install <etl_build> --prefix <prefix>`.
+- **span-compat**: with `OFF`, the install of libArT also installs the span-compat package, configured with
+  `SPAN_COMPAT_USE_STD_SPAN=OFF`. `find_package(art-core)` then finds it. It stops with an error if the span-compat
+  package that it finds does not use its own span. With `ON`, the package does not need span-compat.
 
 `tests/check-install.sh` does all of this in a temporary prefix, checks that the installed headers are exactly the
 headers of `src/` in git without `storage/littlefs/`, and builds the consumer project `tests/install-consumer/`
 against it, at C++17 with the own types (`CXX_STANDARD=17`) and at C++23 with the `std`
-types (`CXX_STANDARD=23`). The CI job `install` runs both.
+types (`CXX_STANDARD=23`). It also checks that span-compat is in the prefix only at C++17. The CI job `install`
+runs both.
 
 ## Dependencies
 
 | Dependency | Linked | Notes |
 |---|---|---|
-| [ETL](https://github.com/ETLCPP/etl) (embedded template library) | **PUBLIC** | Public headers use ETL types, for example `art::span` (see below). With `add_subdirectory()`, a target that links `art::core` gets the ETL include path; the ESP-IDF component exports it as well. The installed package (`find_package(art-core)`) finds the installed ETL package and links `etl::etl` to `art::core` as well. |
+| [ETL](https://github.com/ETLCPP/etl) (embedded template library) | **PUBLIC** | Public headers use ETL types, for example `storage/FileSystem.h`. With `add_subdirectory()`, a target that links `art::core` gets the ETL include path; the ESP-IDF component exports it as well. The installed package (`find_package(art-core)`) finds the installed ETL package and links `etl::etl` to `art::core` as well. |
+| [span-compat](https://gitlab.vandertogt.org/embedded-libraries/span-compat) | **PUBLIC**, only with `ART_USE_STD_EXPECTED_SPAN=OFF` | `art::span` is its span. The pin is a commit in `cmake/span-compat.cmake`. See "span-compat: one span type per build". |
 | [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | PRIVATE | Used by the JSON reader and writer. |
 | [Ryu](https://github.com/ulfjack/ryu) | PRIVATE | Used by `FloatText`, see `cmake/ryu.cmake`. |
 | [littlefs](https://github.com/littlefs-project/littlefs) | optional | Only for the `art-storage-littlefs` target (`ART_STORAGE_LITTLEFS`). |
 
-CMake fetches all of them with `FetchContent`.
+CMake fetches all of them with `FetchContent`. span-compat is a private repository of the GitLab server. To build
+without access to it, set `FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT` to a local checkout of span-compat. The ESP-IDF
+component fetches span-compat also with the `std` types (see "`ART_USE_STD_EXPECTED_SPAN`" below).
 
 **`ETL_NO_STL` is not supported.** With `ETL_NO_STL`, ETL defines its own `std::initializer_list`, which conflicts
 with the standard library headers that libArT includes.
@@ -101,7 +114,7 @@ The headers in `src/utils/compat/` let the same code compile at C++17 and at C++
 | Header | Name | `ART_USE_STD_EXPECTED_SPAN=ON` | `ART_USE_STD_EXPECTED_SPAN=OFF` |
 |---|---|---|---|
 | `utils/compat/expected.h` | `art::expected`, `art::unexpected`, `art::unexpect` | `std::expected`, ... | libArT's own minimal implementation |
-| `utils/compat/span.h` | `art::span`, `art::dynamic_extent` | `std::span` | `etl::span` |
+| `utils/compat/span.h` | `art::span`, `art::dynamic_extent` | `std::span` | `span_compat::span`, the own span of span-compat |
 | `utils/compat/bit.h` | `art::bit_cast`, `art::is_little_endian` | a `constexpr` `bit_cast` on `__builtin_bit_cast` (GCC 11, Clang 9 and later), the same entity at every standard | same |
 | `utils/compat/type_traits.h` | `art::remove_cvref`, `art::remove_cvref_t` | an own struct at every standard (the same type as `std::remove_cvref_t`) | same |
 
@@ -116,7 +129,45 @@ the same for the whole program: `Readable` and `Writable` have virtual functions
 - The ESP-IDF component build has no `CMAKE_CXX_STANDARD` and does not define `ART_USE_STD_EXPECTED_SPAN`.
   `utils/compat/config.h` then derives it from the language standard of the compiler: `std` types if the standard
   library provides `std::expected` and `std::span`, own types otherwise. All translation units of an ESP-IDF project
-  use the same `-std=` flag, so the choice is consistent.
+  use the same `-std=` flag, so the choice is consistent. The component defines `SPAN_COMPAT_USE_STD_SPAN=0`
+  **PUBLIC**, so the span of span-compat is the own span for all components that require libArT. Thus C++17, C++20
+  and C++23 work.
+- The ESP-IDF component always fetches span-compat, also at C++23. CMake does not know the standard of the
+  translation units, so it cannot know if `art::span` needs span-compat. Thus an ESP-IDF project needs access to the
+  span-compat repository, or `FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT`.
+
+### span-compat: one span type per build
+
+`system-stm32` must not depend on libArT, so it uses span-compat for the spans of its public interface. At C++17,
+`art::span` must be the same type, or one program contains two span types. span-compat has the CMake option
+`SPAN_COMPAT_USE_STD_SPAN` (`AUTO`, `ON` or `OFF`). It sets the span type for every target that links span-compat.
+libArT sets this option. libArT does not define the macro itself.
+
+| `ART_USE_STD_EXPECTED_SPAN` | `art::span` | span-compat | `SPAN_COMPAT_USE_STD_SPAN` |
+|---|---|---|---|
+| `ON` (C++23) | `std::span` | not fetched, not linked | must be `ON` in a superproject that adds span-compat; `AUTO` or `OFF` stops the configure |
+| `OFF` (C++17 or later) | `span_compat::span`, the own span | fetched and linked **PUBLIC** | must be `OFF`; libArT sets `OFF` when it is not set |
+
+- With `OFF`, libArT uses the own span also at C++20 or later. Thus `art::span` does not change when one target of
+  the build uses a newer standard.
+- A superproject that adds span-compat itself (for example for system-stm32) must add it before libArT, with
+  `FetchContent`, `add_subdirectory()` or `find_package(span-compat)`. Set `-DSPAN_COMPAT_USE_STD_SPAN=OFF` when
+  `ART_USE_STD_EXPECTED_SPAN` is `OFF`, or use a span-compat package that was installed with `OFF`. libArT then uses
+  that span-compat and does not fetch a second one. Any other value stops the configure step with an error.
+- libArT reads the span type from the definition `SPAN_COMPAT_USE_STD_SPAN` on the target
+  `span-compat::span-compat`. Thus the check is the same for a span-compat from `add_subdirectory()` and for an
+  installed package.
+- With `ON`, a span-compat in the same build must be `ON`. `AUTO` is not sufficient: it gives the own span to a
+  target below C++20, for example system-stm32 at C++17. `ON` gives `std::span` to every target and raises the
+  targets that link span-compat to C++20. libArT checks this at the end of the configure step.
+- `utils/compat/span.h` has an `#error` for the case that CMake cannot see: `ART_USE_STD_EXPECTED_SPAN=0` while
+  span-compat selects `std::span`.
+
+`tests/check-subproject.sh` adds libArT to the superproject `tests/subproject-consumer/` with `add_subdirectory()`.
+An application passes `art::span` to a library that links only span-compat: at C++17 with span-compat `OFF` (from
+`FetchContent` and from an installed package), and at C++23 with span-compat `ON`. At C++23 without that library,
+the script checks that span-compat is not fetched. It also checks that five mixed configurations stop the configure
+step. The CI job `subproject` runs it.
 
 The own `art::expected` is used instead of `etl::expected` because `etl::expected` stores its value in an
 `etl::variant`: `sizeof(etl::expected<char, E>)` is 24 bytes (2 bytes for `std::expected`), and the code of a

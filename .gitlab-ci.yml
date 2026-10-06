@@ -41,6 +41,9 @@ default:
     policy: pull
   before_script:
     - rm -rf .fetchcontent/*-subbuild/CMakeCache.txt .fetchcontent/*-subbuild/CMakeFiles
+    # span-compat (cmake/span-compat.cmake) is a private repository of this GitLab instance. FetchContent clones it
+    # with the job token, which the job token allowlist of span-compat must accept for this project.
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
 
 # Builds the art-core static library target, the same one downstream
 # projects consume via add_subdirectory(). This still configures and
@@ -49,7 +52,8 @@ default:
 # The second build compiles art-core and art-storage-littlefs with LOGGING_DISABLED, the form of the LOG_* macros
 # (src/logging/Logger.h) that no test binary uses, so that a mistake in it breaks the pipeline.
 # The last checks show that the minimum standard of art-core follows ART_USE_STD_EXPECTED_SPAN (see README.md,
-# "Requirements"), by the -std flag and the definition that CMake generates for art-core.
+# "Requirements"), by the -std flag and the definition that CMake generates for art-core. They also show that art-core
+# uses span-compat with SPAN_COMPAT_USE_STD_SPAN=0 only with OFF, and that ON below C++23 stops the configure.
 build:
   stage: build
   cache:
@@ -65,10 +69,12 @@ build:
     # The minimum standard follows ART_USE_STD_EXPECTED_SPAN. Default (no CMAKE_CXX_STANDARD): std types at C++23.
     - grep -q "ART_USE_STD_EXPECTED_SPAN=1" build/CMakeFiles/art-core.dir/flags.make
     - grep -Eq "std=(gnu|c)\+\+23" build/CMakeFiles/art-core.dir/flags.make
+    - '! grep -Eq "span_compat|SPAN_COMPAT" build/CMakeFiles/art-core.dir/flags.make'
     # OFF set explicitly at C++23: the own types, still compiled at C++23.
     - cmake -B build-own-cpp23 -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D CMAKE_CXX_STANDARD=23 -D ART_USE_STD_EXPECTED_SPAN=OFF
     - cmake --build build-own-cpp23 --target art-core -j$(nproc)
     - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
+    - grep -q "SPAN_COMPAT_USE_STD_SPAN=0" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
     - grep -Eq "std=(gnu|c)\+\+23" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
     # OFF without CMAKE_CXX_STANDARD: the minimum is cxx_std_17. GCC defaults to gnu++17, so CMake adds no -std flag
     # for C++20 or later (it would add -std=gnu++23 for a cxx_std_23 minimum).
@@ -76,6 +82,11 @@ build:
     - cmake --build build-own-default --target art-core -j$(nproc)
     - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-default/CMakeFiles/art-core.dir/flags.make
     - '! grep -Eq "std=(gnu|c)\+\+2[0-9]" build-own-default/CMakeFiles/art-core.dir/flags.make'
+    - grep -q "SPAN_COMPAT_USE_STD_SPAN=0" build-own-default/CMakeFiles/art-core.dir/flags.make
+    - grep -q "span_compat-src/include" build-own-default/CMakeFiles/art-core.dir/flags.make
+    # ON with a standard below C++23 must stop the configure.
+    - 'mixed_output=$(cmake -B build-mixed -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_CXX_STANDARD=17 -D ART_USE_STD_EXPECTED_SPAN=ON 2>&1 && echo "configured" || true)'
+    - echo "$mixed_output" | grep -q "ART_USE_STD_EXPECTED_SPAN=ON needs C++23"
 
 # Fails if a source in src/ or tests/ is not formatted with the .clang-format of the repository (clangformat-check,
 # see cmake/clang-format.cmake; third-party sources are in .clang-format-ignore). The target only exists when the
@@ -142,7 +153,7 @@ test:
     - if [ "$CXX_STANDARD" = 23 ]; then test_binaries="$test_binaries libArT-compat-tests-cpp17 libArT-compat-tests-cpp23-own"; fi
     - cmake --build build --target art-core art-storage-littlefs $test_binaries -j$(nproc)
     # The invalid inputs of the USB descriptor builders must fail to compile (tests/usb/compile_fail/check.cmake).
-    - 'if [ "$CXX_STANDARD" = 17 ]; then cmake -D CXX=$CXX -D ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" -P tests/usb/compile_fail/check.cmake; fi'
+    - 'if [ "$CXX_STANDARD" = 17 ]; then cmake -D CXX=$CXX -D ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" -D SPAN_COMPAT_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/span_compat-src/include" -P tests/usb/compile_fail/check.cmake; fi'
     # Each binary runs once, with the JUnit reporter: its exit code determines pass/fail, and its XML feeds the MR
     # widget. doctest writes every active reporter to the same stream, so the console reporter cannot run alongside
     # it. Only after a failure does the binary run a second time, with the console reporter, so that the job log
@@ -213,13 +224,14 @@ floattext-zero-cost:
   script:
     - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
     - cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
-    - CXX_STANDARD=17 ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" RYU_SOURCE_DIR="$FETCHCONTENT_BASE_DIR/ryu-src" ./tests/check-floattext-zero-cost.sh
+    - CXX_STANDARD=17 ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" SPAN_COMPAT_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/span_compat-src/include" RYU_SOURCE_DIR="$FETCHCONTENT_BASE_DIR/ryu-src" ./tests/check-floattext-zero-cost.sh
     - CXX_STANDARD=23 RYU_SOURCE_DIR="$FETCHCONTENT_BASE_DIR/ryu-src" ./tests/check-floattext-zero-cost.sh
 
 # Compiles the compat headers (src/utils/compat/) like firmware: arm-none-eabi-g++ with -fno-exceptions and -fno-rtti,
 # at C++17 with the own types and at C++23 with the own and the std types (see tests/check-compat-firmware-build.sh).
 # The native test binaries build with exceptions and RTTI, so they cannot notice a throw or a typeid in these
-# headers. The configure step only fetches ETL. Same toolchain path and REQUIRE_TOOLCHAIN as floattext-zero-cost.
+# headers. The configure step fetches ETL and the span-compat sources (for the compat test binaries). Same toolchain
+# path and REQUIRE_TOOLCHAIN as floattext-zero-cost.
 compat-firmware:
   stage: build
   variables:
@@ -228,7 +240,7 @@ compat-firmware:
   script:
     - export PATH="/opt/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi/bin:$PATH"
     - cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
-    - ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" ./tests/check-compat-firmware-build.sh
+    - ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" SPAN_COMPAT_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/span_compat-src/include" ./tests/check-compat-firmware-build.sh
 
 # Installs art-core with cmake --install into a temporary prefix (ETL into the same prefix) and builds the consumer
 # project tests/install-consumer/ against it with find_package(art-core) (see tests/check-install.sh): at C++17 with
@@ -243,6 +255,16 @@ install:
   script:
     - CXX_STANDARD=17 ./tests/check-install.sh
     - CXX_STANDARD=23 ./tests/check-install.sh
+
+# Adds libArT to the superproject tests/subproject-consumer/ with add_subdirectory() and checks "one span type per
+# build" (see tests/check-subproject.sh): at C++17 art::span is the span of a span-compat library, at C++23 span-compat
+# is not fetched, and five mixed configurations stop the configure.
+subproject:
+  stage: build
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - ./tests/check-subproject.sh
 
 # Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
 # optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the

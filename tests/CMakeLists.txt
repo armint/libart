@@ -27,13 +27,38 @@ FetchContent_MakeAvailable(etl)
 
 include("${CMAKE_CURRENT_LIST_DIR}/../cmake/ryu.cmake")
 
+# span-compat, the span type of art::span with ART_USE_STD_EXPECTED_SPAN=0. The top-level CMakeLists.txt adds it with
+# SPAN_COMPAT_USE_STD_SPAN=OFF when the build uses =0. Otherwise only its sources are fetched (no span-compat target),
+# for the binaries below that build with =0. These get the include directory and SPAN_COMPAT_USE_STD_SPAN=0 from
+# _art_use_span_compat(). No target with OFF is then in a build whose art::span is std::span.
+if (NOT TARGET span-compat::span-compat AND (_ART_IS_TOP_LEVEL OR NOT DEFINED _ART_IS_TOP_LEVEL))
+    include("${CMAKE_CURRENT_LIST_DIR}/../cmake/span-compat.cmake")
+    FetchContent_Declare(
+            span_compat
+            GIT_REPOSITORY ${ART_SPAN_COMPAT_GIT_REPOSITORY}
+            GIT_TAG ${ART_SPAN_COMPAT_GIT_TAG}
+            # Populate only: do not add_subdirectory() span-compat (see above).
+            SOURCE_SUBDIR art-no-cmake
+    )
+    FetchContent_MakeAvailable(span_compat)
+endif ()
+function(_art_use_span_compat target)
+    if (TARGET span-compat::span-compat)
+        target_link_libraries(${target} PRIVATE span-compat::span-compat)
+    else ()
+        target_include_directories(${target} PRIVATE ${span_compat_SOURCE_DIR}/include)
+        target_compile_definitions(${target} PRIVATE SPAN_COMPAT_USE_STD_SPAN=0)
+    endif ()
+endfunction()
+
 if (NOT DEFINED PROJECT_NAME)
     # We are not in a subproject
     project(libArT-tests C CXX)
 endif ()
 
 # Compiler settings. C++23 by default; a build can ask for another standard with -DCMAKE_CXX_STANDARD=17 or 20 (CI
-# runs all three, see .gitlab-ci.yml). Below C++23 the binaries below use the own art::expected and etl::span.
+# runs all three, see .gitlab-ci.yml). Below C++23 the binaries below use the own art::expected and the span of
+# span-compat.
 if (NOT DEFINED CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 23)
 endif ()
@@ -221,6 +246,10 @@ foreach(_art_test_target libArT-tests libArT-tests-64bit libArT-tests-float libA
     target_include_directories(${_art_test_target} PRIVATE ${ryu_SOURCE_DIR})
     # ETL
     target_link_libraries(${_art_test_target} PRIVATE etl::etl)
+    # span-compat, if art::span is its span (always in a standalone configure of this directory below C++23).
+    if (TARGET span-compat::span-compat OR NOT DEFINED _ART_USE_STD_EXPECTED_SPAN_VALUE)
+        _art_use_span_compat(${_art_test_target})
+    endif ()
     # doctest
     target_link_libraries(${_art_test_target} PRIVATE doctest::doctest)
     target_include_directories(${_art_test_target} PRIVATE ${doctest_SOURCE_DIR})
@@ -246,10 +275,16 @@ set_source_files_properties(
         PROPERTIES COMPILE_OPTIONS "-O2"
 )
 
+# The compat binaries below need span-compat. A superproject with ART_USE_STD_EXPECTED_SPAN=ON does not fetch it (see
+# above), so it does not get these binaries.
+if (NOT DEFINED span_compat_SOURCE_DIR)
+    return()
+endif ()
+
 # The compat headers (src/utils/compat/) must work at C++17, where not all of libArT compiles yet, so
 # TestCompat.cpp is built into two more binaries of its own, besides libArT-tests (C++23, std::expected/std::span),
 # together with the tests of the ported modules (see below):
-# - libArT-compat-tests-cpp17: C++17, so the own art::expected and etl::span.
+# - libArT-compat-tests-cpp17: C++17, so the own art::expected and the span of span-compat.
 # - libArT-compat-tests-cpp23-own: C++23 with ART_USE_STD_EXPECTED_SPAN=0, the setting of an application that
 #   builds at C++17 while libArT builds at C++23; it also compares the sizes of the own and the std types.
 # Both use strict warnings, as a C++17 consumer may.
@@ -379,6 +414,7 @@ foreach(_art_compat_standard 17 23)
     # Ryu (FloatText.cpp, ryu_float.c) as a system include, so that the strict flags do not apply to its headers.
     target_include_directories(${_art_compat_target} SYSTEM PRIVATE ${ryu_SOURCE_DIR})
     target_link_libraries(${_art_compat_target} PRIVATE etl::etl doctest::doctest ArduinoJson)
+    _art_use_span_compat(${_art_compat_target})
     if (_ART_NEED_LITTLEFS)
         target_sources(${_art_compat_target} PRIVATE ${_ART_COMPAT_LITTLEFS_SOURCES})
         target_link_libraries(${_art_compat_target} PRIVATE littlefs)
