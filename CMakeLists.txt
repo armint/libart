@@ -142,32 +142,55 @@ endif ()
 # With ART_USE_STD_EXPECTED_SPAN=OFF, art::span is the span of span-compat (utils/compat/span.h), the span type that
 # system-stm32 uses. One span type per build: span-compat must give its own span to every target, so libArT sets its
 # option SPAN_COMPAT_USE_STD_SPAN to OFF. A superproject that adds span-compat itself must set the option to OFF
-# before it adds span-compat or libArT. With ON, span-compat is not fetched or linked, and a span-compat in the
-# same build must not be OFF, because then span_compat::span is not std::span (checked at the end of the configure).
-# The pin is in cmake/span-compat.cmake.
+# before it adds span-compat or libArT, or find_package() a span-compat package that was installed with OFF. With ON,
+# span-compat is not fetched or linked, and a span-compat in the same build must be ON, so that span_compat::span is
+# std::span in every target (checked at the end of the configure). AUTO is not enough: it gives the own span to a
+# target below C++20, for example system-stm32 at C++17. The pin is in cmake/span-compat.cmake.
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/span-compat.cmake")
-# expected: OFF (ART_USE_STD_EXPECTED_SPAN=OFF) or NOT_OFF (ON). An undefined option passes: span-compat sets it.
-function(_art_check_span_compat_option expected)
-    if (NOT DEFINED SPAN_COMPAT_USE_STD_SPAN)
+# Sets <out> to the span type of span-compat::span-compat: NONE (no target), OFF, ON or AUTO. It reads the definition
+# on the target, so the alias of add_subdirectory() and the imported target of find_package() give the same result.
+function(_art_span_compat_type out)
+    if (NOT TARGET span-compat::span-compat)
+        set(${out} NONE PARENT_SCOPE)
         return()
     endif ()
-    if (expected STREQUAL "OFF" AND NOT SPAN_COMPAT_USE_STD_SPAN STREQUAL "OFF")
-        message(FATAL_ERROR "ART_USE_STD_EXPECTED_SPAN=OFF needs SPAN_COMPAT_USE_STD_SPAN=OFF, but it is "
-                "'${SPAN_COMPAT_USE_STD_SPAN}'. Set -DSPAN_COMPAT_USE_STD_SPAN=OFF before span-compat is added.")
-    elseif (expected STREQUAL "NOT_OFF" AND TARGET span-compat AND SPAN_COMPAT_USE_STD_SPAN STREQUAL "OFF")
+    get_target_property(_definitions span-compat::span-compat INTERFACE_COMPILE_DEFINITIONS)
+    if ("SPAN_COMPAT_USE_STD_SPAN=0" IN_LIST _definitions)
+        set(${out} OFF PARENT_SCOPE)
+    elseif ("SPAN_COMPAT_USE_STD_SPAN=1" IN_LIST _definitions)
+        set(${out} ON PARENT_SCOPE)
+    else ()
+        set(${out} AUTO PARENT_SCOPE)
+    endif ()
+endfunction()
+# expected: OFF (ART_USE_STD_EXPECTED_SPAN=OFF) or ON. Without a target, OFF checks the cache option, which decides
+# the type of the span-compat that libArT adds. An undefined option passes: libArT sets it.
+function(_art_check_span_compat expected)
+    _art_span_compat_type(_type)
+    if (_type STREQUAL "NONE" AND DEFINED SPAN_COMPAT_USE_STD_SPAN)
+        set(_value "${SPAN_COMPAT_USE_STD_SPAN}")
+    else ()
+        set(_value "${_type}")
+    endif ()
+    if (expected STREQUAL "OFF" AND NOT _value MATCHES "^(NONE|OFF)$")
+        message(FATAL_ERROR "ART_USE_STD_EXPECTED_SPAN=OFF needs SPAN_COMPAT_USE_STD_SPAN=OFF, but it is '${_value}'. "
+                "Set -DSPAN_COMPAT_USE_STD_SPAN=OFF before span-compat is added, or use a span-compat package that "
+                "was installed with OFF.")
+    elseif (expected STREQUAL "ON" AND NOT _type MATCHES "^(NONE|ON)$")
         message(FATAL_ERROR "ART_USE_STD_EXPECTED_SPAN=ON makes art::span std::span, but span-compat is configured "
-                "with SPAN_COMPAT_USE_STD_SPAN=OFF (its own span). Use AUTO or ON, or ART_USE_STD_EXPECTED_SPAN=OFF.")
+                "with SPAN_COMPAT_USE_STD_SPAN=${_type}, which gives the own span to some or all targets. Use ON, or "
+                "ART_USE_STD_EXPECTED_SPAN=OFF.")
     endif ()
 endfunction()
 if (NOT ART_USE_STD_EXPECTED_SPAN)
-    _art_check_span_compat_option(OFF)
+    _art_check_span_compat(OFF)
     set(SPAN_COMPAT_USE_STD_SPAN OFF CACHE STRING "Span type: AUTO (by __cpp_lib_span), ON (std::span) or OFF (own)")
     # Install the span-compat package with libArT, as ArduinoJson: the installed art::core needs it.
     if (NOT DEFINED SPAN_COMPAT_INSTALL)
         set(SPAN_COMPAT_INSTALL ON)
     endif ()
-    # A superproject may have added span-compat already (add_subdirectory() or its own FetchContent declaration).
-    if (NOT TARGET span-compat)
+    # A superproject may have added span-compat already: add_subdirectory(), FetchContent or find_package().
+    if (NOT TARGET span-compat::span-compat)
         FetchContent_Declare(
                 span_compat
                 GIT_REPOSITORY ${ART_SPAN_COMPAT_GIT_REPOSITORY}
@@ -175,9 +198,9 @@ if (NOT ART_USE_STD_EXPECTED_SPAN)
         )
         FetchContent_MakeAvailable(span_compat)
     endif ()
-    _art_check_span_compat_option(OFF)
+    _art_check_span_compat(OFF)
 else ()
-    cmake_language(DEFER DIRECTORY ${CMAKE_SOURCE_DIR} CALL _art_check_span_compat_option NOT_OFF)
+    cmake_language(DEFER DIRECTORY ${CMAKE_SOURCE_DIR} CALL _art_check_span_compat ON)
 endif ()
 if (ART_STORAGE_LITTLEFS OR NOT CMAKE_CROSSCOMPILING)
     set(_ART_NEED_LITTLEFS ON)

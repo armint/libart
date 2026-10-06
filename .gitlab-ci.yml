@@ -257,7 +257,7 @@ install:
 
 # Adds libArT to the superproject tests/subproject-consumer/ with add_subdirectory() and checks "one span type per
 # build" (see tests/check-subproject.sh): at C++17 art::span is the span of a span-compat library, at C++23 span-compat
-# is not fetched, and two mixed configurations stop the configure.
+# is not fetched, and five mixed configurations stop the configure.
 subproject:
   stage: build
   variables:

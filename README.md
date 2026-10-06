@@ -140,22 +140,29 @@ libArT sets this option. libArT does not define the macro itself.
 
 | `ART_USE_STD_EXPECTED_SPAN` | `art::span` | span-compat | `SPAN_COMPAT_USE_STD_SPAN` |
 |---|---|---|---|
-| `ON` (C++23) | `std::span` | not fetched, not linked | `AUTO` or `ON` in a superproject that adds span-compat; `OFF` stops the configure |
+| `ON` (C++23) | `std::span` | not fetched, not linked | must be `ON` in a superproject that adds span-compat; `AUTO` or `OFF` stops the configure |
 | `OFF` (C++17 or later) | `span_compat::span`, the own span | fetched and linked **PUBLIC** | must be `OFF`; libArT sets `OFF` when it is not set |
 
 - With `OFF`, the own span is used also at C++20 or later. Thus `art::span` does not change when one target of
   the build uses a newer standard.
 - A superproject that adds span-compat itself (for example for system-stm32) must add it before libArT, with
-  `FetchContent` or `add_subdirectory()`. Set `-DSPAN_COMPAT_USE_STD_SPAN=OFF` when `ART_USE_STD_EXPECTED_SPAN` is
-  `OFF`. libArT then uses that span-compat. Any other value stops the configure step with an error.
-- With `ON`, a span-compat in the same build must not be `OFF`. libArT checks this at the end of the configure step.
+  `FetchContent`, `add_subdirectory()` or `find_package(span-compat)`. Set `-DSPAN_COMPAT_USE_STD_SPAN=OFF` when
+  `ART_USE_STD_EXPECTED_SPAN` is `OFF`, or use a span-compat package that was installed with `OFF`. libArT then uses
+  that span-compat and does not fetch a second one. Any other value stops the configure step with an error.
+- libArT reads the span type from the definition `SPAN_COMPAT_USE_STD_SPAN` on the target
+  `span-compat::span-compat`. Thus the check is the same for a span-compat from `add_subdirectory()` and for an
+  installed package.
+- With `ON`, a span-compat in the same build must be `ON`. `AUTO` is not sufficient: it gives the own span to a
+  target below C++20, for example system-stm32 at C++17. `ON` gives `std::span` to every target and raises the
+  targets that link span-compat to C++20. libArT checks this at the end of the configure step.
 - `utils/compat/span.h` has an `#error` for the case that CMake cannot see: `ART_USE_STD_EXPECTED_SPAN=0` while
   span-compat selects `std::span`.
 
 `tests/check-subproject.sh` adds libArT to the superproject `tests/subproject-consumer/` with `add_subdirectory()`.
-At C++17 an application passes `art::span` to a library that links only span-compat. At C++23 the script checks that
-span-compat is not fetched. It also checks that two mixed configurations stop the configure step. The CI job
-`subproject` runs it.
+An application passes `art::span` to a library that links only span-compat: at C++17 with span-compat `OFF` (from
+`FetchContent` and from an installed package), and at C++23 with span-compat `ON`. At C++23 without that library,
+the script checks that span-compat is not fetched. It also checks that five mixed configurations stop the configure
+step. The CI job `subproject` runs it.
 
 The own `art::expected` is used instead of `etl::expected` because `etl::expected` stores its value in an
 `etl::variant`: `sizeof(etl::expected<char, E>)` is 24 bytes (2 bytes for `std::expected`), and the code of a

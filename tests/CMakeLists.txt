@@ -31,7 +31,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../cmake/ryu.cmake")
 # SPAN_COMPAT_USE_STD_SPAN=OFF when the build uses =0. Otherwise only its sources are fetched (no span-compat target),
 # for the binaries below that build with =0. These get the include directory and SPAN_COMPAT_USE_STD_SPAN=0 from
 # _art_use_span_compat(). No target with OFF is then in a build whose art::span is std::span.
-if (NOT TARGET span-compat AND (_ART_IS_TOP_LEVEL OR NOT DEFINED _ART_IS_TOP_LEVEL))
+if (NOT TARGET span-compat::span-compat AND (_ART_IS_TOP_LEVEL OR NOT DEFINED _ART_IS_TOP_LEVEL))
     include("${CMAKE_CURRENT_LIST_DIR}/../cmake/span-compat.cmake")
     FetchContent_Declare(
             span_compat
@@ -43,7 +43,7 @@ if (NOT TARGET span-compat AND (_ART_IS_TOP_LEVEL OR NOT DEFINED _ART_IS_TOP_LEV
     FetchContent_MakeAvailable(span_compat)
 endif ()
 function(_art_use_span_compat target)
-    if (TARGET span-compat)
+    if (TARGET span-compat::span-compat)
         target_link_libraries(${target} PRIVATE span-compat::span-compat)
     else ()
         target_include_directories(${target} PRIVATE ${span_compat_SOURCE_DIR}/include)
@@ -246,7 +246,7 @@ foreach(_art_test_target libArT-tests libArT-tests-64bit libArT-tests-float libA
     # ETL
     target_link_libraries(${_art_test_target} PRIVATE etl::etl)
     # span-compat, if art::span is its span (always in a standalone configure of this directory below C++23).
-    if (TARGET span-compat OR NOT DEFINED _ART_USE_STD_EXPECTED_SPAN_VALUE)
+    if (TARGET span-compat::span-compat OR NOT DEFINED _ART_USE_STD_EXPECTED_SPAN_VALUE)
         _art_use_span_compat(${_art_test_target})
     endif ()
     # doctest
