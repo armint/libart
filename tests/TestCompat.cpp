@@ -1,6 +1,6 @@
 // Tests of the compat headers (src/utils/compat/). This file is compiled three times (tests/CMakeLists.txt):
 // - into libArT-tests (C++23, ART_USE_STD_EXPECTED_SPAN derived: the std aliases),
-// - into libArT-compat-tests-cpp17 (C++17: the own expected and etl::span),
+// - into libArT-compat-tests-cpp17 (C++17: the own expected and the span of span-compat),
 // - into libArT-compat-tests-cpp23-own (C++23 with ART_USE_STD_EXPECTED_SPAN=0: the own types next to the std ones,
 //   so that their sizes can be compared).
 // The cases follow the call patterns of the code base (see libArT issue #26, check 2).
@@ -43,7 +43,14 @@ static_assert(std::is_same_v<art::expected<int, Error>, std::expected<int, Error
 static_assert(std::is_same_v<art::unexpected<Error>, std::unexpected<Error>>);
 static_assert(std::is_same_v<art::span<int>, std::span<int>>);
 #else
-static_assert(std::is_same_v<art::span<int>, etl::span<int>>);
+// The span type that system-stm32 uses: the own span of span-compat, also when std::span exists.
+static_assert(std::is_same_v<art::span<int>, span_compat::span<int>>);
+static_assert(std::is_same_v<art::span<int, 4>, span_compat::span<int, 4>>);
+static_assert(art::dynamic_extent == span_compat::dynamic_extent);
+static_assert(SPAN_COMPAT_USE_STD_SPAN == 0);
+#if defined(__cpp_lib_span)
+static_assert(!std::is_same_v<art::span<int>, std::span<int>>);
+#endif
 #endif
 
 // ---------- type_traits.h ----------

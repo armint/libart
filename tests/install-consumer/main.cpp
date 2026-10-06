@@ -1,5 +1,6 @@
 // Smoke test of the installed art-core package (see CMakeLists.txt and tests/check-install.sh): compiles against the
-// installed headers, uses an ETL type through art::span and links functions of libart-core.a.
+// installed headers, uses an ETL type through art::span and links functions of libart-core.a. With the own types,
+// art::span must be the own span of the installed span-compat package.
 #include "streams/ArrayWritable.h"
 #include "utils/FloatText.h"
 #include "utils/compat/expected.h"
@@ -12,11 +13,15 @@
 #include <cstdio>
 #include <cstring>
 #include <string_view>
+#include <type_traits>
 
 static_assert(ART_USE_STD_EXPECTED_SPAN == ART_CONSUMER_EXPECT_STD_TYPES,
               "ART_USE_STD_EXPECTED_SPAN of the installed art::core is not the expected one");
 #if ART_USE_STD_EXPECTED_SPAN
 static_assert(__cplusplus > 202002L, "art::core with the std types must raise the consumer to C++23");
+#else
+static_assert(SPAN_COMPAT_USE_STD_SPAN == 0, "art::core with the own types must give the consumer the own span");
+static_assert(std::is_same_v<art::span<uint8_t>, span_compat::span<uint8_t>>);
 #endif
 
 int main() {

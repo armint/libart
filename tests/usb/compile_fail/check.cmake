@@ -4,10 +4,10 @@
 # - otherwise the compiler must fail, and its output must match the regular expression (the name of the detail::
 #   function, or "no matching function"), so that an unrelated error does not count as a pass.
 #
-# The files are compiled at C++17 with the own art::span (ART_USE_STD_EXPECTED_SPAN=0), the configuration in which
-# the fixed-extent etl::span converts from any length.
+# The files are compiled at C++17 with the own art::span (ART_USE_STD_EXPECTED_SPAN=0), the span of span-compat.
 #
-# Usage: cmake -D CXX=<compiler> -D ETL_INCLUDE_DIR=<etl>/include -P tests/usb/compile_fail/check.cmake
+# Usage: cmake -D CXX=<compiler> -D ETL_INCLUDE_DIR=<etl>/include -D SPAN_COMPAT_INCLUDE_DIR=<span-compat>/include
+#        -P tests/usb/compile_fail/check.cmake
 cmake_minimum_required(VERSION 3.20)
 
 if (NOT CXX)
@@ -15,6 +15,10 @@ if (NOT CXX)
 endif ()
 if (NOT ETL_INCLUDE_DIR OR NOT EXISTS "${ETL_INCLUDE_DIR}/etl/span.h")
     message(FATAL_ERROR "Set ETL_INCLUDE_DIR to the include directory of ETL (<build>/_deps/etl-src/include)")
+endif ()
+if (NOT SPAN_COMPAT_INCLUDE_DIR OR NOT EXISTS "${SPAN_COMPAT_INCLUDE_DIR}/span-compat/span.h")
+    message(FATAL_ERROR
+            "Set SPAN_COMPAT_INCLUDE_DIR to the include directory of span-compat (<build>/_deps/span_compat-src/include)")
 endif ()
 
 get_filename_component(_case_dir "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
@@ -37,8 +41,8 @@ foreach (_case IN LISTS _cases)
     set(_expect "${CMAKE_MATCH_1}")
 
     execute_process(
-            COMMAND "${CXX}" -std=c++17 -fsyntax-only -DART_USE_STD_EXPECTED_SPAN=0
-            "-I${_source_dir}" -isystem "${ETL_INCLUDE_DIR}" "${_case}"
+            COMMAND "${CXX}" -std=c++17 -fsyntax-only -DART_USE_STD_EXPECTED_SPAN=0 -DSPAN_COMPAT_USE_STD_SPAN=0
+            "-I${_source_dir}" -isystem "${ETL_INCLUDE_DIR}" -isystem "${SPAN_COMPAT_INCLUDE_DIR}" "${_case}"
             RESULT_VARIABLE _result
             OUTPUT_VARIABLE _output
             ERROR_VARIABLE _output)

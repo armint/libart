@@ -16,9 +16,10 @@
 # --gc-sections keeps as a GC root regardless of whether anything calls into it).
 #
 # CXX_STANDARD selects the language standard of the C++ files (default 23; CI runs 17 and 23). The
-# compat headers then use the own art::expected/etl::span below C++23 and the std types at C++23,
-# so below C++23 the ETL include directory is needed as well (ETL_INCLUDE_DIR, e.g.
-# <build>/_deps/etl-src/include); a missing one is handled like a missing Ryu tree below.
+# compat headers then use the own art::expected and the span of span-compat below C++23 and the std
+# types at C++23, so below C++23 the ETL and span-compat include directories are needed as well
+# (ETL_INCLUDE_DIR, e.g. <build>/_deps/etl-src/include, and SPAN_COMPAT_INCLUDE_DIR, e.g.
+# <build>/_deps/span_compat-src/include); a missing one is handled like a missing Ryu tree below.
 #
 # Needs a cross C/C++ compiler pair (default: arm-none-eabi-gcc/g++, override with CROSS_CC/
 # CROSS_CXX/CROSS_NM) and the populated Ryu source tree (RYU_SOURCE_DIR, e.g.
@@ -69,7 +70,16 @@ if [ "${CXX_STANDARD:-23}" -lt 23 ]; then
       echo "Skipping the FloatText zero-cost check (set REQUIRE_TOOLCHAIN=1 to make this a failure)."
       exit 0
    fi
-   ETL_FLAGS="-isystem $ETL_INCLUDE_DIR"
+   if [ -z "${SPAN_COMPAT_INCLUDE_DIR:-}" ] || [ ! -f "$SPAN_COMPAT_INCLUDE_DIR/span-compat/span.h" ]; then
+      echo "SPAN_COMPAT_INCLUDE_DIR is not set to the include directory of span-compat, which C++${CXX_STANDARD} needs."
+      if [ "${REQUIRE_TOOLCHAIN:-0}" = "1" ]; then
+         echo "REQUIRE_TOOLCHAIN=1: treating this as a failure instead of skipping." >&2
+         exit 1
+      fi
+      echo "Skipping the FloatText zero-cost check (set REQUIRE_TOOLCHAIN=1 to make this a failure)."
+      exit 0
+   fi
+   ETL_FLAGS="-isystem $ETL_INCLUDE_DIR -isystem $SPAN_COMPAT_INCLUDE_DIR -DSPAN_COMPAT_USE_STD_SPAN=0"
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
