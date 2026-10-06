@@ -52,7 +52,8 @@ default:
 # The second build compiles art-core and art-storage-littlefs with LOGGING_DISABLED, the form of the LOG_* macros
 # (src/logging/Logger.h) that no test binary uses, so that a mistake in it breaks the pipeline.
 # The last checks show that the minimum standard of art-core follows ART_USE_STD_EXPECTED_SPAN (see README.md,
-# "Requirements"), by the -std flag and the definition that CMake generates for art-core.
+# "Requirements"), by the -std flag and the definition that CMake generates for art-core. They also show that art-core
+# uses span-compat with SPAN_COMPAT_USE_STD_SPAN=0 only with OFF, and that ON below C++23 stops the configure.
 build:
   stage: build
   cache:
@@ -68,10 +69,12 @@ build:
     # The minimum standard follows ART_USE_STD_EXPECTED_SPAN. Default (no CMAKE_CXX_STANDARD): std types at C++23.
     - grep -q "ART_USE_STD_EXPECTED_SPAN=1" build/CMakeFiles/art-core.dir/flags.make
     - grep -Eq "std=(gnu|c)\+\+23" build/CMakeFiles/art-core.dir/flags.make
+    - '! grep -Eq "span_compat|SPAN_COMPAT" build/CMakeFiles/art-core.dir/flags.make'
     # OFF set explicitly at C++23: the own types, still compiled at C++23.
     - cmake -B build-own-cpp23 -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D CMAKE_CXX_STANDARD=23 -D ART_USE_STD_EXPECTED_SPAN=OFF
     - cmake --build build-own-cpp23 --target art-core -j$(nproc)
     - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
+    - grep -q "SPAN_COMPAT_USE_STD_SPAN=0" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
     - grep -Eq "std=(gnu|c)\+\+23" build-own-cpp23/CMakeFiles/art-core.dir/flags.make
     # OFF without CMAKE_CXX_STANDARD: the minimum is cxx_std_17. GCC defaults to gnu++17, so CMake adds no -std flag
     # for C++20 or later (it would add -std=gnu++23 for a cxx_std_23 minimum).
@@ -79,6 +82,11 @@ build:
     - cmake --build build-own-default --target art-core -j$(nproc)
     - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-default/CMakeFiles/art-core.dir/flags.make
     - '! grep -Eq "std=(gnu|c)\+\+2[0-9]" build-own-default/CMakeFiles/art-core.dir/flags.make'
+    - grep -q "SPAN_COMPAT_USE_STD_SPAN=0" build-own-default/CMakeFiles/art-core.dir/flags.make
+    - grep -q "span_compat-src/include" build-own-default/CMakeFiles/art-core.dir/flags.make
+    # ON with a standard below C++23 must stop the configure.
+    - 'mixed_output=$(cmake -B build-mixed -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_CXX_STANDARD=17 -D ART_USE_STD_EXPECTED_SPAN=ON 2>&1 && echo "configured" || true)'
+    - echo "$mixed_output" | grep -q "ART_USE_STD_EXPECTED_SPAN=ON needs C++23"
 
 # Fails if a source in src/ or tests/ is not formatted with the .clang-format of the repository (clangformat-check,
 # see cmake/clang-format.cmake; third-party sources are in .clang-format-ignore). The target only exists when the
@@ -246,6 +254,16 @@ install:
   script:
     - CXX_STANDARD=17 ./tests/check-install.sh
     - CXX_STANDARD=23 ./tests/check-install.sh
+
+# Adds libArT to the superproject tests/subproject-consumer/ with add_subdirectory() and checks "one span type per
+# build" (see tests/check-subproject.sh): at C++17 art::span is the span of a span-compat library, at C++23 span-compat
+# is not fetched, and two mixed configurations stop the configure.
+subproject:
+  stage: build
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - ./tests/check-subproject.sh
 
 # Build acceptance criteria of the LittleFS binding. art-core must stay free of littlefs whether or not the
 # optional art-storage-littlefs target is enabled, and that target must build. It builds natively against the
