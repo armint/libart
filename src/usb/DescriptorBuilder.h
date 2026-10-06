@@ -50,6 +50,8 @@ constexpr uint8_t kCdcData = 0x0Au;
 constexpr uint8_t kMiscellaneous = 0xEFu;
 constexpr uint8_t kMiscellaneousSubclassCommon = 0x02u;
 constexpr uint8_t kMiscellaneousProtocolIad = 0x01u;
+/// Vendor-specific: the class, subclass and protocol of a vendor (bInterfaceClass of a VendorBulkFunction).
+constexpr uint8_t kVendorSpecific = 0xFFu;
 } // namespace classcode
 
 /// Codes of the CDC 1.20 specification and its PSTN subclass specification.
