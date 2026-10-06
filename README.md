@@ -323,7 +323,9 @@ class CommandFunction final : public art::usb::VendorBulkFunction {
   protocol knows where a command ends.
 - **IN**: `sendInTransfer(data)` sends a buffer of any size in packets of `maxPacketSize` bytes. The buffer is not
   copied: keep it valid until `transferSent()` or `dataPathClosed()`. One transfer at a time: a second call returns
-  `false` until `transferSent()`. The hook may start the next transfer.
+  `false` until `transferSent()`. It also returns `false` if the controller refuses the first packet, for example
+  when `maxPacketSize` is larger than the descriptor. On a halted IN endpoint the transfer starts and waits for the
+  clear. The hook may start the next transfer.
 - **ZLP**: with `ZeroLengthPacket::Auto` (the default), a zero-length packet follows a transfer whose size is a
   multiple of `maxPacketSize`. Use `ZeroLengthPacket::Never` when the host reads exactly the size of the transfer:
   then the ZLP would end the next read of the host. An empty buffer sends one ZLP in both modes.

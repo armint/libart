@@ -66,6 +66,13 @@ configuration(ConfigurationFields{},
                                   endpoint(kCdcOut, EndpointType::Bulk, 64u),
                                   endpoint(kCdcIn, EndpointType::Bulk, 64u)));
 
+/// A vendor-only device whose endpoints have a wMaxPacketSize of 32.
+constexpr auto kConfiguration32 =
+configuration(ConfigurationFields{},
+              interfaceDescriptor(InterfaceFields{ 0u, 0u, classcode::kVendorSpecific, 0u, 0u, 0u },
+                                  endpoint(kVendorOut, EndpointType::Bulk, 32u),
+                                  endpoint(kVendorIn, EndpointType::Bulk, 32u)));
+
 /// A test protocol: records the OUT packets and the hook calls, and holds the OUT endpoint on request.
 class RecordingFunction final : public VendorBulkFunction {
    public:
@@ -125,14 +132,16 @@ class RecordingFunction final : public VendorBulkFunction {
    bool chained_{ false };
 };
 
-/// The composite device, connected but not yet enumerated.
+/// The composite device, connected but not yet enumerated. With `configuration`, a vendor-only device instead.
 class Bench {
    public:
-   explicit Bench(bool queueEvents)
-      : descriptors_{ asSpan(kDevice), asSpan(kConfiguration), art::span<const art::span<const uint8_t>>() }
+   explicit Bench(bool queueEvents, art::span<const uint8_t> configuration = asSpan(kConfiguration))
+      : descriptors_{ asSpan(kDevice), configuration, art::span<const art::span<const uint8_t>>() }
       , device_(controller_, descriptors_) {
       REQUIRE(device_.addFunction(vendor));
-      REQUIRE(device_.addFunction(cdc));
+      if(configuration.data() == kConfiguration.data()) {
+         REQUIRE(device_.addFunction(cdc));
+      }
       controller_.queueEvents(queueEvents);
       device_.start();
    }
@@ -484,5 +493,42 @@ TEST_CASE("[usb::VendorBulkFunction] works next to a CDC-ACM function") {
       std::array<uint8_t, 16> buffer{};
       CHECK(bench.cdc.read(art::span<uint8_t>(buffer.data(), buffer.size())) == 5u);
       CHECK(std::vector<uint8_t>(buffer.begin(), buffer.begin() + 5) == pattern(5u, 50u));
+   }
+}
+
+TEST_CASE("[usb::VendorBulkFunction] a transfer whose first packet the controller refuses does not start") {
+   // maxPacketSize 64 of the function against a descriptor of 32 bytes.
+   Bench bench(false, asSpan(kConfiguration32));
+   bench.enumerate();
+   const std::vector<uint8_t> data = pattern(64u);
+   CHECK_FALSE(bench.vendor.sendInTransfer(asBytes(data)));
+   CHECK_FALSE(bench.vendor.isInTransferBusy());
+   CHECK_FALSE(bench.takeIn(kVendorIn).has_value());
+   CHECK(bench.vendor.transfersSent == 0);
+
+   // A transfer whose packets fit works afterwards.
+   const std::vector<uint8_t> small = pattern(10u);
+   REQUIRE(bench.vendor.sendInTransfer(asBytes(small)));
+   CHECK(bench.takeIn(kVendorIn) == small);
+   CHECK(bench.vendor.transfersSent == 1);
+   CHECK_FALSE(bench.vendor.isInTransferBusy());
+}
+
+TEST_CASE("[usb::VendorBulkFunction] a transfer on a halted IN endpoint waits for the clear") {
+   for(const bool queueEvents : { false, true }) {
+      CAPTURE(queueEvents);
+      Bench bench(queueEvents);
+      bench.enumerate();
+      bench.vendor.device()->haltEndpoint(kVendorIn);
+      const std::vector<uint8_t> data = pattern(70u);
+      REQUIRE(bench.vendor.sendInTransfer(asBytes(data)));
+      CHECK(bench.vendor.isInTransferBusy());
+      CHECK_FALSE(bench.takeIn(kVendorIn).has_value());
+
+      CHECK(bench.out(kStandardEndpointOut, kClearFeature, 0u, kVendorIn));
+      std::vector<uint8_t> received;
+      CHECK(bench.readTransfer(kVendorIn, received) == std::vector<size_t>{ 64u, 6u });
+      CHECK(received == data);
+      CHECK(bench.vendor.transfersSent == 1);
    }
 }

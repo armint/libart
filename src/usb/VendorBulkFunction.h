@@ -71,7 +71,10 @@ class VendorBulkFunction : public Function {
     * @param data The data, of any size. It is not copied: keep it valid and unchanged until transferSent() or
     * dataPathClosed().
     * @param zeroLengthPacket See "IN path".
-    * @return false if the function is not configured or the last transfer is still on its way. Nothing is sent then.
+    * @return false if the function is not configured, the last transfer is still on its way, or the controller
+    * refused the first packet (the endpoint is not open, or VendorBulkEndpoints::maxPacketSize is larger than the
+    * wMaxPacketSize of the descriptor). Nothing is sent then. On a halted IN endpoint the transfer starts (true) and
+    * waits until the halt is cleared.
     */
    bool sendInTransfer(art::span<const uint8_t> data, ZeroLengthPacket zeroLengthPacket = ZeroLengthPacket::Auto);
 

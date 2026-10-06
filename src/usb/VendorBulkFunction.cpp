@@ -23,6 +23,14 @@ bool VendorBulkFunction::sendInTransfer(art::span<const uint8_t> data, ZeroLengt
    inZlpPending_ = data.empty() || (zeroLengthPacket == ZeroLengthPacket::Auto && data.size() % endpoints_.maxPacketSize == 0u);
    inTransferBusy_ = true;
    sendNextInPacket();
+   if(!inPacketBusy_ && device() != nullptr && !device()->isEndpointHalted(endpoints_.in)) {
+      // The controller refused the first packet (endpoint not open, or maxPacketSize larger than the descriptor).
+      // Nothing would retry it, so the transfer does not start. On a halted endpoint it waits for the clear instead.
+      inTransferBusy_ = false;
+      inData_ = art::span<const uint8_t>();
+      inZlpPending_ = false;
+      return false;
+   }
    return true;
 }
 
