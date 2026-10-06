@@ -20,7 +20,8 @@ streams, logging, Modbus, settings, storage and utilities. `AGENTS.md` describes
   - The ESP-IDF component build sets no compile feature and does not define the option. `utils/compat/config.h`
     then chooses from the standard library of the `-std=` flag of the project (see below).
 - With `OFF`, `art::span` is the span of [span-compat](https://gitlab.vandertogt.org/embedded-libraries/span-compat).
-  CMake fetches span-compat only in this case. A build with `ON` does not fetch or link it. See
+  CMake fetches span-compat only in this case. A build with `ON` does not fetch or link it. The ESP-IDF component
+  is an exception: it always fetches span-compat. See
   "span-compat: one span type per build" below.
 
 ## Using libArT in a CMake project
@@ -72,7 +73,8 @@ runs both.
 | [littlefs](https://github.com/littlefs-project/littlefs) | optional | Only for the `art-storage-littlefs` target (`ART_STORAGE_LITTLEFS`). |
 
 CMake fetches all of them with `FetchContent`. span-compat is a private repository of the GitLab server. To build
-without access to it, set `FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT` to a local checkout of span-compat.
+without access to it, set `FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT` to a local checkout of span-compat. The ESP-IDF
+component fetches span-compat also with the `std` types (see "`ART_USE_STD_EXPECTED_SPAN`" below).
 
 **`ETL_NO_STL` is not supported.** With `ETL_NO_STL`, ETL defines its own `std::initializer_list`, which conflicts
 with the standard library headers that libArT includes.
@@ -127,9 +129,12 @@ the same for the whole program: `Readable` and `Writable` have virtual functions
 - The ESP-IDF component build has no `CMAKE_CXX_STANDARD` and does not define `ART_USE_STD_EXPECTED_SPAN`.
   `utils/compat/config.h` then derives it from the language standard of the compiler: `std` types if the standard
   library provides `std::expected` and `std::span`, own types otherwise. All translation units of an ESP-IDF project
-  use the same `-std=` flag, so the choice is consistent. The component build does not define
-  `SPAN_COMPAT_USE_STD_SPAN` either. At C++20, span-compat then selects `std::span`, and `utils/compat/span.h`
-  stops with `#error`. Build an ESP-IDF project at C++17 or C++23.
+  use the same `-std=` flag, so the choice is consistent. The component defines `SPAN_COMPAT_USE_STD_SPAN=0`
+  **PUBLIC**, so the span of span-compat is the own span for all components that require libArT. Thus C++17, C++20
+  and C++23 work.
+- The ESP-IDF component always fetches span-compat, also at C++23. CMake does not know the standard of the
+  translation units, so it cannot know if `art::span` needs span-compat. Thus an ESP-IDF project needs access to the
+  span-compat repository, or `FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT`.
 
 ### span-compat: one span type per build
 

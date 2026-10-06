@@ -33,9 +33,10 @@ if(ESP_PLATFORM)
         FetchContent_Populate(ArduinoJson)
     endif()
 
-    # The span of span-compat is art::span when the standard has no std::expected (utils/compat/span.h). There is no
-    # SPAN_COMPAT_USE_STD_SPAN definition either, so a translation unit at C++20 stops with an #error there: build
-    # the component at C++17 or C++23.
+    # The span of span-compat is art::span when the standard has no std::expected (utils/compat/span.h). config.h
+    # chooses by the standard of each translation unit, so CMake cannot know if the build needs span-compat: it is
+    # always fetched. There is no span-compat target here, and other components get span-compat only through this
+    # component, so this component sets the span type: the own span (as SPAN_COMPAT_USE_STD_SPAN=OFF).
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/span-compat.cmake")
     FetchContent_Declare(
             span_compat
@@ -54,6 +55,7 @@ if(ESP_PLATFORM)
             ${arduinojson_SOURCE_DIR}/src
             ${span_compat_SOURCE_DIR}/include
     )
+    target_compile_definitions(${COMPONENT_LIB} PUBLIC SPAN_COMPAT_USE_STD_SPAN=0)
     # Private: only ryu_float.c and FloatText.cpp include ryu/*, never a public libArT header.
     target_include_directories(${COMPONENT_LIB} PRIVATE ${ryu_SOURCE_DIR})
 
