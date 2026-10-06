@@ -64,16 +64,22 @@ std::optional<uint16_t> CdcAcmFunctionBase::controlRequest(const SetupPacket &se
       return std::nullopt;
    }
    switch(setup.bRequest) {
-   case kSetLineCoding:
+   case kSetLineCoding: {
       if(setup.direction() != RequestDirection::HostToDevice || data.size() != LineCoding::kSize) {
          return std::nullopt;
       }
-      lineCoding_.dwDTERate = static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8u) |
-                              (static_cast<uint32_t>(data[2]) << 16u) | (static_cast<uint32_t>(data[3]) << 24u);
-      lineCoding_.bCharFormat = data[4];
-      lineCoding_.bParityType = data[5];
-      lineCoding_.bDataBits = data[6];
+      LineCoding requested{};
+      requested.dwDTERate = static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8u) |
+                            (static_cast<uint32_t>(data[2]) << 16u) | (static_cast<uint32_t>(data[3]) << 24u);
+      requested.bCharFormat = data[4];
+      requested.bParityType = data[5];
+      requested.bDataBits = data[6];
+      if(eventHandler_ != nullptr && !eventHandler_->lineCodingRequested(requested)) {
+         return std::nullopt;
+      }
+      lineCoding_ = requested;
       return 0u;
+   }
    case kGetLineCoding: {
       if(setup.direction() != RequestDirection::DeviceToHost) {
          return std::nullopt;
@@ -93,7 +99,13 @@ std::optional<uint16_t> CdcAcmFunctionBase::controlRequest(const SetupPacket &se
       if(setup.direction() != RequestDirection::HostToDevice || setup.wLength != 0u) {
          return std::nullopt;
       }
-      controlLineState_ = static_cast<uint16_t>(setup.wValue & (kControlLineDtr | kControlLineRts));
+      setControlLineState(static_cast<uint16_t>(setup.wValue & (kControlLineDtr | kControlLineRts)));
+      return 0u;
+   case kSendBreak:
+      if(setup.direction() != RequestDirection::HostToDevice || setup.wLength != 0u || eventHandler_ == nullptr ||
+         !eventHandler_->breakRequested(setup.wValue)) {
+         return std::nullopt;
+      }
       return 0u;
    default:
       return std::nullopt;
@@ -111,11 +123,12 @@ void CdcAcmFunctionBase::configured() {
 
 void CdcAcmFunctionBase::deconfigured() {
    configured_ = false;
-   controlLineState_ = 0u;
    rxQueue_.clear();
    txQueue_.clear();
    resetDataEndpoints();
    dropNotification();
+   // Last, so that the event handler sees a function that is already deconfigured.
+   setControlLineState(0u);
 }
 
 void CdcAcmFunctionBase::alternateSettingChanged(uint8_t interfaceNumber, uint8_t alternateSetting) {
@@ -245,6 +258,14 @@ void CdcAcmFunctionBase::restartIn() {
 void CdcAcmFunctionBase::dropNotification() {
    notificationSent_ = notification_.size();
    notificationBusy_ = false;
+}
+
+void CdcAcmFunctionBase::setControlLineState(uint16_t state) {
+   const uint16_t previousState = controlLineState_;
+   controlLineState_ = state;
+   if(state != previousState && eventHandler_ != nullptr) {
+      eventHandler_->controlLineStateChanged(state, previousState);
+   }
 }
 
 } // namespace art::usb

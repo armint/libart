@@ -14,8 +14,8 @@ namespace art::usb {
 /**
  * @brief The line coding of a CDC-ACM function (PSTN 1.20 section 6.3.11, table 17).
  *
- * The fields keep the names of the specification. The function only stores the values: a virtual COM port has no
- * UART behind it.
+ * The fields keep the names of the specification. The function only stores the values. An application with a UART
+ * behind the port (a USB-to-UART bridge) gets them through CdcAcmEvents::lineCodingRequested().
  */
 struct LineCoding {
    /// Size of the line coding structure on the wire.
@@ -29,6 +29,81 @@ struct LineCoding {
    uint8_t bParityType{ 0u };
    /// Data bits: 5, 6, 7, 8 or 16.
    uint8_t bDataBits{ 8u };
+
+   friend bool operator==(const LineCoding &left, const LineCoding &right) {
+      return left.dwDTERate == right.dwDTERate && left.bCharFormat == right.bCharFormat &&
+             left.bParityType == right.bParityType && left.bDataBits == right.bDataBits;
+   }
+
+   friend bool operator!=(const LineCoding &left, const LineCoding &right) {
+      return !(left == right);
+   }
+};
+
+/**
+ * @brief Optional receiver of the class requests of a CDC-ACM function (CdcAcmFunctionBase::setEventHandler()).
+ *
+ * A USB-to-UART bridge uses it to apply the line coding to its UART, to follow DTR and RTS, and to send a break.
+ * The default implementations accept the line coding, ignore the control lines and stall SEND_BREAK, which is the
+ * behaviour of the function without an event handler.
+ *
+ * The calls come from the context that delivers the controller events (normally the main loop), during the control
+ * transfer and before its status stage. Keep them short: the host waits for the status stage. A handler may call
+ * read() and write() of the function.
+ */
+class CdcAcmEvents {
+   public:
+   virtual ~CdcAcmEvents() = default;
+
+   /**
+    * @brief The host sent SET_LINE_CODING.
+    *
+    * It is called for every SET_LINE_CODING, also if the line coding does not change (hosts send it each time a
+    * port is opened). The function stores the line coding only if the handler accepts it.
+    *
+    * @param requested The new line coding. CdcAcmFunctionBase::lineCoding() still returns the old one.
+    * @return true to accept the line coding. false stalls the request and keeps the old line coding, for example
+    * for a rate or a format that the UART cannot do.
+    */
+   virtual bool lineCodingRequested(const LineCoding &requested) {
+      static_cast<void>(requested);
+      return true;
+   }
+
+   /**
+    * @brief The control line state (DTR and RTS) changed.
+    *
+    * It is called when SET_CONTROL_LINE_STATE changes the state, and when deconfigured() clears a state that is not
+    * 0. A request that sets the same state again makes no call.
+    *
+    * @param state The new state (CdcAcmFunctionBase::kControlLineDtr, kControlLineRts). controlLineState() already
+    * returns it.
+    * @param previousState The state before the change.
+    */
+   virtual void controlLineStateChanged(uint16_t state, uint16_t previousState) {
+      static_cast<void>(state);
+      static_cast<void>(previousState);
+   }
+
+   /**
+    * @brief The host sent SEND_BREAK (PSTN 1.20 section 6.3.13).
+    *
+    * Declare the request in the ACM functional descriptor (descriptor::cdcAcm() with descriptor::cdc::kAcmSendBreak),
+    * otherwise hosts do not send it.
+    *
+    * @param durationMilliseconds The duration of the break. 0xFFFF starts a break that lasts until the next SEND_BREAK
+    * with 0. 0 ends a break.
+    * @return true to accept the request. false (the default) stalls it.
+    */
+   virtual bool breakRequested(uint16_t durationMilliseconds) {
+      static_cast<void>(durationMilliseconds);
+      return false;
+   }
+
+   protected:
+   CdcAcmEvents() = default;
+   CdcAcmEvents(const CdcAcmEvents &) = default;
+   CdcAcmEvents &operator=(const CdcAcmEvents &) = default;
 };
 
 /// The endpoints of a CDC-ACM function. They must match the endpoint descriptors of its two interfaces.
@@ -56,9 +131,12 @@ struct CdcAcmEndpoints {
  * cdcUnion()).
  *
  * @par Class requests
- * - SET_LINE_CODING and GET_LINE_CODING: the function stores the line coding and returns it. It does not use it.
- * - SET_CONTROL_LINE_STATE: DTR set means that a terminal is open on the host (isTerminalOpen()).
- * - Every other request stalls, SEND_BREAK too (cdcAcm() does not declare it).
+ * - SET_LINE_CODING and GET_LINE_CODING: the function stores the line coding and returns it. It does not use it
+ *   itself; the event handler (setEventHandler()) gets it and can refuse it.
+ * - SET_CONTROL_LINE_STATE: DTR set means that a terminal is open on the host (isTerminalOpen()). The event handler
+ *   gets each change of DTR and RTS.
+ * - SEND_BREAK: goes to the event handler. Without a handler, or if the handler refuses it, the request stalls.
+ * - Every other request stalls.
  *
  * @par Data path
  * The bulk endpoints move data between the host and two fixed-size queues. write() puts data into the TX queue and
@@ -71,8 +149,8 @@ struct CdcAcmEndpoints {
  * the host waits, until read() makes room. So no received byte is ever dropped.
  *
  * @par Configuration changes
- * deconfigured() (bus reset, SET_CONFIGURATION 0, Device::stop()) clears both queues and the control line state.
- * The line coding stays. A suspend changes nothing: the IN packet that is on its way stays pending.
+ * deconfigured() (bus reset, SET_CONFIGURATION 0, Device::stop()) clears both queues and the control line state
+ * (the event handler sees the change). The line coding stays. A suspend changes nothing: the IN packet that is on its way stays pending.
  *
  * @par Endpoint halt
  * The function sends and arms nothing on a halted endpoint. When the host clears the halt of a data endpoint, or
@@ -94,6 +172,7 @@ class CdcAcmFunctionBase : public Function {
    static constexpr uint8_t kSetLineCoding = 0x20u;
    static constexpr uint8_t kGetLineCoding = 0x21u;
    static constexpr uint8_t kSetControlLineState = 0x22u;
+   static constexpr uint8_t kSendBreak = 0x23u;
 
    /// wValue bits of SET_CONTROL_LINE_STATE (PSTN 1.20 table 18).
    static constexpr uint16_t kControlLineDtr = 0x0001u;
@@ -167,6 +246,15 @@ class CdcAcmFunctionBase : public Function {
       return lineCoding_;
    }
 
+   /**
+    * @brief Sets the receiver of the class requests (see CdcAcmEvents), or removes it with nullptr.
+    *
+    * The handler is referenced, not copied. It must stay valid while it is set.
+    */
+   void setEventHandler(CdcAcmEvents *handler) {
+      eventHandler_ = handler;
+   }
+
    /// The bInterfaceNumber of the data interface.
    [[nodiscard]] uint8_t dataInterface() const {
       return static_cast<uint8_t>(firstInterface() + 1u);
@@ -218,11 +306,14 @@ class CdcAcmFunctionBase : public Function {
    void restartIn();
    /// Forgets the notification on its way.
    void dropNotification();
+   /// Stores the control line state and tells the event handler if it changed.
+   void setControlLineState(uint16_t state);
 
    CdcAcmEndpoints endpoints_;
    etl::icircular_buffer<uint8_t> &rxQueue_;
    etl::icircular_buffer<uint8_t> &txQueue_;
 
+   CdcAcmEvents *eventHandler_{ nullptr };
    LineCoding lineCoding_{};
    uint16_t controlLineState_{ 0u };
    bool configured_{ false };

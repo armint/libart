@@ -261,7 +261,18 @@ size_t taken = serial.write(data);
 
 - **Class requests**: SET_LINE_CODING and GET_LINE_CODING store and return the line coding (default 115200 8N1).
   The function does not use it. SET_CONTROL_LINE_STATE sets DTR and RTS. DTR set means that a terminal program
-  has the port open (`isTerminalOpen()`). All other requests stall, SEND_BREAK too.
+  has the port open (`isTerminalOpen()`). SEND_BREAK goes to the event handler. All other requests stall.
+- **Event handler**: `setEventHandler()` takes a `CdcAcmEvents` object, for example the UART bridge of a
+  USB-to-UART adapter. The function calls it during the control transfer, before the status stage, so keep the
+  calls short.
+  - `lineCodingRequested()` gets every SET_LINE_CODING, also an unchanged one. It returns `false` to refuse the line
+    coding: the request then stalls, and the old line coding stays.
+  - `controlLineStateChanged()` gets each change of DTR and RTS, with the new and the old state. A bus reset or
+    SET_CONFIGURATION 0 clears a state that is not 0, and the handler sees that change too.
+  - `breakRequested()` gets SEND_BREAK with its duration in ms (0xFFFF: until the next SEND_BREAK with 0). It returns
+    `false` to stall the request. Declare SEND_BREAK in the descriptor with
+    `cdcAcm(cdc::kAcmLineCoding | cdc::kAcmSendBreak)`.
+  - Without an event handler, the function accepts every line coding and stalls SEND_BREAK.
 - **Queues**: two `etl::circular_buffer` queues, with the capacities `RxSize` and `TxSize` in bytes. `RxSize` must
   be at least 64. `CdcAcmFunctionBase` has the API without the sizes, for code that only reads and writes.
 - **TX**: `write()` takes the data that fits into the TX queue and never waits. The function sends the queue in
@@ -279,7 +290,7 @@ size_t taken = serial.write(data);
   main loop). The function does no locking.
 - **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64. The `wMaxPacketSize` of the notification
   endpoint must not divide 10 (use 8, 16 or 64), because no ZLP follows the notification.
-  `CdcAcmFunction<256, 256>` uses 620 bytes of RAM on Cortex-M0+.
+  `CdcAcmFunction<256, 256>` uses 624 bytes of RAM on Cortex-M0+.
 
 ### Descriptor builders
 

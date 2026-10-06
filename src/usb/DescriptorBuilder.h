@@ -66,6 +66,8 @@ constexpr uint8_t kSubtypeUnion = 0x06u;
 /// bmCapabilities of the ACM descriptor: SET_LINE_CODING, GET_LINE_CODING, SET_CONTROL_LINE_STATE and the
 /// SERIAL_STATE notification are supported.
 constexpr uint8_t kAcmLineCoding = 0x02u;
+/// bmCapabilities of the ACM descriptor: SEND_BREAK is supported. Combine it with kAcmLineCoding.
+constexpr uint8_t kAcmSendBreak = 0x04u;
 } // namespace cdc
 
 /// LANGID of US English, the language that hosts ask for first.
