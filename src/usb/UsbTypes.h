@@ -58,6 +58,11 @@ enum class DescriptorType : uint8_t {
    OtherSpeedConfiguration = 7u,
    InterfacePower = 8u,
    InterfaceAssociation = 11u,
+   /// Binary device object store (USB 3.2 section 9.6.2, USB 2.0 LPM ECN). A USB 2.0 device has one if bcdUSB is
+   /// 0x0201 or more.
+   Bos = 15u,
+   /// A device capability descriptor in the BOS.
+   DeviceCapability = 16u,
 };
 
 /// Standard request codes (bRequest), USB 2.0 table 9-4.

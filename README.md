@@ -204,7 +204,9 @@ hardware dependency, so the protocol code runs in the host tests. A port connect
 | `usb/Device.h` | `Device`: the chapter 9 state machine, the standard requests on EP0 and the routing to the functions. `Descriptors`: the descriptors that `Device` serves. |
 | `usb/CdcAcmFunction.h` | `CdcAcmFunction`: the CDC-ACM function (virtual COM port) with its RX and TX queues. |
 | `usb/VendorBulkFunction.h` | `VendorBulkFunction`: base of a function with one interface and a bulk OUT and IN endpoint, for a protocol of its own (vendor-specific class). |
-| `usb/DescriptorBuilder.h` | `constexpr` builders for the device, configuration, interface association (IAD), interface, endpoint, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
+| `usb/VendorRequestHandler.h` | `VendorRequestHandler`: the interface of the handler of vendor requests whose recipient is the device. |
+| `usb/DescriptorBuilder.h` | `constexpr` builders for the device, configuration, interface association (IAD), interface, endpoint, BOS, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
+| `usb/MsOs20.h` | MS OS 2.0 descriptors (namespace `art::usb::msos20`): `constexpr` builders for the descriptor set and the platform capability of the BOS, and `DescriptorSetHandler`, which answers the request of Windows for the set. |
 
 Use it like this:
 
@@ -219,7 +221,7 @@ device.start();                                    // pull-up on
 - **States**: Detached, Powered, Default, Address, Configured and Suspended (USB 2.0 section 9.1.1). The device has
   no VBUS sense, so Attached and Powered are one state. A bus reset returns to Default. Resume returns to the state
   before the suspend.
-- **Standard requests**: GET_DESCRIPTOR (device, configuration, string), SET_ADDRESS, GET_CONFIGURATION,
+- **Standard requests**: GET_DESCRIPTOR (device, configuration, string, and BOS if `Descriptors::bos` is set), SET_ADDRESS, GET_CONFIGURATION,
   SET_CONFIGURATION, GET_STATUS, CLEAR_FEATURE and SET_FEATURE (endpoint halt; device remote wakeup only if the
   configuration descriptor declares it), GET_INTERFACE and SET_INTERFACE.
 - **STALL**: DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION (the device is full-speed only), SET_DESCRIPTOR,
@@ -238,8 +240,12 @@ device.start();                                    // pull-up on
   that owns the interface. So do standard requests to an interface that `Device` does not handle (for example a
   class-specific GET_DESCRIPTOR). The packets of an endpoint go to the function of its interface. Functions send
   with `Device::startInTransfer()`, receive with `Device::armOutTransfer()` and halt with `Device::haltEndpoint()`.
+- **Device vendor requests**: vendor requests whose recipient is the device go to the `VendorRequestHandler` of
+  `Device::setVendorRequestHandler()`, in the states Address and Configured. Without a handler they stall. A
+  device-to-host reply can point into flash, so it can be longer than the control buffer. Class requests to the
+  device stall.
 - **Limits**: one configuration, at most `Device::kMaxInterfaces` (8) interfaces and `Device::kMaxFunctions` (4)
-  functions. No heap: all state is in the object (196 bytes on Cortex-M0+).
+  functions. No heap: all state is in the object (208 bytes on Cortex-M0+).
 
 `tests/usb/FakeDeviceController.h` is a `DeviceController` test double that also plays the host. Use it to test a
 `Function` through `Device`. With `queueEvents(true)`, it holds the events until `deliverQueuedEvents()`, as a
@@ -361,8 +367,8 @@ wire format. Use them in `constexpr` variables, so that the descriptors are buil
   function in `detail::`:
   - `maxPowerMilliamps` above 500 mA (`maxPowerAbove500Milliamps`);
   - a `char16_t` array for `stringDescriptor()` whose last element is not a null (`stringDescriptorNeedsNullTerminatedLiteral`);
-  - a descriptor sequence in `configuration()` or `interfaceDescriptor()` with a `bLength` below 2 or a descriptor that
-    runs past the end (`malformedDescriptorSequence`), for example from a hand-written array.
+  - a descriptor sequence in `configuration()`, `interfaceDescriptor()` or `bos()` with a `bLength` below 2 or a
+    descriptor that runs past the end (`malformedDescriptorSequence`), for example from a hand-written array.
 
   These functions are not `constexpr`. At run time they trap (`__builtin_trap()`), so a builder that runs at run time
   with such a value traps instead of returning a wrong descriptor. Valid values work at run time at every
@@ -384,6 +390,41 @@ constexpr auto kConfiguration = configuration(ConfigurationFields{ 1, 0, true, f
    interfaceDescriptor(InterfaceFields{ 1, 0, classcode::kCdcData, 0, 0, 0 },
       endpoint(0x02, art::usb::EndpointType::Bulk, 64), endpoint(0x82, art::usb::EndpointType::Bulk, 64)));
 ```
+
+### MS OS 2.0 descriptors
+
+With MS OS 2.0 descriptors, Windows 8.1 and later bind a driver to a device, or to one function of a composite
+device, with no INF file and no user action. The normal use is WinUSB for a vendor-specific interface, for example
+a `VendorBulkFunction`. `usb/MsOs20.h` (namespace `art::usb::msos20`) has the parts:
+
+1. Set `bcdUSB` to 0x0201 in `DeviceFields`. Windows then asks for the BOS descriptor.
+2. Build the descriptor set: `descriptorSet()` with one `functionSubset()` for each function that gets WinUSB.
+   The subset has the first interface of the function, `compatibleId("WINUSB")` and `deviceInterfaceGuid(u"{...}")`.
+   libusb and other WinUSB clients need the GUID to find the interface. A function without a subset, for example
+   CDC-ACM, keeps the driver that Windows selects from its class. A device that is not composite puts the feature
+   descriptors directly into `descriptorSet()`.
+3. Build the BOS: `descriptor::bos(platformCapability(vendorCode, set))`. The platform capability takes the size and
+   the Windows version from the set. Put the BOS into `Descriptors::bos`.
+4. Register a `DescriptorSetHandler(vendorCode, asSpan(set))` with `Device::setVendorRequestHandler()`. It answers
+   the vendor request of Windows (bRequest `vendorCode`, wIndex 7) and stalls all other requests.
+
+```cpp
+using namespace art::usb;
+constexpr uint8_t kVendorCode = 0x21;
+constexpr auto kMsOs20Set = msos20::descriptorSet(msos20::kWindows81,
+   msos20::functionSubset(0, msos20::compatibleId("WINUSB"),
+      msos20::deviceInterfaceGuid(u"{CDB3B5AD-293B-4663-AA36-1AAE46463776}")));
+constexpr auto kBos = descriptor::bos(msos20::platformCapability(kVendorCode, kMsOs20Set));
+msos20::DescriptorSetHandler msOs20Handler(kVendorCode, descriptor::asSpan(kMsOs20Set));
+```
+
+A device with one configuration puts the function subsets directly after the set header, as above.
+`configurationSubset()` is only for a device with more than one configuration, which `usb::Device` does not support.
+The builders check their input like the other builders: a compatible ID of more than 8 characters, a GUID without
+braces, or a malformed set fails the build. Windows keeps data about the descriptors of a device in the registry key
+`HKLM\SYSTEM\CurrentControlSet\Control\usbflags\<vvvvpppprrrr>` (VID, PID and `bcdDevice` in hexadecimal). A
+driver that was installed for the device before (for example with Zadig) has priority over the WinUSB compatible ID.
+After a change of the descriptors, uninstall the device and its driver in the Device Manager and delete that key.
 
 ### Controller contract
 

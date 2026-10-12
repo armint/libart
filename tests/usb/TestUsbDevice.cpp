@@ -1,6 +1,7 @@
 #include "FakeDeviceController.h"
 #include "usb/Device.h"
 #include "usb/Function.h"
+#include "usb/VendorRequestHandler.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -25,6 +26,8 @@ constexpr uint8_t kClassInterfaceIn = 0xA1u;
 constexpr uint8_t kClassInterfaceOut = 0x21u;
 constexpr uint8_t kClassEndpointIn = 0xA2u;
 constexpr uint8_t kVendorDeviceIn = 0xC0u;
+constexpr uint8_t kVendorDeviceOut = 0x40u;
+constexpr uint8_t kClassDeviceIn = 0xA0u;
 
 // bRequest values.
 constexpr uint8_t kGetStatus = 0u;
@@ -180,6 +183,43 @@ class RecordingFunction : public Function {
    std::vector<std::pair<uint8_t, std::vector<uint8_t>>> outPackets;
    std::vector<uint8_t> inCompletions;
    std::vector<uint8_t> haltCleared;
+};
+
+/// A BOS of 33 bytes: the header and one 28-byte platform capability with a zero UUID.
+constexpr std::array<uint8_t, 33> kBosDescriptor{ 0x05, 0x0F, 33, 0x00, 0x01, 28, 0x10, 0x05 };
+
+/// Records the device-recipient vendor requests. Answers device-to-host requests with `reply` (from flash-like
+/// memory, not the buffer) or, with `useBuffer`, by writing `reply` into the buffer; stalls if `accept` is false.
+class RecordingVendorHandler : public VendorRequestHandler {
+   public:
+   std::optional<art::span<const uint8_t>> vendorRequest(const SetupPacket &setup, art::span<uint8_t> buffer) override {
+      requests.push_back(setup);
+      bufferSizes.push_back(buffer.size());
+      if(setup.direction() == RequestDirection::HostToDevice) {
+         received.assign(buffer.begin(), buffer.end());
+      }
+      if(!accept) {
+         return std::nullopt;
+      }
+      if(setup.direction() == RequestDirection::HostToDevice) {
+         return art::span<const uint8_t>();
+      }
+      if(useBuffer) {
+         const size_t length = std::min(reply.size(), buffer.size());
+         std::copy_n(reply.begin(), length, buffer.begin());
+         // overreport: claim more bytes than the buffer has; the device must clip them.
+         return art::span<const uint8_t>(buffer.data(), length + overreport);
+      }
+      return art::span<const uint8_t>(reply.data(), reply.size());
+   }
+
+   bool accept{ true };
+   bool useBuffer{ false };
+   size_t overreport{ 0u };
+   std::vector<uint8_t> reply;
+   std::vector<uint8_t> received;
+   std::vector<SetupPacket> requests;
+   std::vector<size_t> bufferSizes;
 };
 
 /// A device with a CDC function (interfaces 0, 1) and a mass storage function (interface 2), started.
@@ -827,4 +867,125 @@ TEST_CASE("[usb::Device] addFunction checks the interface ranges") {
    CHECK_FALSE(device.addFunction(empty));
    CHECK_FALSE(device.addFunction(tooHigh));
    CHECK(device.addFunction(second));
+}
+
+TEST_CASE("[usb::Device] GET_DESCRIPTOR(BOS) serves Descriptors::bos") {
+   Descriptors descriptors = makeDescriptors();
+   descriptors.bos = art::span<const uint8_t>(kBosDescriptor.data(), kBosDescriptor.size());
+   Fixture fixture(descriptors);
+   fixture.controller.busReset();
+   REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 5u, 0u));
+
+   // Windows reads the 5-byte header first, then the whole BOS with wTotalLength.
+   CHECK(fixture.getDescriptor(DescriptorType::Bos, 0u, 5u) ==
+         std::vector<uint8_t>(kBosDescriptor.begin(), kBosDescriptor.begin() + 5));
+   CHECK(fixture.getDescriptor(DescriptorType::Bos, 0u, 33u) ==
+         bytesOf(art::span<const uint8_t>(kBosDescriptor.data(), kBosDescriptor.size())));
+   CHECK(fixture.getDescriptor(DescriptorType::Bos, 0u, 255u).size() == kBosDescriptor.size());
+   // There is one BOS, index 0.
+   CHECK(fixture.in(kStandardDeviceIn, kGetDescriptor, descriptorValue(DescriptorType::Bos, 1u), 0u, 5u).stalled);
+}
+
+TEST_CASE("[usb::Device] device-recipient vendor requests go to the vendor request handler") {
+   Fixture fixture;
+   FakeDeviceController &controller = fixture.controller;
+   RecordingVendorHandler handler;
+   fixture.device.setVendorRequestHandler(&handler);
+   controller.busReset();
+
+   SUBCASE("not in the Default state") {
+      handler.reply = { 1u, 2u };
+      CHECK(fixture.in(kVendorDeviceIn, 0x20u, 0u, 7u, 2u).stalled);
+      CHECK(handler.requests.empty());
+   }
+
+   SUBCASE("interface, endpoint and other recipients still stall in the Address state") {
+      REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 5u, 0u));
+      handler.reply = { 1u };
+      CHECK(fixture.in(0xC1u, 0x20u, 0u, 0u, 1u).stalled);
+      CHECK(fixture.in(0xC2u, 0x20u, 0u, 0x83u, 1u).stalled);
+      CHECK(fixture.in(0xC3u, 0x20u, 0u, 0u, 1u).stalled);
+      CHECK(handler.requests.empty());
+      CHECK(fixture.cdc.requests.empty());
+      CHECK(fixture.msc.requests.empty());
+   }
+
+   SUBCASE("in the Address state, before SET_CONFIGURATION") {
+      REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 5u, 0u));
+      handler.reply = { 1u, 2u, 3u };
+      CHECK(fixture.in(kVendorDeviceIn, 0x20u, 0u, 7u, 3u).data == handler.reply);
+      REQUIRE(handler.requests.size() == 1u);
+      CHECK(handler.requests[0].bRequest == 0x20u);
+      CHECK(handler.requests[0].wIndex == 7u);
+      CHECK(handler.bufferSizes[0] == 3u);
+      // No function sees it.
+      CHECK(fixture.cdc.requests.empty());
+      CHECK(fixture.msc.requests.empty());
+   }
+
+   SUBCASE("in the Configured state") {
+      fixture.enumerate();
+      SUBCASE("a reply longer than the control buffer goes out in several packets") {
+         handler.reply.resize(170u);
+         for(size_t index = 0u; index < handler.reply.size(); ++index) {
+            handler.reply[index] = static_cast<uint8_t>(index);
+         }
+         const FakeDeviceController::ControlResult result = fixture.in(kVendorDeviceIn, 0x20u, 0u, 7u, 170u);
+         CHECK(result.data == handler.reply);
+         CHECK(result.packetSizes == std::vector<size_t>{ 64u, 64u, 42u });
+         CHECK(handler.bufferSizes[0] == Device::kControlBufferSize);
+      }
+      SUBCASE("a reply is cut to wLength") {
+         handler.reply = { 1u, 2u, 3u, 4u };
+         CHECK(fixture.in(kVendorDeviceIn, 0x20u, 0u, 7u, 2u).data == std::vector<uint8_t>{ 1u, 2u });
+      }
+      SUBCASE("a reply in the buffer") {
+         handler.useBuffer = true;
+         handler.reply = { 9u, 8u };
+         CHECK(fixture.in(kVendorDeviceIn, 0x21u, 0u, 0u, 16u).data == handler.reply);
+      }
+      SUBCASE("a reply in the buffer is cut to the part that the handler got") {
+         handler.useBuffer = true;
+         handler.reply.assign(Device::kControlBufferSize, 0x5Au);
+         handler.overreport = 8u;
+         // wLength above the buffer size, so that only the clip to the buffer limits the reply.
+         const FakeDeviceController::ControlResult result = fixture.in(kVendorDeviceIn, 0x21u, 0u, 0u, 100u);
+         CHECK(handler.bufferSizes[0] == Device::kControlBufferSize);
+         CHECK(result.data == std::vector<uint8_t>(Device::kControlBufferSize, 0x5Au));
+      }
+      SUBCASE("an empty reply is a zero-length data packet") {
+         const FakeDeviceController::ControlResult result = fixture.in(kVendorDeviceIn, 0x20u, 0u, 7u, 4u);
+         CHECK_FALSE(result.stalled);
+         CHECK(result.packetSizes == std::vector<size_t>{ 0u });
+      }
+      SUBCASE("host-to-device with a data stage") {
+         const std::array<uint8_t, 3> data{ 0xA5u, 0x5Au, 0x01u };
+         bool ok = false;
+         const FakeDeviceController::ControlResult result =
+         controller.controlOut(setupPacket(kVendorDeviceOut, 0x30u, 1u, 0u, 3u),
+                               art::span<const uint8_t>(data.data(), data.size()), &ok);
+         CHECK(ok);
+         CHECK_FALSE(result.stalled);
+         CHECK(handler.received == std::vector<uint8_t>(data.begin(), data.end()));
+      }
+      SUBCASE("host-to-device without data stage") {
+         CHECK(fixture.out(kVendorDeviceOut, 0x31u, 0u, 0u));
+         REQUIRE(handler.requests.size() == 1u);
+         CHECK(handler.received.empty());
+      }
+      SUBCASE("the handler stalls") {
+         handler.accept = false;
+         CHECK(fixture.in(kVendorDeviceIn, 0x20u, 0u, 7u, 4u).stalled);
+         CHECK_FALSE(fixture.out(kVendorDeviceOut, 0x31u, 0u, 0u));
+      }
+      SUBCASE("class requests to the device still stall") {
+         CHECK(fixture.in(kClassDeviceIn, 0x20u, 0u, 7u, 4u).stalled);
+         CHECK(handler.requests.empty());
+      }
+      SUBCASE("nullptr removes the handler") {
+         fixture.device.setVendorRequestHandler(nullptr);
+         CHECK(fixture.in(kVendorDeviceIn, 0x20u, 0u, 7u, 4u).stalled);
+         CHECK(handler.requests.empty());
+      }
+   }
 }

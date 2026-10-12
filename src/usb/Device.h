@@ -3,6 +3,7 @@
 #include "usb/DeviceController.h"
 #include "usb/Function.h"
 #include "usb/UsbTypes.h"
+#include "usb/VendorRequestHandler.h"
 #include "utils/compat/span.h"
 #include <array>
 #include <cstddef>
@@ -17,15 +18,22 @@ namespace art::usb {
  * flash). usb::Device reads the configuration descriptor to find the interfaces, alternate settings and endpoints,
  * so it must be well-formed: bLength of every descriptor at least 2, and the whole set exactly
  * configuration.size() bytes long (wTotalLength).
+ *
+ * Each field has a default member initializer, so that an aggregate initialization that leaves out a field (for
+ * example the optional bos) does not trigger -Wmissing-field-initializers.
  */
 struct Descriptors {
    /// The 18-byte device descriptor. bMaxPacketSize0 sets the packet size of EP0.
-   art::span<const uint8_t> device;
+   art::span<const uint8_t> device{};
    /// The full configuration descriptor set (configuration, interface, endpoint and class descriptors) of the
    /// single configuration of the device.
-   art::span<const uint8_t> configuration;
+   art::span<const uint8_t> configuration{};
    /// The string descriptors by index. Index 0 is the LANGID table. Empty if the device has no strings.
-   art::span<const art::span<const uint8_t>> strings;
+   art::span<const art::span<const uint8_t>> strings{};
+   /// The BOS descriptor with its device capability descriptors (GET_DESCRIPTOR(BOS), index 0). Empty if the device
+   /// has none: then GET_DESCRIPTOR(BOS) stalls. A device with a BOS sets bcdUSB to 0x0201 or more, so that the host
+   /// asks for it.
+   art::span<const uint8_t> bos{};
 };
 
 /**
@@ -41,13 +49,13 @@ struct Descriptors {
  * resume returns to the state before.
  *
  * @par Standard requests
- * GET_DESCRIPTOR (device, configuration, string; device qualifier and other-speed configuration stall, because a
- * full-speed-only device has none), SET_ADDRESS (applied after the status stage), GET_CONFIGURATION,
- * SET_CONFIGURATION, GET_STATUS, CLEAR_FEATURE and SET_FEATURE (endpoint halt; device remote wakeup only if the
- * configuration descriptor declares it), GET_INTERFACE and SET_INTERFACE. Everything else stalls: SET_DESCRIPTOR,
- * SYNCH_FRAME, TEST_MODE, requests in a state where USB 2.0 does not define them, unknown interfaces and endpoints.
- * A standard request with an interface recipient that the device does not handle itself (for example a class
- * descriptor) goes to the function of the interface.
+ * GET_DESCRIPTOR (device, configuration, string, BOS if Descriptors::bos is set; device qualifier and other-speed
+ * configuration stall, because a full-speed-only device has none), SET_ADDRESS (applied after the status stage),
+ * GET_CONFIGURATION, SET_CONFIGURATION, GET_STATUS, CLEAR_FEATURE and SET_FEATURE (endpoint halt; device remote wakeup
+ * only if the configuration descriptor declares it), GET_INTERFACE and SET_INTERFACE. Everything else stalls:
+ * SET_DESCRIPTOR, SYNCH_FRAME, TEST_MODE, requests in a state where USB 2.0 does not define them, unknown interfaces
+ * and endpoints. A standard request with an interface recipient that the device does not handle itself (for example a
+ * class descriptor) goes to the function of the interface.
  *
  * @par Control transfers
  * Replies longer than one packet are split into packets of bMaxPacketSize0. If a reply is shorter than wLength and
@@ -56,7 +64,8 @@ struct Descriptors {
  *
  * @par Class requests
  * Class and vendor requests whose recipient is an interface, or an endpoint of an interface, go to the Function that
- * owns the interface. Other class and vendor requests stall.
+ * owns the interface. Vendor requests whose recipient is the device go to the VendorRequestHandler of
+ * setVendorRequestHandler(), in the states Address and Configured. Other class and vendor requests stall.
  */
 class Device final : public ControllerEvents {
    public:
@@ -85,6 +94,15 @@ class Device final : public ControllerEvents {
     * kMaxInterfaces or overlaps the range of another function, or the function is registered with a device.
     */
    bool addFunction(Function &function);
+
+   /**
+    * @brief Registers the handler of the vendor requests whose recipient is the device. Call it before start().
+    *
+    * The handler is referenced, not copied. nullptr removes it: then these requests stall.
+    */
+   void setVendorRequestHandler(VendorRequestHandler *handler) {
+      vendorRequestHandler_ = handler;
+   }
 
    /// Connects to the bus (pull-up on). Detached → Powered.
    void start();
@@ -171,6 +189,7 @@ class Device final : public ControllerEvents {
    bool handleSetConfiguration(const SetupPacket &setup);
    bool handleSetInterface(const SetupPacket &setup);
    bool forwardToFunction(const SetupPacket &setup, Function *function);
+   bool forwardToVendorRequestHandler(const SetupPacket &setup);
 
    // Control transfer stages.
    void sendControlData(art::span<const uint8_t> data);
@@ -212,6 +231,7 @@ class Device final : public ControllerEvents {
    uint8_t configuration_{ 0u };
    bool remoteWakeupEnabled_{ false };
 
+   VendorRequestHandler *vendorRequestHandler_{ nullptr };
    std::array<Function *, kMaxFunctions> functions_{};
    size_t functionCount_{ 0u };
 

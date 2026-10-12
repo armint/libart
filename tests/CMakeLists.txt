@@ -100,6 +100,7 @@ file(GLOB TEST_SOURCES
         usb/TestUsbEnumeration.cpp
         usb/TestCdcAcmFunction.cpp
         usb/TestVendorBulkFunction.cpp
+        usb/TestMsOs20.cpp
 )
 
 # The other storage tests, the BlockDevice contract suite and the device and file system mocks use C++20 (designated
@@ -351,6 +352,7 @@ set(_ART_COMPAT_MODULE_SOURCES
         usb/TestUsbEnumeration.cpp
         usb/TestCdcAcmFunction.cpp
         usb/TestVendorBulkFunction.cpp
+        usb/TestMsOs20.cpp
         stubs/timestamp.cpp
         stubs/delay.cpp
         ../src/streams/CountingWritableWrapper.cpp
