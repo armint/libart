@@ -238,12 +238,12 @@ device.start();                                    // pull-up on
   the data toggle.
 - **Functions**: class and vendor requests to an interface, or to an endpoint of an interface, go to the `Function`
   that owns the interface. So do standard requests to an interface that `Device` does not handle (for example a
-  class-specific GET_DESCRIPTOR). The packets of an endpoint go to the function of its interface.
+  class-specific GET_DESCRIPTOR). The packets of an endpoint go to the function of its interface. Functions send
+  with `Device::startInTransfer()`, receive with `Device::armOutTransfer()` and halt with `Device::haltEndpoint()`.
 - **Device vendor requests**: vendor requests whose recipient is the device go to the `VendorRequestHandler` of
   `Device::setVendorRequestHandler()`, in the states Address and Configured. Without a handler they stall. A
   device-to-host reply can point into flash, so it can be longer than the control buffer. Class requests to the
-  device stall. Functions send
-  with `Device::startInTransfer()`, receive with `Device::armOutTransfer()` and halt with `Device::haltEndpoint()`.
+  device stall.
 - **Limits**: one configuration, at most `Device::kMaxInterfaces` (8) interfaces and `Device::kMaxFunctions` (4)
   functions. No heap: all state is in the object (208 bytes on Cortex-M0+).
 
@@ -398,9 +398,11 @@ device, with no INF file and no user action. The normal use is WinUSB for a vend
 a `VendorBulkFunction`. `usb/MsOs20.h` (namespace `art::usb::msos20`) has the parts:
 
 1. Set `bcdUSB` to 0x0201 in `DeviceFields`. Windows then asks for the BOS descriptor.
-2. Build the descriptor set: `descriptorSet()` with a `functionSubset()` per interface, each with `compatibleId("WINUSB")`
-   and `deviceInterfaceGuid(u"{...}")`. libusb and other WinUSB clients need the GUID to find the interface.
-   A device that is not composite puts the feature descriptors directly into `descriptorSet()`.
+2. Build the descriptor set: `descriptorSet()` with one `functionSubset()` for each function that gets WinUSB.
+   The subset has the first interface of the function, `compatibleId("WINUSB")` and `deviceInterfaceGuid(u"{...}")`.
+   libusb and other WinUSB clients need the GUID to find the interface. A function without a subset, for example
+   CDC-ACM, keeps the driver that Windows selects from its class. A device that is not composite puts the feature
+   descriptors directly into `descriptorSet()`.
 3. Build the BOS: `descriptor::bos(platformCapability(vendorCode, set))`. The platform capability takes the size and
    the Windows version from the set. Put the BOS into `Descriptors::bos`.
 4. Register a `DescriptorSetHandler(vendorCode, asSpan(set))` with `Device::setVendorRequestHandler()`. It answers

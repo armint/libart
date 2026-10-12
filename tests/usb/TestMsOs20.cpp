@@ -61,8 +61,8 @@ TEST_CASE("[usb::msos20] descriptor set header") {
 }
 
 TEST_CASE("[usb::msos20] configuration subset and compatible ID fields") {
-   constexpr auto subset = msos20::configurationSubset(1u, msos20::compatibleId("WINUSB", "SUB"));
-   CHECK(bytesOf(subset) == std::vector<uint8_t>{ 0x08, 0x00, 0x01, 0x00, 0x01, 0x00, 0x1C, 0x00, 0x14, 0x00,
+   constexpr auto subset = msos20::configurationSubset(0u, msos20::compatibleId("WINUSB", "SUB"));
+   CHECK(bytesOf(subset) == std::vector<uint8_t>{ 0x08, 0x00, 0x01, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x14, 0x00,
                                                   0x03, 0x00, 'W',  'I',  'N',  'U',  'S',  'B',  0,    0,
                                                   'S',  'U',  'B',  0,    0,    0,    0,    0 });
    // An ID of exactly 8 characters has no null.

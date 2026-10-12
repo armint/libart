@@ -207,13 +207,15 @@ class RecordingVendorHandler : public VendorRequestHandler {
       if(useBuffer) {
          const size_t length = std::min(reply.size(), buffer.size());
          std::copy_n(reply.begin(), length, buffer.begin());
-         return art::span<const uint8_t>(buffer.data(), length);
+         // overreport: claim more bytes than the buffer has; the device must clip them.
+         return art::span<const uint8_t>(buffer.data(), length + overreport);
       }
       return art::span<const uint8_t>(reply.data(), reply.size());
    }
 
    bool accept{ true };
    bool useBuffer{ false };
+   size_t overreport{ 0u };
    std::vector<uint8_t> reply;
    std::vector<uint8_t> received;
    std::vector<SetupPacket> requests;
@@ -897,6 +899,17 @@ TEST_CASE("[usb::Device] device-recipient vendor requests go to the vendor reque
       CHECK(handler.requests.empty());
    }
 
+   SUBCASE("interface, endpoint and other recipients still stall in the Address state") {
+      REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 5u, 0u));
+      handler.reply = { 1u };
+      CHECK(fixture.in(0xC1u, 0x20u, 0u, 0u, 1u).stalled);
+      CHECK(fixture.in(0xC2u, 0x20u, 0u, 0x83u, 1u).stalled);
+      CHECK(fixture.in(0xC3u, 0x20u, 0u, 0u, 1u).stalled);
+      CHECK(handler.requests.empty());
+      CHECK(fixture.cdc.requests.empty());
+      CHECK(fixture.msc.requests.empty());
+   }
+
    SUBCASE("in the Address state, before SET_CONFIGURATION") {
       REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 5u, 0u));
       handler.reply = { 1u, 2u, 3u };
@@ -930,6 +943,12 @@ TEST_CASE("[usb::Device] device-recipient vendor requests go to the vendor reque
          handler.useBuffer = true;
          handler.reply = { 9u, 8u };
          CHECK(fixture.in(kVendorDeviceIn, 0x21u, 0u, 0u, 16u).data == handler.reply);
+      }
+      SUBCASE("a reply in the buffer is cut to the part that the handler got") {
+         handler.useBuffer = true;
+         handler.reply.assign(Device::kControlBufferSize, 0x5Au);
+         handler.overreport = 8u;
+         CHECK(fixture.in(kVendorDeviceIn, 0x21u, 0u, 0u, 16u).data == std::vector<uint8_t>(16u, 0x5Au));
       }
       SUBCASE("an empty reply is a zero-length data packet") {
          const FakeDeviceController::ControlResult result = fixture.in(kVendorDeviceIn, 0x20u, 0u, 7u, 4u);

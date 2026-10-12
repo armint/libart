@@ -167,12 +167,14 @@ descriptorSet(uint32_t windowsVersion, const std::array<uint8_t, Sizes> &...part
  * Only a device with more than one configuration needs it. libArT devices have one configuration
  * (usb::Device), so they put the function subsets directly into descriptorSet().
  *
- * @param configuration The bConfigurationValue field of the header.
+ * @param configurationIndex The zero-based index of the configuration. The specification names the field
+ * bConfigurationValue, but Windows reads it as the index, and TinyUSB and other stacks fill it so (0 for the first
+ * configuration). This is not tested on Windows here, because usb::Device has one configuration.
  */
 template <size_t... Sizes>
 constexpr std::array<uint8_t, (8u + ... + Sizes)>
-configurationSubset(uint8_t configuration, const std::array<uint8_t, Sizes> &...parts) {
-   return detail::subset(DescriptorType::ConfigurationSubsetHeader, configuration, parts...);
+configurationSubset(uint8_t configurationIndex, const std::array<uint8_t, Sizes> &...parts) {
+   return detail::subset(DescriptorType::ConfigurationSubsetHeader, configurationIndex, parts...);
 }
 
 /**
