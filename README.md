@@ -206,6 +206,7 @@ hardware dependency, so the protocol code runs in the host tests. A port connect
 | `usb/VendorBulkFunction.h` | `VendorBulkFunction`: base of a function with one interface and a bulk OUT and IN endpoint, for a protocol of its own (vendor-specific class). |
 | `usb/VendorRequestHandler.h` | `VendorRequestHandler`: the interface of the handler of vendor requests whose recipient is the device. |
 | `usb/DescriptorBuilder.h` | `constexpr` builders for the device, configuration, interface association (IAD), interface, endpoint, BOS, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
+| `usb/MsOs20.h` | MS OS 2.0 descriptors (namespace `art::usb::msos20`): `constexpr` builders for the descriptor set and the platform capability of the BOS, and `DescriptorSetHandler`, which answers the request of Windows for the set. |
 
 Use it like this:
 
@@ -389,6 +390,37 @@ constexpr auto kConfiguration = configuration(ConfigurationFields{ 1, 0, true, f
    interfaceDescriptor(InterfaceFields{ 1, 0, classcode::kCdcData, 0, 0, 0 },
       endpoint(0x02, art::usb::EndpointType::Bulk, 64), endpoint(0x82, art::usb::EndpointType::Bulk, 64)));
 ```
+
+### MS OS 2.0 descriptors
+
+With MS OS 2.0 descriptors, Windows 8.1 and later bind a driver to a device, or to one function of a composite
+device, with no INF file and no user action. The normal use is WinUSB for a vendor-specific interface, for example
+a `VendorBulkFunction`. `usb/MsOs20.h` (namespace `art::usb::msos20`) has the parts:
+
+1. Set `bcdUSB` to 0x0201 in `DeviceFields`. Windows then asks for the BOS descriptor.
+2. Build the descriptor set: `descriptorSet()` with a `functionSubset()` per interface, each with `compatibleId("WINUSB")`
+   and `deviceInterfaceGuid(u"{...}")`. libusb and other WinUSB clients need the GUID to find the interface.
+   A device that is not composite puts the feature descriptors directly into `descriptorSet()`.
+3. Build the BOS: `descriptor::bos(platformCapability(vendorCode, set))`. The platform capability takes the size and
+   the Windows version from the set. Put the BOS into `Descriptors::bos`.
+4. Register a `DescriptorSetHandler(vendorCode, asSpan(set))` with `Device::setVendorRequestHandler()`. It answers
+   the vendor request of Windows (bRequest `vendorCode`, wIndex 7) and stalls all other requests.
+
+```cpp
+using namespace art::usb;
+constexpr uint8_t kVendorCode = 0x21;
+constexpr auto kMsOs20Set = msos20::descriptorSet(msos20::kWindows81,
+   msos20::functionSubset(0, msos20::compatibleId("WINUSB"),
+      msos20::deviceInterfaceGuid(u"{CDB3B5AD-293B-4663-AA36-1AAE46463776}")));
+constexpr auto kBos = descriptor::bos(msos20::platformCapability(kVendorCode, kMsOs20Set));
+msos20::DescriptorSetHandler msOs20Handler(kVendorCode, descriptor::asSpan(kMsOs20Set));
+```
+
+A device with one configuration puts the function subsets directly after the set header, as above.
+`configurationSubset()` is only for a device with more than one configuration, which `usb::Device` does not support.
+The builders check their input like the other builders: a compatible ID of more than 8 characters, a GUID without
+braces, or a malformed set fails the build. Windows stores the result per VID, PID and `bcdDevice`. After a change of
+the descriptors, change `bcdDevice` or remove the device in the Device Manager, so that Windows reads them again.
 
 ### Controller contract
 
