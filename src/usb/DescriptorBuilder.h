@@ -9,7 +9,8 @@
 
 /**
  * @file
- * @brief `constexpr` builders for the standard and CDC descriptors of a USB device.
+ * @brief `constexpr` builders for the standard, BOS and CDC descriptors of a USB device. The MS OS 2.0 descriptors
+ * are in usb/MsOs20.h.
  *
  * Each builder returns a `std::array<uint8_t, N>` with the descriptor in wire format (little-endian). The builders
  * that contain other descriptors (interfaceDescriptor(), configuration()) take them as arguments, concatenate them and
@@ -302,6 +303,27 @@ constexpr std::array<uint8_t, 4u + sizeof...(Subordinates)> cdcUnion(uint8_t con
    static_assert(sizeof...(Subordinates) >= 1u, "a union needs at least one subordinate interface");
    return { static_cast<uint8_t>(4u + sizeof...(Subordinates)), cdc::kCsInterface, cdc::kSubtypeUnion, controlInterface,
             static_cast<uint8_t>(subordinateInterfaces)... };
+}
+
+/**
+ * @brief The BOS descriptor (binary device object store, USB 3.2 section 9.6.2) followed by its device capability
+ * descriptors (the full set that GET_DESCRIPTOR(BOS) returns), for usb::Descriptors::bos.
+ *
+ * wTotalLength is the size of the result. bNumDeviceCaps is the number of device capability descriptors in
+ * `capabilities`, for example msos20::platformCapability() of usb/MsOs20.h. A part that is not a sequence of whole
+ * descriptors fails the build. A device with a BOS sets bcdUSB to 0x0201 (DeviceFields::bcdUSB), so that the host asks
+ * for it.
+ */
+template <size_t... Sizes>
+constexpr std::array<uint8_t, (5u + ... + Sizes)> bos(const std::array<uint8_t, Sizes> &...capabilities) {
+   constexpr size_t totalLength = (5u + ... + Sizes);
+   static_assert(totalLength <= 0xFFFFu, "wTotalLength does not fit into 16 bits");
+   const std::array<uint8_t, 5> header{ 5u, static_cast<uint8_t>(DescriptorType::Bos),
+                                        detail::lowByte(static_cast<uint16_t>(totalLength)),
+                                        detail::highByte(static_cast<uint16_t>(totalLength)), 0u };
+   std::array<uint8_t, totalLength> result = concat(header, capabilities...);
+   result[4] = detail::countDescriptors(result, 5u, DescriptorType::DeviceCapability);
+   return result;
 }
 
 /// String descriptor 0: the LANGIDs that the string descriptors support.

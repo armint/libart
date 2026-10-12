@@ -310,6 +310,9 @@ bool Device::handleRequest(const SetupPacket &setup) {
       return handleStandardRequest(setup);
    case RequestType::Class:
    case RequestType::Vendor:
+      if(setup.type() == RequestType::Vendor && setup.recipient() == RequestRecipient::Device) {
+         return forwardToVendorRequestHandler(setup);
+      }
       if(state_ != DeviceState::Configured) {
          return false;
       }
@@ -420,6 +423,12 @@ bool Device::handleGetDescriptor(const SetupPacket &setup) {
          return false;
       }
       sendControlData(descriptors_.strings[index]);
+      return true;
+   case DescriptorType::Bos:
+      if(index != 0u || descriptors_.bos.empty()) {
+         return false;
+      }
+      sendControlData(descriptors_.bos);
       return true;
    default:
       // A full-speed-only device stalls DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION (USB 2.0 section 9.6.2).
@@ -581,6 +590,29 @@ bool Device::forwardToFunction(const SetupPacket &setup, Function *function) {
       return true;
    }
    if(!function->controlRequest(setup, art::span<uint8_t>(controlBuffer_.data(), controlOutReceived_)).has_value()) {
+      return false;
+   }
+   startStatusIn();
+   return true;
+}
+
+bool Device::forwardToVendorRequestHandler(const SetupPacket &setup) {
+   // Windows reads the MS OS 2.0 descriptor set in the Address state, before SET_CONFIGURATION.
+   if(vendorRequestHandler_ == nullptr || (state_ != DeviceState::Address && state_ != DeviceState::Configured)) {
+      return false;
+   }
+   if(setup.direction() == RequestDirection::DeviceToHost) {
+      const size_t capacity = std::min<size_t>(setup.wLength, kControlBufferSize);
+      const std::optional<art::span<const uint8_t>> reply =
+      vendorRequestHandler_->vendorRequest(setup, art::span<uint8_t>(controlBuffer_.data(), capacity));
+      if(!reply.has_value()) {
+         return false;
+      }
+      // sendControlData() clips the reply to wLength. A reply in flash can be longer than the control buffer.
+      sendControlData(*reply);
+      return true;
+   }
+   if(!vendorRequestHandler_->vendorRequest(setup, art::span<uint8_t>(controlBuffer_.data(), controlOutReceived_)).has_value()) {
       return false;
    }
    startStatusIn();
