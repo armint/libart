@@ -421,8 +421,10 @@ msos20::DescriptorSetHandler msOs20Handler(kVendorCode, descriptor::asSpan(kMsOs
 A device with one configuration puts the function subsets directly after the set header, as above.
 `configurationSubset()` is only for a device with more than one configuration, which `usb::Device` does not support.
 The builders check their input like the other builders: a compatible ID of more than 8 characters, a GUID without
-braces, or a malformed set fails the build. Windows stores the result per VID, PID and `bcdDevice`. After a change of
-the descriptors, change `bcdDevice` or remove the device in the Device Manager, so that Windows reads them again.
+braces, or a malformed set fails the build. Windows keeps data about the descriptors of a device in the registry key
+`HKLM\SYSTEM\CurrentControlSet\Control\usbflags\<vvvvpppprrrr>` (VID, PID and `bcdDevice` in hexadecimal). A
+driver that was installed for the device before (for example with Zadig) has priority over the WinUSB compatible ID.
+After a change of the descriptors, uninstall the device and its driver in the Device Manager and delete that key.
 
 ### Controller contract
 

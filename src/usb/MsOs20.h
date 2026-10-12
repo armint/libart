@@ -38,8 +38,10 @@
  * the whole device. The builders check their
  * input as the builders of usb/DescriptorBuilder.h do (see "Checks" there).
  *
- * Windows stores the result per VID, PID and bcdDevice: after a change of these descriptors, change bcdDevice, or
- * remove the device in the Device Manager, so that Windows reads them again.
+ * Windows keeps data about the descriptors of a device in the registry key
+ * HKLM\SYSTEM\CurrentControlSet\Control\usbflags\<vvvvpppprrrr> (VID, PID, bcdDevice). A driver that was installed
+ * for the device before (for example with Zadig) has priority over the WinUSB compatible ID. After a change of these
+ * descriptors, uninstall the device and its driver in the Device Manager and delete that key.
  *
  * Reference: Microsoft, "Microsoft OS 2.0 Descriptors Specification", July 2018.
  */
