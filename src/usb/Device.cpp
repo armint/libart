@@ -1,6 +1,7 @@
 #include "usb/Device.h"
 
 #include <algorithm>
+#include <functional>
 #include <optional>
 
 namespace art::usb {
@@ -610,8 +611,10 @@ bool Device::forwardToVendorRequestHandler(const SetupPacket &setup) {
       }
       // sendControlData() clips the reply to wLength. A reply in flash can be longer than the control buffer, but a
       // reply in the buffer cannot be longer than the part that the handler got.
-      const bool inBuffer =
-      reply->data() >= controlBuffer_.data() && reply->data() < controlBuffer_.data() + controlBuffer_.size();
+      // std::less gives a total order also for pointers into different objects; the built-in < does not.
+      const std::less<const uint8_t *> before{};
+      const bool inBuffer = !before(reply->data(), controlBuffer_.data()) &&
+                            before(reply->data(), controlBuffer_.data() + controlBuffer_.size());
       sendControlData(inBuffer ? reply->first(std::min<size_t>(reply->size(), capacity)) : *reply);
       return true;
    }

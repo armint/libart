@@ -948,7 +948,10 @@ TEST_CASE("[usb::Device] device-recipient vendor requests go to the vendor reque
          handler.useBuffer = true;
          handler.reply.assign(Device::kControlBufferSize, 0x5Au);
          handler.overreport = 8u;
-         CHECK(fixture.in(kVendorDeviceIn, 0x21u, 0u, 0u, 16u).data == std::vector<uint8_t>(16u, 0x5Au));
+         // wLength above the buffer size, so that only the clip to the buffer limits the reply.
+         const FakeDeviceController::ControlResult result = fixture.in(kVendorDeviceIn, 0x21u, 0u, 0u, 100u);
+         CHECK(handler.bufferSizes[0] == Device::kControlBufferSize);
+         CHECK(result.data == std::vector<uint8_t>(Device::kControlBufferSize, 0x5Au));
       }
       SUBCASE("an empty reply is a zero-length data packet") {
          const FakeDeviceController::ControlResult result = fixture.in(kVendorDeviceIn, 0x20u, 0u, 7u, 4u);
