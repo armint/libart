@@ -18,19 +18,22 @@ namespace art::usb {
  * flash). usb::Device reads the configuration descriptor to find the interfaces, alternate settings and endpoints,
  * so it must be well-formed: bLength of every descriptor at least 2, and the whole set exactly
  * configuration.size() bytes long (wTotalLength).
+ *
+ * Each field has a default member initializer, so that an aggregate initialization that leaves out a field (for
+ * example the optional bos) does not trigger -Wmissing-field-initializers.
  */
 struct Descriptors {
    /// The 18-byte device descriptor. bMaxPacketSize0 sets the packet size of EP0.
-   art::span<const uint8_t> device;
+   art::span<const uint8_t> device{};
    /// The full configuration descriptor set (configuration, interface, endpoint and class descriptors) of the
    /// single configuration of the device.
-   art::span<const uint8_t> configuration;
+   art::span<const uint8_t> configuration{};
    /// The string descriptors by index. Index 0 is the LANGID table. Empty if the device has no strings.
-   art::span<const art::span<const uint8_t>> strings;
+   art::span<const art::span<const uint8_t>> strings{};
    /// The BOS descriptor with its device capability descriptors (GET_DESCRIPTOR(BOS), index 0). Empty if the device
    /// has none: then GET_DESCRIPTOR(BOS) stalls. A device with a BOS sets bcdUSB to 0x0201 or more, so that the host
    /// asks for it.
-   art::span<const uint8_t> bos;
+   art::span<const uint8_t> bos{};
 };
 
 /**
