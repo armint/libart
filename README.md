@@ -240,6 +240,7 @@ device.start();                                    // pull-up on
   that owns the interface. So do standard requests to an interface that `Device` does not handle (for example a
   class-specific GET_DESCRIPTOR). The packets of an endpoint go to the function of its interface. Functions send
   with `Device::startInTransfer()`, receive with `Device::armOutTransfer()` and halt with `Device::haltEndpoint()`.
+  `Device::cancelInTransfer()` takes back an IN packet that the host has not read.
 - **Device vendor requests**: vendor requests whose recipient is the device go to the `VendorRequestHandler` of
   `Device::setVendorRequestHandler()`, in the states Address and Configured. Without a handler they stall. A
   device-to-host reply can point into flash, so it can be longer than the control buffer. Class requests to the
@@ -440,6 +441,11 @@ with NAK. The protocol layer splits transfers into packets and adds zero-length 
   and the arm of an OUT endpoint. No event is reported for them. After `setEndpointStall(false)` the endpoint NAKs
   until the next `startInTransfer()` or `armOutTransfer()`. A function restarts its transfers in
   `Function::endpointHaltCleared()`.
+- `cancelInTransfer()` drops an IN packet that the host has not acknowledged. No event is reported for it, and the
+  data toggle does not change. The endpoint NAKs until the next `startInTransfer()`. A packet that the host
+  acknowledged before the call keeps its event. Then `cancelInTransfer()` returns false, and the caller waits for
+  `inPacketSent()` before it sends the next packet. Limit: if the host received the packet but its ACK was lost, the
+  host discards the next packet as a repeat. `Device::cancelInTransfer()` does not touch a halted endpoint.
 - `Device` calls `setAddress()` when it accepts SET_ADDRESS, before the status stage. The controller applies the
   address in hardware when the host acknowledges the zero-length status packet on EP0 (STM32 FS: in the handler of
   that IN completion). A peripheral that needs the address before the status stage writes it at once. The

@@ -23,6 +23,8 @@ namespace art::usb::test {
  *   OUT arm) before it is reported;
  * - startInTransfer() and armOutTransfer() on EP0 end a protocol stall of EP0;
  * - setEndpointStall() (true and false) drops a queued IN packet and the OUT arm of the endpoint;
+ * - cancelInTransfer() drops a queued IN packet. It returns false while the event of a packet that the host took
+ *   waits in the queue (see "Queued events");
  * - setAddress() keeps the address pending until the host acknowledges the zero-length status packet on EP0; a
  *   SETUP packet or a bus reset drops it.
  *
@@ -112,6 +114,13 @@ class FakeDeviceController : public DeviceController {
       return true;
    }
 
+   bool cancelInTransfer(uint8_t endpointAddress) override {
+      ++cancelCalls_[endpointAddress];
+      inPackets_.erase(endpointAddress);
+      const auto waiting = inEventsQueued_.find(endpointAddress);
+      return waiting == inEventsQueued_.end() || waiting->second == 0;
+   }
+
    void armOutTransfer(uint8_t endpointAddress) override {
       if(endpoints_.count(endpointAddress) == 0u) {
          return;
@@ -167,6 +176,12 @@ class FakeDeviceController : public DeviceController {
 
    [[nodiscard]] bool hasInPacket(uint8_t endpointAddress) const {
       return inPackets_.count(endpointAddress) != 0u;
+   }
+
+   /// How often the protocol layer called cancelInTransfer() on the endpoint.
+   [[nodiscard]] int cancelCalls(uint8_t endpointAddress) const {
+      const auto count = cancelCalls_.find(endpointAddress);
+      return count == cancelCalls_.end() ? 0 : count->second;
    }
 
    /// How often setEndpointStall(false) reset the data toggle of the endpoint.
@@ -235,7 +250,16 @@ class FakeDeviceController : public DeviceController {
          address_ = *pendingAddress_;
          pendingAddress_.reset();
       }
-      emit([this, endpointAddress] { handler_->inPacketSent(endpointAddress); });
+      const bool queued = queueEvents_;
+      if(queued) {
+         ++inEventsQueued_[endpointAddress];
+      }
+      emit([this, endpointAddress, queued] {
+         if(queued) {
+            --inEventsQueued_[endpointAddress];
+         }
+         handler_->inPacketSent(endpointAddress);
+      });
       return packet;
    }
 
@@ -388,6 +412,9 @@ class FakeDeviceController : public DeviceController {
    std::set<uint8_t> armed_;
    std::map<uint8_t, std::vector<uint8_t>> inPackets_;
    std::map<uint8_t, int> toggleResets_;
+   std::map<uint8_t, int> cancelCalls_;
+   // inPacketSent() events in the queue, for each endpoint
+   std::map<uint8_t, int> inEventsQueued_;
    std::optional<uint8_t> failOpenOf_;
 };
 

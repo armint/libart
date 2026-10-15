@@ -148,6 +148,15 @@ bool Device::startInTransfer(uint8_t endpointAddress, art::span<const uint8_t> p
    return controller_.startInTransfer(endpointAddress, packet);
 }
 
+bool Device::cancelInTransfer(uint8_t endpointAddress) {
+   // A halt already dropped the packet. On the STM32 FS peripheral a NAK write would end the STALL.
+   if(!isInEndpoint(endpointAddress) || endpointNumber(endpointAddress) == 0u || !isEndpointOpen(endpointAddress) ||
+      isEndpointHalted(endpointAddress)) {
+      return true;
+   }
+   return controller_.cancelInTransfer(endpointAddress);
+}
+
 void Device::armOutTransfer(uint8_t endpointAddress) {
    if(isInEndpoint(endpointAddress) || endpointNumber(endpointAddress) == 0u || !isEndpointOpen(endpointAddress)) {
       return;

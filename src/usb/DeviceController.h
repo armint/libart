@@ -141,6 +141,23 @@ class DeviceController {
    virtual bool startInTransfer(uint8_t endpointAddress, art::span<const uint8_t> packet) = 0;
 
    /**
+    * @brief Takes back the IN packet of the last startInTransfer() if the host has not acknowledged it.
+    *
+    * The endpoint then NAKs until the next startInTransfer(). The data toggle does not change. No event is reported
+    * for a packet that is taken back. A packet that the host acknowledged before the call is not taken back: its
+    * event is still reported, as for setEndpointStall(). Limit: if the host received the packet but its ACK was lost,
+    * the host discards the next packet as a repeat. The call has no effect on a stalled endpoint.
+    *
+    * Use it for a packet that is no longer valid and that the host may never read, for example the reply of a
+    * protocol to a host that has gone on with the next command.
+    *
+    * @return true if no ControllerEvents::inPacketSent() is to come for the endpoint: the packet was taken back, or
+    * no packet was pending. false if the host acknowledged the packet and its event is not yet reported. The caller
+    * then waits for the event before the next startInTransfer().
+    */
+   virtual bool cancelInTransfer(uint8_t endpointAddress) = 0;
+
+   /**
     * @brief Lets an OUT endpoint accept one packet. The controller reports it with
     * ControllerEvents::outPacketReceived().
     */
