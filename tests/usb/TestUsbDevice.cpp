@@ -771,6 +771,49 @@ TEST_CASE("[usb::Device] data endpoints are routed to their function") {
    CHECK_FALSE(fixture.device.startInTransfer(0x84u, art::span<const uint8_t>()));
 }
 
+TEST_CASE("[usb::Device] a function takes back an IN packet that the host has not read") {
+   Fixture fixture;
+   FakeDeviceController &controller = fixture.controller;
+   fixture.enumerate();
+   const std::array<uint8_t, 3> packet{ 1u, 2u, 3u };
+   const art::span<const uint8_t> data(packet.data(), packet.size());
+
+   SUBCASE("a pending packet is dropped without an event") {
+      REQUIRE(fixture.device.startInTransfer(0x83u, data));
+      CHECK(fixture.device.cancelInTransfer(0x83u));
+      CHECK_FALSE(controller.hasInPacket(0x83u));
+      CHECK_FALSE(controller.takeIn(0x83u).has_value());
+      CHECK(fixture.msc.inCompletions.empty());
+      // The endpoint takes the next packet, and the host reads only that one.
+      const std::array<uint8_t, 1> next{ 9u };
+      REQUIRE(fixture.device.startInTransfer(0x83u, art::span<const uint8_t>(next.data(), next.size())));
+      CHECK(controller.takeIn(0x83u) == std::vector<uint8_t>{ 9u });
+      CHECK(fixture.msc.inCompletions == std::vector<uint8_t>{ 0x83u });
+   }
+
+   SUBCASE("a packet that the host took keeps its event") {
+      controller.queueEvents(true);
+      REQUIRE(fixture.device.startInTransfer(0x83u, data));
+      CHECK(controller.takeIn(0x83u).has_value());
+      CHECK_FALSE(fixture.device.cancelInTransfer(0x83u));
+      CHECK(fixture.msc.inCompletions.empty());
+      controller.deliverQueuedEvents();
+      CHECK(fixture.msc.inCompletions == std::vector<uint8_t>{ 0x83u });
+      CHECK(fixture.device.cancelInTransfer(0x83u));
+   }
+
+   SUBCASE("no packet: nothing to take back") {
+      CHECK(fixture.device.cancelInTransfer(0x83u));
+      CHECK(fixture.msc.inCompletions.empty());
+   }
+
+   SUBCASE("EP0, OUT and closed endpoints are not available to functions") {
+      CHECK(fixture.device.cancelInTransfer(0x80u));
+      CHECK(fixture.device.cancelInTransfer(0x02u));
+      CHECK(fixture.device.cancelInTransfer(0x84u));
+   }
+}
+
 TEST_CASE("[usb::Device] suspend, resume and bus reset") {
    Fixture fixture;
    FakeDeviceController &controller = fixture.controller;

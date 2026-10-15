@@ -23,6 +23,8 @@ namespace art::usb::test {
  *   OUT arm) before it is reported;
  * - startInTransfer() and armOutTransfer() on EP0 end a protocol stall of EP0;
  * - setEndpointStall() (true and false) drops a queued IN packet and the OUT arm of the endpoint;
+ * - cancelInTransfer() drops a queued IN packet. It returns false while the event of a packet that the host took
+ *   waits in the queue (see "Queued events");
  * - setAddress() keeps the address pending until the host acknowledges the zero-length status packet on EP0; a
  *   SETUP packet or a bus reset drops it.
  *
@@ -110,6 +112,12 @@ class FakeDeviceController : public DeviceController {
       }
       inPackets_[endpointAddress] = std::vector<uint8_t>(packet.begin(), packet.end());
       return true;
+   }
+
+   bool cancelInTransfer(uint8_t endpointAddress) override {
+      inPackets_.erase(endpointAddress);
+      const auto waiting = inEventsQueued_.find(endpointAddress);
+      return waiting == inEventsQueued_.end() || waiting->second == 0;
    }
 
    void armOutTransfer(uint8_t endpointAddress) override {
@@ -235,7 +243,16 @@ class FakeDeviceController : public DeviceController {
          address_ = *pendingAddress_;
          pendingAddress_.reset();
       }
-      emit([this, endpointAddress] { handler_->inPacketSent(endpointAddress); });
+      const bool queued = queueEvents_;
+      if(queued) {
+         ++inEventsQueued_[endpointAddress];
+      }
+      emit([this, endpointAddress, queued] {
+         if(queued) {
+            --inEventsQueued_[endpointAddress];
+         }
+         handler_->inPacketSent(endpointAddress);
+      });
       return packet;
    }
 
@@ -388,6 +405,8 @@ class FakeDeviceController : public DeviceController {
    std::set<uint8_t> armed_;
    std::map<uint8_t, std::vector<uint8_t>> inPackets_;
    std::map<uint8_t, int> toggleResets_;
+   // inPacketSent() events in the queue, for each endpoint
+   std::map<uint8_t, int> inEventsQueued_;
    std::optional<uint8_t> failOpenOf_;
 };
 

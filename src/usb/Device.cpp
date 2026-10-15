@@ -148,6 +148,13 @@ bool Device::startInTransfer(uint8_t endpointAddress, art::span<const uint8_t> p
    return controller_.startInTransfer(endpointAddress, packet);
 }
 
+bool Device::cancelInTransfer(uint8_t endpointAddress) {
+   if(!isInEndpoint(endpointAddress) || endpointNumber(endpointAddress) == 0u || !isEndpointOpen(endpointAddress)) {
+      return true;
+   }
+   return controller_.cancelInTransfer(endpointAddress);
+}
+
 void Device::armOutTransfer(uint8_t endpointAddress) {
    if(isInEndpoint(endpointAddress) || endpointNumber(endpointAddress) == 0u || !isEndpointOpen(endpointAddress)) {
       return;
