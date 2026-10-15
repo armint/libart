@@ -115,6 +115,7 @@ class FakeDeviceController : public DeviceController {
    }
 
    bool cancelInTransfer(uint8_t endpointAddress) override {
+      ++cancelCalls_[endpointAddress];
       inPackets_.erase(endpointAddress);
       const auto waiting = inEventsQueued_.find(endpointAddress);
       return waiting == inEventsQueued_.end() || waiting->second == 0;
@@ -175,6 +176,12 @@ class FakeDeviceController : public DeviceController {
 
    [[nodiscard]] bool hasInPacket(uint8_t endpointAddress) const {
       return inPackets_.count(endpointAddress) != 0u;
+   }
+
+   /// How often the protocol layer called cancelInTransfer() on the endpoint.
+   [[nodiscard]] int cancelCalls(uint8_t endpointAddress) const {
+      const auto count = cancelCalls_.find(endpointAddress);
+      return count == cancelCalls_.end() ? 0 : count->second;
    }
 
    /// How often setEndpointStall(false) reset the data toggle of the endpoint.
@@ -405,6 +412,7 @@ class FakeDeviceController : public DeviceController {
    std::set<uint8_t> armed_;
    std::map<uint8_t, std::vector<uint8_t>> inPackets_;
    std::map<uint8_t, int> toggleResets_;
+   std::map<uint8_t, int> cancelCalls_;
    // inPacketSent() events in the queue, for each endpoint
    std::map<uint8_t, int> inEventsQueued_;
    std::optional<uint8_t> failOpenOf_;

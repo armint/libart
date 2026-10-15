@@ -809,6 +809,8 @@ TEST_CASE("[usb::Device] a function takes back an IN packet that the host has no
       CHECK(fixture.device.cancelInTransfer(0x83u));
       CHECK(controller.isStalled(0x83u));
       CHECK(fixture.device.isEndpointHalted(0x83u));
+      // A NAK write would end the STALL on the STM32 FS peripheral.
+      CHECK(controller.cancelCalls(0x83u) == 0);
    }
 
    SUBCASE("no packet: nothing to take back") {
