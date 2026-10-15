@@ -139,7 +139,8 @@ class Device final : public ControllerEvents {
    bool startInTransfer(uint8_t endpointAddress, art::span<const uint8_t> packet);
 
    /// For functions: takes back an IN packet that the host has not read (see DeviceController::cancelInTransfer()).
-   /// Returns true also for EP0, an OUT endpoint and an endpoint that is not open: no event is to come for them.
+   /// Returns true also for EP0, an OUT endpoint, an endpoint that is not open and a halted endpoint (the halt
+   /// dropped the packet): no event is to come for them, and the halt stays.
    bool cancelInTransfer(uint8_t endpointAddress);
 
    /// For functions: lets an OUT endpoint accept one packet (see DeviceController::armOutTransfer()).

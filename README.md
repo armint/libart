@@ -444,7 +444,8 @@ with NAK. The protocol layer splits transfers into packets and adds zero-length 
 - `cancelInTransfer()` drops an IN packet that the host has not acknowledged. No event is reported for it, and the
   data toggle does not change. The endpoint NAKs until the next `startInTransfer()`. A packet that the host
   acknowledged before the call keeps its event. Then `cancelInTransfer()` returns false, and the caller waits for
-  `inPacketSent()` before it sends the next packet.
+  `inPacketSent()` before it sends the next packet. Limit: if the host received the packet but its ACK was lost, the
+  host discards the next packet as a repeat. `Device::cancelInTransfer()` does not touch a halted endpoint.
 - `Device` calls `setAddress()` when it accepts SET_ADDRESS, before the status stage. The controller applies the
   address in hardware when the host acknowledges the zero-length status packet on EP0 (STM32 FS: in the handler of
   that IN completion). A peripheral that needs the address before the status stage writes it at once. The

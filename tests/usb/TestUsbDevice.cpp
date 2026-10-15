@@ -784,6 +784,7 @@ TEST_CASE("[usb::Device] a function takes back an IN packet that the host has no
       CHECK_FALSE(controller.hasInPacket(0x83u));
       CHECK_FALSE(controller.takeIn(0x83u).has_value());
       CHECK(fixture.msc.inCompletions.empty());
+      CHECK(controller.toggleResets(0x83u) == 0);
       // The endpoint takes the next packet, and the host reads only that one.
       const std::array<uint8_t, 1> next{ 9u };
       REQUIRE(fixture.device.startInTransfer(0x83u, art::span<const uint8_t>(next.data(), next.size())));
@@ -800,6 +801,14 @@ TEST_CASE("[usb::Device] a function takes back an IN packet that the host has no
       controller.deliverQueuedEvents();
       CHECK(fixture.msc.inCompletions == std::vector<uint8_t>{ 0x83u });
       CHECK(fixture.device.cancelInTransfer(0x83u));
+   }
+
+   SUBCASE("a halted endpoint keeps its halt") {
+      REQUIRE(fixture.device.startInTransfer(0x83u, data));
+      fixture.device.haltEndpoint(0x83u);
+      CHECK(fixture.device.cancelInTransfer(0x83u));
+      CHECK(controller.isStalled(0x83u));
+      CHECK(fixture.device.isEndpointHalted(0x83u));
    }
 
    SUBCASE("no packet: nothing to take back") {

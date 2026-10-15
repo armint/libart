@@ -143,10 +143,10 @@ class DeviceController {
    /**
     * @brief Takes back the IN packet of the last startInTransfer() if the host has not acknowledged it.
     *
-    * The endpoint then NAKs until the next startInTransfer(). The data toggle does not change: the host did not
-    * acknowledge the packet, so the next packet has the toggle that the host expects. No event is reported for a
-    * packet that is taken back. A packet that the host acknowledged before the call is not taken back: its event is
-    * still reported, as for setEndpointStall().
+    * The endpoint then NAKs until the next startInTransfer(). The data toggle does not change. No event is reported
+    * for a packet that is taken back. A packet that the host acknowledged before the call is not taken back: its
+    * event is still reported, as for setEndpointStall(). Limit: if the host received the packet but its ACK was lost,
+    * the host discards the next packet as a repeat. The call has no effect on a stalled endpoint.
     *
     * Use it for a packet that is no longer valid and that the host may never read, for example the reply of a
     * protocol to a host that has gone on with the next command.
