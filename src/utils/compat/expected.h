@@ -510,26 +510,22 @@ class expected : private detail::expected_storage<T, E>,
       : Storage(unexpect, std::move(error).error()) {
    }
 
-   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, false>,
-             std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
+   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, false>, std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
    expected(const expected<U, G> &other)
       : Storage(detail::expected_convert, other) {
    }
 
-   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, false>,
-             std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
+   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, false>, std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
    explicit expected(const expected<U, G> &other)
       : Storage(detail::expected_convert, other) {
    }
 
-   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, true>,
-             std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
+   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, true>, std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
    expected(expected<U, G> &&other)
       : Storage(detail::expected_convert, std::move(other)) {
    }
 
-   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, true>,
-             std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
+   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, true>, std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
    explicit expected(expected<U, G> &&other)
       : Storage(detail::expected_convert, std::move(other)) {
    }
@@ -732,26 +728,22 @@ class expected<void, E> : private detail::expected_storage<detail::expected_void
       : Storage(unexpect, std::move(error).error()) {
    }
 
-   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, false>,
-             std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
+   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, false>, std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
    expected(const expected<U, G> &other)
       : Storage(detail::expected_convert, other) {
    }
 
-   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, false>,
-             std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
+   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, false>, std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
    explicit expected(const expected<U, G> &other)
       : Storage(detail::expected_convert, other) {
    }
 
-   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, true>,
-             std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
+   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, true>, std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
    expected(expected<U, G> &&other)
       : Storage(detail::expected_convert, std::move(other)) {
    }
 
-   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, true>,
-             std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
+   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, true>, std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
    explicit expected(expected<U, G> &&other)
       : Storage(detail::expected_convert, std::move(other)) {
    }
