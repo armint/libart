@@ -2,10 +2,28 @@
 #include "ModbusCodes.h"
 
 #include <streams/ArrayReadable.h>
+#include <streams/ArrayWritable.h>
 
 #include <array>
 
 namespace modbus {
+
+namespace {
+// ArrayWritable reports a write that does not fit only to the caller. The read callback can ignore it, so remember it.
+class ReplyWritable : public ArrayWritable {
+   public:
+   using ArrayWritable::ArrayWritable;
+   bool overflow = false;
+
+   art::expected<size_t, Error> write(art::span<const uint8_t> data) override {
+      auto res = ArrayWritable::write(data);
+      if(!res) {
+         overflow = true;
+      }
+      return res;
+   }
+};
+} // namespace
 
 ModbusSlave::ModbusSlave(Readable &readable, Writable &writable, art::span<uint8_t> buffer, enabler_t rxEnabler, enabler_t txEnabler)
    : readable_(readable)
@@ -45,6 +63,28 @@ art::expected<size_t, Writable::Error> ModbusSlave::CRCWritable::writeCRC() {
    return sink_.write(crc);
 }
 
+uint8_t ModbusSlave::exceptionCode(Result result) {
+   switch(result) {
+   case Result::AddressOutOfRange:
+      return ILLEGAL_ADDRESS;
+   case Result::IllegalValue:
+      return ILLEGAL_VALUE;
+   case Result::CouldNotRead:
+   default:
+      return FAILURE;
+   }
+}
+
+void ModbusSlave::endReply() {
+   writable_.flush();
+   enableTx(false);
+   // On a half-duplex line the receiver also gets our own reply. Drop it, so that it is not parsed as a request.
+   if(buffered_readable_ != nullptr) {
+      buffered_readable_->clear();
+   }
+   enableRx(true);
+}
+
 art::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t function, uint8_t exceptionCode) {
    enableRx(false);
    enableTx(true);
@@ -52,16 +92,12 @@ art::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t funct
    uint8_t header[3] = { address_, static_cast<uint8_t>(function | 0x80), exceptionCode };
    auto res = w.write(header);
    if(!res) {
-      writable_.flush();
-      enableTx(false);
-      enableRx(true);
+      endReply();
       return res;
    }
    auto count = res.value();
    res = w.writeCRC();
-   writable_.flush();
-   enableTx(false);
-   enableRx(true);
+   endReply();
    if(!res) {
       return res;
    }
@@ -99,32 +135,39 @@ bool ModbusSlave::handleReadRegisters(ModbusSlave::CRCReadable &r, const uint8_t
       }
       return true;
    }
-   if(!isBroadcast) {
-      enableRx(false);
-      enableTx(true);
-      CRCWritable w(writable_);
-      uint8_t header[3] = { address_, function, static_cast<uint8_t>(count * 2) };
-      auto res = w.write(header);
-      if(!res) {
-         // TODO logging!
-         writable_.flush();
-         enableTx(false);
-         enableRx(true);
-         return true;
-      }
-      if(cb(cb_arg, start, count, w) == Result::AddressOutOfRange) {
-         writeException(function, ResultCode::ILLEGAL_ADDRESS);
-         // writeException handles the enables
-         return true;
-      }
-      w.writeCRC();
-      writable_.flush();
-      enableTx(false);
-      enableRx(true);
-
-      if(!res) {
-         // TODO logging!
-      }
+   if(isBroadcast) {
+      return true;
+   }
+   const size_t byteCount = count * 2;
+   if(byteCount > buffer_.size()) {
+      (void)writeException(function, ResultCode::ILLEGAL_VALUE);
+      return true;
+   }
+   // The callback writes into the buffer first, so that an error gives an exception frame and never a partial reply
+   ReplyWritable data(buffer_.subspan(0, byteCount));
+   const Result result = cb(cb_arg, start, count, data);
+   if(result != Result::Ok) {
+      (void)writeException(function, exceptionCode(result));
+      return true;
+   }
+   if(data.overflow || data.position() != byteCount) {
+      (void)writeException(function, ResultCode::FAILURE);
+      return true;
+   }
+   enableRx(false);
+   enableTx(true);
+   CRCWritable w(writable_);
+   uint8_t header[3] = { address_, function, static_cast<uint8_t>(byteCount) };
+   auto res = w.write(header);
+   if(res) {
+      res = w.write(buffer_.subspan(0, byteCount));
+   }
+   if(res) {
+      res = w.writeCRC();
+   }
+   endReply();
+   if(!res) {
+      // TODO logging!
    }
    return true;
 }
@@ -145,7 +188,7 @@ bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, cons
    }
    const uint8_t byteCount = static_cast<uint8_t>(byteCountRes.value());
    // We cannot accept more registers than we can buffer
-   if(count == 0 || byteCount > buffer_.size() || byteCount != count * 2) {
+   if(count == 0 || count > 123 || byteCount > buffer_.size() || byteCount != count * 2) {
       if(!isBroadcast) {
          r.readCRCAndValidate();
          (void)writeException(function, ResultCode::ILLEGAL_VALUE);
@@ -172,19 +215,7 @@ bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, cons
    const Result ok = writeHolding_(write_holding_arg_, start, readable);
    if(ok != Result::Ok) {
       if(!isBroadcast) {
-         ResultCode code;
-         switch(ok) {
-         case Result::AddressOutOfRange:
-            code = ILLEGAL_ADDRESS;
-            break;
-         case Result::IllegalValue:
-            code = ILLEGAL_VALUE;
-            break;
-         case Result::CouldNotRead:
-         default:
-            code = FAILURE;
-         }
-         writeException(function, code);
+         writeException(function, exceptionCode(ok));
       }
       return true;
    }
@@ -204,9 +235,7 @@ bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, cons
       } else {
          res = w.writeCRC();
       }
-      writable_.flush();
-      enableTx(false);
-      enableRx(true);
+      endReply();
       if(!res) {
          // TODO LOGGING!
       }
