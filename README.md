@@ -7,7 +7,9 @@ streams, logging, Modbus, settings, storage and utilities. `AGENTS.md` describes
 
 - C++17 or newer, with GCC 11 or later or Clang 9 or later (`utils/compat/bit.h` needs `__builtin_bit_cast`). CI
   builds and tests with GCC at C++17, C++20 and C++23, and with Clang at C++17 and C++23. These minimum versions are
-  not tested: CI uses GCC 14.2, Clang 20.1 and arm-none-eabi-gcc 14.3 (`firmware-builder:v1.14.0`).
+  not tested: CI uses GCC 14.2 and Clang 20.1, with arm-none-eabi-gcc 15.3 on GitHub Actions
+  (`.github/workflows/`, image `ghcr.io/armint/firmware-build-image:v1.15.0`) and 14.3 on GitLab CI (`.gitlab-ci.yml`,
+  `firmware-builder:v1.14.0`).
 - With `ART_USE_STD_EXPECTED_SPAN=ON` (the default unless `CMAKE_CXX_STANDARD` is below 23, see below), C++23:
   `art-core`, `art-rtos` and `art-storage-littlefs` then require `cxx_std_23`. With `OFF` they require
   `cxx_std_17`. Both are minimums, not pins: a superproject may build at a newer standard.
@@ -78,6 +80,11 @@ component fetches span-compat also with the `std` types (see "`ART_USE_STD_EXPEC
 **`ETL_NO_STL` is not supported.** With `ETL_NO_STL`, ETL defines its own `std::initializer_list`, which conflicts
 with the standard library headers that libArT includes.
 
+## Contributing
+
+The repository has one branch: `main`. All work, bug fixes too, goes to `main` through a pull request on
+[GitHub](https://github.com/armint/libart). Use a tag or a commit of `main` in your submodule.
+
 ## Formatting
 
 The sources in `src/` and `tests/` are formatted with clang-format 20 and the `.clang-format` of the repository.
@@ -86,7 +93,7 @@ Third-party sources are listed in `.clang-format-ignore` and keep the format of 
 - `cmake --build <build_dir> --target clangformat` formats all files in place.
 - `cmake --build <build_dir> --target clangformat-check` changes nothing and fails if a file is not formatted. The CI
   job `format` runs it.
-- `git clang-format-20 origin/dev` formats only the lines that you changed.
+- `git clang-format-20 origin/main` formats only the lines that you changed.
 
 The targets exist only when CMake finds clang-format 18 or later and libArT is the top-level project (see
 `cmake/clang-format.cmake`). Other major versions than 20 can format differently.

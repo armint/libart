@@ -5,7 +5,7 @@
  * @brief art::span: std::span in a build with ART_USE_STD_EXPECTED_SPAN=1, the span of span-compat otherwise.
  *
  * See utils/compat/config.h for how the choice is made. With ART_USE_STD_EXPECTED_SPAN=0, art::span is
- * span_compat::span (embedded-libraries/span-compat), the span that system-stm32 uses in its public interface, so
+ * span_compat::span (https://github.com/armint/span-compat), the span that system-stm32 uses in its public interface, so
  * that both libraries pass the same type. The CMake build of art-core configures span-compat with
  * SPAN_COMPAT_USE_STD_SPAN=OFF, so span_compat::span is the own span of span-compat in every translation unit, also
  * at C++20 or later. Both are brought in with a using-declaration, not with an alias template, so that class template
