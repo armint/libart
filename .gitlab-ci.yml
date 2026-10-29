@@ -48,9 +48,10 @@ default:
 # just doesn't build the test binary — the test job below does that.
 # The second build compiles art-core and art-storage-littlefs with LOGGING_DISABLED, the form of the LOG_* macros
 # (src/logging/Logger.h) that no test binary uses, so that a mistake in it breaks the pipeline.
-# The last checks show that the minimum standard of art-core follows ART_USE_STD_EXPECTED_SPAN (see README.md,
-# "Requirements"), by the -std flag and the definition that CMake generates for art-core. They also show that art-core
-# uses span-compat with SPAN_COMPAT_USE_STD_SPAN=0 only with OFF, and that ON below C++23 stops the configure.
+# The last checks show that the minimum standard of art-core follows ART_USE_STD_EXPECTED_SPAN (see
+# docs/cmake-integration.md, "Requirements"), by the -std flag and the definition that CMake generates for art-core.
+# They also show that art-core uses span-compat with SPAN_COMPAT_USE_STD_SPAN=0 only with OFF, and that ON below
+# C++23 stops the configure.
 build:
   stage: build
   cache:
@@ -117,8 +118,8 @@ format:
 # - C++23 (GCC, Clang): the default, with std::expected and std::span (ART_USE_STD_EXPECTED_SPAN=ON). These cells
 #   also build and run the two compat binaries, whose standard is fixed (see tests/CMakeLists.txt):
 #   libArT-compat-tests-cpp17 and libArT-compat-tests-cpp23-own.
-# - C++20 (GCC): the own art::expected and etl::span (ART_USE_STD_EXPECTED_SPAN=OFF, C++20 has std::span but not
-#   std::expected), with all tests.
+# - C++20 (GCC): the own art::expected and the own span of span-compat (ART_USE_STD_EXPECTED_SPAN=OFF, C++20 has
+#   std::span but not std::expected), with all tests.
 # - C++17 (GCC, Clang): the own types, without the storage tests that need C++20 (tests/CMakeLists.txt).
 # The C++17 and C++20 cells build with CMAKE_CXX_EXTENSIONS=OFF, -Wpedantic -Werror=pedantic and
 # -Werror=c++20-extensions -Werror=c++23-extensions. GCC and Clang accept code of a newer standard in an older mode
