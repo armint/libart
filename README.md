@@ -78,6 +78,11 @@ component fetches span-compat also with the `std` types (see "`ART_USE_STD_EXPEC
 **`ETL_NO_STL` is not supported.** With `ETL_NO_STL`, ETL defines its own `std::initializer_list`, which conflicts
 with the standard library headers that libArT includes.
 
+## Contributing
+
+The repository has one branch: `main`. All work, bug fixes too, goes to `main` through a pull request on
+[GitHub](https://github.com/armint/libart). The project has no releases yet. Use a commit of `main` in your submodule.
+
 ## Formatting
 
 The sources in `src/` and `tests/` are formatted with clang-format 20 and the `.clang-format` of the repository.
@@ -86,7 +91,7 @@ Third-party sources are listed in `.clang-format-ignore` and keep the format of 
 - `cmake --build <build_dir> --target clangformat` formats all files in place.
 - `cmake --build <build_dir> --target clangformat-check` changes nothing and fails if a file is not formatted. The CI
   job `format` runs it.
-- `git clang-format-20 origin/dev` formats only the lines that you changed.
+- `git clang-format-20 origin/main` formats only the lines that you changed.
 
 The targets exist only when CMake finds clang-format 18 or later and libArT is the top-level project (see
 `cmake/clang-format.cmake`). Other major versions than 20 can format differently.
