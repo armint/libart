@@ -66,7 +66,7 @@ build:
     # The minimum standard follows ART_USE_STD_EXPECTED_SPAN. Default (no CMAKE_CXX_STANDARD): std types at C++23.
     - grep -q "ART_USE_STD_EXPECTED_SPAN=1" build/CMakeFiles/art-core.dir/flags.make
     - grep -Eq "std=(gnu|c)\+\+23" build/CMakeFiles/art-core.dir/flags.make
-    - '! grep -Eq "span_compat|SPAN_COMPAT" build/CMakeFiles/art-core.dir/flags.make'
+    - 'if grep -Eq "span_compat|SPAN_COMPAT" build/CMakeFiles/art-core.dir/flags.make; then echo "C++23 default uses span-compat"; exit 1; fi'
     # OFF set explicitly at C++23: the own types, still compiled at C++23.
     - cmake -B build-own-cpp23 -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D CMAKE_CXX_STANDARD=23 -D ART_USE_STD_EXPECTED_SPAN=OFF
     - cmake --build build-own-cpp23 --target art-core -j$(nproc)
@@ -78,7 +78,7 @@ build:
     - cmake -B build-own-default -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D ART_USE_STD_EXPECTED_SPAN=OFF
     - cmake --build build-own-default --target art-core -j$(nproc)
     - grep -q "ART_USE_STD_EXPECTED_SPAN=0" build-own-default/CMakeFiles/art-core.dir/flags.make
-    - '! grep -Eq "std=(gnu|c)\+\+2[0-9]" build-own-default/CMakeFiles/art-core.dir/flags.make'
+    - 'if grep -Eq "std=(gnu|c)\+\+2[0-9]" build-own-default/CMakeFiles/art-core.dir/flags.make; then echo "OFF default compiles above C++17"; exit 1; fi'
     - grep -q "SPAN_COMPAT_USE_STD_SPAN=0" build-own-default/CMakeFiles/art-core.dir/flags.make
     - grep -q "span_compat-src/include" build-own-default/CMakeFiles/art-core.dir/flags.make
     # ON with a standard below C++23 must stop the configure.
@@ -187,7 +187,7 @@ test:
 # ryu_float.c and TestFloatText.cpp at -O2 regardless of CMAKE_BUILD_TYPE specifically so this
 # finishes in a reasonable time (measured locally: under 8 minutes), but it is still too slow for
 # every push/MR pipeline, so it only runs automatically on a schedule - a weekly one, Sunday
-# 03:00 Europe/Amsterdam on dev, is configured in the project's pipeline schedules; otherwise it
+# 03:00 Europe/Amsterdam on main, is configured in the project's pipeline schedules; otherwise it
 # is a manual, non-blocking job (allow_failure so an untriggered/still-running manual job never
 # blocks the pipeline).
 float-exhaustive:
@@ -275,10 +275,10 @@ littlefs:
     # Default (option off): no binding target, no littlefs symbols in art-core.
     - cmake -B build-default -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
     - cmake --build build-default --target art-core -j$(nproc)
-    - '! cmake --build build-default --target help | grep -q art-storage-littlefs'
-    - '! nm build-default/libart-core.a | grep -Eq "lfs_|LittleFs"'
+    - 'if cmake --build build-default --target help | grep -q art-storage-littlefs; then echo "binding target without the option"; exit 1; fi'
+    - 'if nm build-default/libart-core.a | grep -Eq "lfs_|LittleFs"; then echo "littlefs code in art-core"; exit 1; fi'
     # Option on: the target builds, and art-core still contains no littlefs code.
     - cmake -B build-littlefs -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON
     - cmake --build build-littlefs --target art-storage-littlefs art-core -j$(nproc)
-    - '! nm build-littlefs/libart-core.a | grep -Eq "lfs_|LittleFs"'
+    - 'if nm build-littlefs/libart-core.a | grep -Eq "lfs_|LittleFs"; then echo "littlefs code in art-core"; exit 1; fi'
     - nm build-littlefs/libart-storage-littlefs.a | grep -q LittleFsFileSystemBase
