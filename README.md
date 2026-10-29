@@ -19,7 +19,7 @@ streams, logging, Modbus, settings, storage and utilities. `AGENTS.md` describes
   - `ON` with a `CMAKE_CXX_STANDARD` below 23 stops the configure step with an error.
   - The ESP-IDF component build sets no compile feature and does not define the option. `utils/compat/config.h`
     then chooses from the standard library of the `-std=` flag of the project (see below).
-- With `OFF`, `art::span` is the span of [span-compat](https://gitlab.vandertogt.org/embedded-libraries/span-compat).
+- With `OFF`, `art::span` is the span of [span-compat](https://github.com/armint/span-compat).
   CMake fetches span-compat only in this case. A build with `ON` does not fetch or link it. The ESP-IDF component
   is an exception: it always fetches span-compat. See
   "span-compat: one span type per build" below.
@@ -67,13 +67,12 @@ runs both.
 | Dependency | Linked | Notes |
 |---|---|---|
 | [ETL](https://github.com/ETLCPP/etl) (embedded template library) | **PUBLIC** | Public headers use ETL types, for example `storage/FileSystem.h`. With `add_subdirectory()`, a target that links `art::core` gets the ETL include path; the ESP-IDF component exports it as well. The installed package (`find_package(art-core)`) finds the installed ETL package and links `etl::etl` to `art::core` as well. |
-| [span-compat](https://gitlab.vandertogt.org/embedded-libraries/span-compat) | **PUBLIC**, only with `ART_USE_STD_EXPECTED_SPAN=OFF` | `art::span` is its span. The pin is a commit in `cmake/span-compat.cmake`. See "span-compat: one span type per build". |
+| [span-compat](https://github.com/armint/span-compat) | **PUBLIC**, only with `ART_USE_STD_EXPECTED_SPAN=OFF` | `art::span` is its span. The pin is a commit in `cmake/span-compat.cmake`. See "span-compat: one span type per build". |
 | [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | PRIVATE | Used by the JSON reader and writer. |
 | [Ryu](https://github.com/ulfjack/ryu) | PRIVATE | Used by `FloatText`, see `cmake/ryu.cmake`. |
 | [littlefs](https://github.com/littlefs-project/littlefs) | optional | Only for the `art-storage-littlefs` target (`ART_STORAGE_LITTLEFS`). |
 
-CMake fetches all of them with `FetchContent`. span-compat is a private repository of the GitLab server. To build
-without access to it, set `FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT` to a local checkout of span-compat. The ESP-IDF
+CMake fetches all of them with `FetchContent`. To build without network access, set `FETCHCONTENT_SOURCE_DIR_SPAN_COMPAT` to a local checkout of span-compat. The ESP-IDF
 component fetches span-compat also with the `std` types (see "`ART_USE_STD_EXPECTED_SPAN`" below).
 
 **`ETL_NO_STL` is not supported.** With `ETL_NO_STL`, ETL defines its own `std::initializer_list`, which conflicts

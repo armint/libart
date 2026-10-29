@@ -41,9 +41,6 @@ default:
     policy: pull
   before_script:
     - rm -rf .fetchcontent/*-subbuild/CMakeCache.txt .fetchcontent/*-subbuild/CMakeFiles
-    # span-compat (cmake/span-compat.cmake) is a private repository of this GitLab instance. FetchContent clones it
-    # with the job token, which the job token allowlist of span-compat must accept for this project.
-    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/".insteadOf "https://${CI_SERVER_HOST}/"
 
 # Builds the art-core static library target, the same one downstream
 # projects consume via add_subdirectory(). This still configures and
