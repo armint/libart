@@ -18,7 +18,7 @@ It contains:
 - **Utilities**: CRC and SHA-256, JSON, float-to-text conversion, ring buffers and more.
 
 libArT has no hardware code. A port for an MCU family, for example
-[libart-stm32](https://gitlab.vandertogt.org/embedded-libraries/libart-stm32), connects it to the peripherals.
+[libart-stm32](https://github.com/armint/libart-stm32), connects it to the peripherals.
 
 ## Usage
 
