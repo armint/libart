@@ -477,6 +477,61 @@ TEST_CASE("[compat] expected: construction forms") {
    CHECK(point.value().x == 8);
 }
 
+// Converting constructors: implicit when U and G convert implicitly, explicit otherwise; the same as std::expected.
+struct FromInt {
+   explicit FromInt(int v)
+      : value(v) {
+   }
+   int value;
+};
+
+static_assert(std::is_convertible_v<const art::expected<int, int32_t> &, art::expected<int, uint32_t>>);
+static_assert(std::is_convertible_v<art::expected<int, int32_t> &&, art::expected<int64_t, uint32_t>>);
+static_assert(std::is_convertible_v<art::expected<void, int32_t>, art::expected<void, uint32_t>>);
+static_assert(std::is_constructible_v<art::expected<FromInt, Error>, art::expected<int, Error>>);
+static_assert(!std::is_convertible_v<art::expected<int, Error>, art::expected<FromInt, Error>>);
+static_assert(std::is_constructible_v<art::expected<int, FromInt>, art::expected<int, int>>);
+static_assert(!std::is_convertible_v<art::expected<int, int>, art::expected<int, FromInt>>);
+static_assert(!std::is_constructible_v<art::expected<int, Error>, art::expected<Point, Error>>);
+static_assert(!std::is_constructible_v<art::expected<int, Error>, art::expected<int, Point>>);
+static_assert(!std::is_constructible_v<art::expected<void, Error>, art::expected<int, Error>>);
+static_assert(!std::is_constructible_v<art::expected<int, Error>, art::expected<void, Error>>);
+// A move-only source converts by move only.
+static_assert(!std::is_constructible_v<art::expected<MoveOnly, Error>, const art::expected<MoveOnly, Error> &>);
+
+TEST_CASE("[compat] expected: converting constructors") {
+   const art::expected<int, int32_t> value = 5;
+   const art::expected<int, int32_t> error = art::unexpected(int32_t{ -1 });
+
+   art::expected<int64_t, uint32_t> fromValue = value;
+   REQUIRE(fromValue.has_value());
+   CHECK(*fromValue == 5);
+   art::expected<int64_t, uint32_t> fromError = error;
+   REQUIRE(!fromError.has_value());
+   CHECK(fromError.error() == 0xFFFFFFFFu);
+
+   art::expected<FromInt, Error> explicitValue(art::expected<int, Error>(7));
+   REQUIRE(explicitValue.has_value());
+   CHECK(explicitValue->value == 7);
+
+   art::expected<void, uint32_t> voidValue = art::expected<void, int32_t>();
+   CHECK(voidValue.has_value());
+   art::expected<void, uint32_t> voidError = art::expected<void, int32_t>(art::unexpect, 3);
+   REQUIRE(!voidError.has_value());
+   CHECK(voidError.error() == 3u);
+
+   // The move constructor moves the value and the error, and destroys the source normally.
+   {
+      art::expected<MoveOnly, Error> source(std::in_place, 9);
+      art::expected<MoveOnly, Error> moved = std::move(source);
+      art::expected<MoveOnly, Error> again(std::move(moved));
+      REQUIRE(again.has_value());
+      CHECK(again->handle() == 9);
+      CHECK(MoveOnly::live == 3);
+   }
+   CHECK(MoveOnly::live == 0);
+}
+
 TEST_CASE("[compat] expected: value_or") {
    const art::expected<int, Error> value = 3;
    const art::expected<int, Error> error = art::unexpected(Error::Io);
