@@ -240,7 +240,7 @@ TEST_CASE("FloatText::parseFloat - sampled comparison against the host's strtof"
          CHECK((delta == 1 || delta == -1));
          offByOne++;
       }
-      // Documents the measured error rate this MR reports in FloatText.h; not a tight bound, just
+      // Documents the measured error rate that FloatText.h states; not a tight bound, just
       // a sanity check that it is in the right ballpark rather than, say, 50%.
       CHECK(offByOne < kSamples / 10);
    }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verifies, with a real cross-compile and link, the two size claims made for FloatText
-# (src/utils/FloatText.h, tracking issue embedded-libraries/libArT-proto#28):
+# (src/utils/FloatText.h):
 #
 #   1. A program that never calls utils::FloatText::formatFloat()/parseFloat() links none of
 #      FloatText's or Ryu's code.

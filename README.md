@@ -83,7 +83,7 @@ with the standard library headers that libArT includes.
 ## Contributing
 
 The repository has one branch: `main`. All work, bug fixes too, goes to `main` through a pull request on
-[GitHub](https://github.com/armint/libart). The project has no releases yet. Use a commit of `main` in your submodule.
+[GitHub](https://github.com/armint/libart). Use a tag or a commit of `main` in your submodule.
 
 ## Formatting
 
