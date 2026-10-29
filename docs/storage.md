@@ -33,7 +33,8 @@ part of `art-core`. `diskio.cpp` converts the FatFs sectors of 512 bytes into by
 - `diskio.cpp` maps `Error::NotReady` and `Error::NotInitialised` to `RES_NOTRDY`, `WriteProtected` to `RES_WRPRT`,
   `InvalidArgument` to `RES_PARERR` and all other errors to `RES_ERROR`.
 - After `NotReady` or `NotInitialised`, the drive is not ready until `init()` succeeds again. The next `f_mount()`
-  calls `init()`. Thus a driver reports a removed SD card with `Error::NotReady`.
+  calls `init()`. A driver must report a removed SD card with
+  `Error::NotReady`.
 
 ## LittleFS: `LittleFsFileSystem`
 
@@ -54,8 +55,9 @@ is in the optional target `art::storage-littlefs`. Set `ART_STORAGE_LITTLEFS=ON`
 
 After a remount, or after an unclean power-down, littlefs can hide one directory entry. This is the entry that
 follows the moved entry of a `rename()`, in the directory that the rename moved it from.
-`visitDirectory()` misses it, and `stat()`, `open()` for read and `readFile()` report `NoEntry` for it. littlefs repairs this only in its first call that changes the volume. The cause is an
-upstream regression (littlefs commit ddbfcaa7, in v2.9.1 to v2.11.3).
+`visitDirectory()` misses it, and `stat()`, `open()` for read and `readFile()` report `NoEntry` for it.
+littlefs repairs this only in its first call that changes the volume. The cause is an upstream regression
+(littlefs commit ddbfcaa7, in v2.9.1 to v2.11.3).
 
 Thus, once per boot:
 
