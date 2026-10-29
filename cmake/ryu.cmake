@@ -7,7 +7,9 @@
 # verifiable offline. Set FETCHCONTENT_SOURCE_DIR_RYU to a local checkout to build offline instead
 # of fetching it. Populate only, never add_subdirectory(): Ryu's own CMakeLists.txt also builds
 # the double conversion (d2s.c and friends), which this project has no use for;
-# src/utils/ryu_float.c includes only the two float-only .c files it needs.
+# src/utils/ryu_float.c includes only the two float-only .c files it needs. SOURCE_SUBDIR names a
+# directory without a CMakeLists.txt, so FetchContent_MakeAvailable() only populates. A direct
+# FetchContent_Populate() call is deprecated since CMake 3.30 (policy CMP0169).
 #
 # Included from the top-level CMakeLists.txt (both the ESP-IDF and the standalone path) and from
 # tests/CMakeLists.txt, so the URL and hash live in exactly one place.
@@ -22,8 +24,6 @@ endif()
 FetchContent_Declare(ryu
         URL https://github.com/ulfjack/ryu/archive/4c0618b0e44f7ef027ebae05d2cc7812048f7c8f.tar.gz
         URL_HASH SHA256=5c039f2957769c5f61a8699b12d8703043b3f47c3ac6e2124c5a04afb6819f29
+        SOURCE_SUBDIR no-cmake-project
 )
-FetchContent_GetProperties(ryu)
-if(NOT ryu_POPULATED)
-    FetchContent_Populate(ryu)
-endif()
+FetchContent_MakeAvailable(ryu)
