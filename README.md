@@ -43,7 +43,7 @@ Include the headers with their path below `src/`:
 static logging::Logger logger("app");
 
 void report(Writable &uart, int temperature) {
-   char text[32];
+   char text[32] = {}; // StringWritable adds no terminating zero
    StringWritable out(text);
    out.printf("T=%d C", temperature);
 
@@ -76,7 +76,9 @@ licenses:
 
 - `src/storage/fatfs/`: FatFs, under the FatFs license (`src/storage/fatfs/LICENSE.txt`).
 - `src/utils/lists.h` and `src/utils/lists.cpp`: from µOS++, MIT License.
-- `src/utils/tfp_printf.h` and `src/utils/tfp_printf.cpp`: from Kustaa Nyholm / SpareTimeLabs, BSD license.
+- `src/utils/tfp_printf.h` and `src/utils/tfp_printf.cpp`: from Kustaa Nyholm / SpareTimeLabs, BSD 3-clause
+  license. `art-core` always contains this code. Thus a firmware that links `art-core` must include its copyright
+  notice and license (in `src/utils/tfp_printf.h`) in its documentation.
 
 CMake fetches the dependencies (ETL, ArduinoJson, Ryu, span-compat and littlefs). They have their own licenses. Ryu
 is used under the Boost Software License 1.0.

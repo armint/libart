@@ -44,13 +44,17 @@ is in the optional target `art::storage-littlefs`. Set `ART_STORAGE_LITTLEFS=ON`
 - CMake fetches littlefs v2.11.3, pinned by commit and SHA-256. A superproject that defines its own `littlefs`
   target sets the version. The binding accepts only the reviewed versions v2.9 and v2.11 (a `static_assert` on
   `LFS_VERSION`). Both use the same on-disk format.
-- `mount()` and `format()` refuse a device without an erase unit.
+- `mount()` and `format()` refuse a device without an erase unit, and a geometry that does not fit the cache size.
+  They then return `Error::InvalidArgument`. See "Geometry" in `LittleFsFileSystem.h`.
+- If littlefs reports the volume as corrupt, `mount()` formats the device once and mounts again. A blank chip and a
+  chip with another file system look corrupt. **Thus `mount()` erases the data of a corrupt volume, also when a
+  repair is possible.** Other errors, for example `Io`, do not cause a format.
 
 ### Boot sequence
 
-After a remount, or after an unclean power-down, littlefs can hide one directory entry. The entry is the one after
-an entry that a `rename()` moved. `visitDirectory()` misses it, and `stat()`, `open()` for read and `readFile()`
-report `NoEntry` for it. littlefs repairs this only in its first call that changes the volume. The cause is an
+After a remount, or after an unclean power-down, littlefs can hide one directory entry. This is the entry that
+follows the moved entry of a `rename()`, in the directory that the rename moved it from.
+`visitDirectory()` misses it, and `stat()`, `open()` for read and `readFile()` report `NoEntry` for it. littlefs repairs this only in its first call that changes the volume. The cause is an
 upstream regression (littlefs commit ddbfcaa7, in v2.9.1 to v2.11.3).
 
 Thus, once per boot:

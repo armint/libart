@@ -22,8 +22,12 @@ tests in other configurations:
 - `libArT-tests-float` defines `PRINTF_ENABLE_FLOATING_POINT` (the `%f` conversion of `tfp_printf`).
 - `libArT-tests-float-64bit` defines both.
 
-`libArT-tests` uses neither macro, as the shipped `art-core` does. The CI job `test` builds and runs all four with
-GCC at C++17, C++20 and C++23, and with Clang at C++17 and C++23 (see `.gitlab-ci.yml`).
+`libArT-tests` uses neither macro, because the shipped `art-core` does not use them. The CI job `test` builds and runs
+all four with GCC at C++17, C++20 and C++23, and with Clang at C++17 and C++23 (see `.gitlab-ci.yml`).
+
+Two compat binaries have a fixed standard: `libArT-compat-tests-cpp17` (C++17) and `libArT-compat-tests-cpp23-own`
+(C++23 with the own types). A build has them only when it fetches span-compat. The C++23 cells of the CI job
+`test` build and run them.
 The scripts `tests/check-install.sh` and `tests/check-subproject.sh` check the installed package and the use as a
 subproject (see [Using libArT in a CMake project](cmake-integration.md)).
 
