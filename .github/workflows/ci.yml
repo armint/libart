@@ -26,6 +26,11 @@ defaults:
 # cache: each job downloads the dependencies again.
 env:
   FETCHCONTENT_BASE_DIR: ${{ github.workspace }}/.fetchcontent
+  # cmake/generate_version.cmake and check-install.sh run git in the checkout. The checkout belongs to another user
+  # than the container user, so git refuses it ("dubious ownership") without this safe.directory setting.
+  GIT_CONFIG_COUNT: 1
+  GIT_CONFIG_KEY_0: safe.directory
+  GIT_CONFIG_VALUE_0: ${{ github.workspace }}
 
 jobs:
   # Builds art-core, and art-core with art-storage-littlefs with LOGGING_DISABLED. Then checks that the minimum
@@ -35,6 +40,8 @@ jobs:
     container: ghcr.io/armint/firmware-build-image:v1.15.0
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: |
           configure() { cmake -B "$1" -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release "${@:2}"; }
           configure build
@@ -71,6 +78,8 @@ jobs:
     container: ghcr.io/armint/firmware-build-image:v1.15.0
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: |
           cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" | tee configure.log
           grep "clangformat targets:" configure.log
@@ -97,6 +106,8 @@ jobs:
       CXX_STANDARD: ${{ matrix.cxx }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: |
           if [ "$COMPILER" = clang ]; then export CC=clang CXX=clang++; else export CC=gcc CXX=g++; fi
           $CXX --version
@@ -153,6 +164,8 @@ jobs:
       REQUIRE_TOOLCHAIN: "1"
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: |
           cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
           CXX_STANDARD=17 ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" \
@@ -169,6 +182,8 @@ jobs:
       REQUIRE_TOOLCHAIN: "1"
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: |
           cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
           ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" \
@@ -181,8 +196,8 @@ jobs:
     container: ghcr.io/armint/firmware-build-image:v1.15.0
     steps:
       - uses: actions/checkout@v5
-      # check-install.sh runs git ls-files. The checkout belongs to another user than the container user.
-      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        with:
+          fetch-depth: 0
       - run: |
           CXX_STANDARD=17 ./tests/check-install.sh
           CXX_STANDARD=23 ./tests/check-install.sh
@@ -194,6 +209,8 @@ jobs:
     container: ghcr.io/armint/firmware-build-image:v1.15.0
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: ./tests/check-subproject.sh
 
   # art-core stays free of littlefs with and without the optional art-storage-littlefs target, and that target builds.
@@ -202,6 +219,8 @@ jobs:
     container: ghcr.io/armint/firmware-build-image:v1.15.0
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: |
           # Default (option off): no binding target, no littlefs symbols in art-core.
           # grep without -q reads all of its input: with pipefail, -q can stop nm early with SIGPIPE, and the if then
