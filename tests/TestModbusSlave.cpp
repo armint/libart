@@ -577,3 +577,31 @@ TEST_CASE("[Modbus] Slave drops the echo of its reply on a half-duplex line") {
    CHECK_FALSE(slave.poll());
    CHECK(calls == 1);
 }
+
+TEST_CASE("[Modbus] Slave refuses a write of more than 123 registers") {
+   const uint16_t count = 124;
+   std::vector<uint8_t> request = {
+      0x01, FunctionCode::WriteMultipleHoldingRegisters, 0x00, 0x00, 0x00, static_cast<uint8_t>(count), static_cast<uint8_t>(count * 2)
+   };
+   request.resize(request.size() + count * 2, 0);
+   uint8_t crc[2];
+   compute_crc(request, crc);
+   request.push_back(crc[0]);
+   request.push_back(crc[1]);
+   ArrayReadable readable(request);
+   uint8_t txBuffer[16]{};
+   ArrayWritable writable(txBuffer);
+   std::vector<uint8_t> tmpBuf(256);
+   ModbusSlave slave(readable, writable, tmpBuf);
+   bool called = false;
+   slave.setWriteHoldingCallback(
+   +[](void *arg, uint16_t, BoundedReadable &) -> ModbusSlave::Result {
+      *static_cast<bool *>(arg) = true;
+      return ModbusSlave::Result::Ok;
+   },
+   &called);
+   CHECK(slave.poll());
+   CHECK_FALSE(called);
+   CHECK(std::vector<uint8_t>(txBuffer, txBuffer + writable.position()) ==
+         exception_frame(FunctionCode::WriteMultipleHoldingRegisters, ResultCode::ILLEGAL_VALUE));
+}

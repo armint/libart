@@ -188,7 +188,7 @@ bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, cons
    }
    const uint8_t byteCount = static_cast<uint8_t>(byteCountRes.value());
    // We cannot accept more registers than we can buffer
-   if(count == 0 || byteCount > buffer_.size() || byteCount != count * 2) {
+   if(count == 0 || count > 123 || byteCount > buffer_.size() || byteCount != count * 2) {
       if(!isBroadcast) {
          r.readCRCAndValidate();
          (void)writeException(function, ResultCode::ILLEGAL_VALUE);
