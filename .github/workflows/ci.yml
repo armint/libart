@@ -203,12 +203,14 @@ jobs:
       - uses: actions/checkout@v5
       - run: |
           # Default (option off): no binding target, no littlefs symbols in art-core.
+          # grep without -q reads all of its input: with pipefail, -q can stop nm early with SIGPIPE, and the if then
+          # reads a match as "no match".
           cmake -B build-default -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
           cmake --build build-default --target art-core -j$(nproc)
-          if cmake --build build-default --target help | grep -q art-storage-littlefs; then echo "binding target without the option"; exit 1; fi
-          if nm build-default/libart-core.a | grep -Eq "lfs_|LittleFs"; then echo "littlefs code in art-core"; exit 1; fi
+          if cmake --build build-default --target help | grep art-storage-littlefs >/dev/null; then echo "binding target without the option"; exit 1; fi
+          if nm build-default/libart-core.a | grep -E "lfs_|LittleFs" >/dev/null; then echo "littlefs code in art-core"; exit 1; fi
           # Option on: the target builds, and art-core still contains no littlefs code.
           cmake -B build-littlefs -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON
           cmake --build build-littlefs --target art-storage-littlefs art-core -j$(nproc)
-          if nm build-littlefs/libart-core.a | grep -Eq "lfs_|LittleFs"; then echo "littlefs code in art-core"; exit 1; fi
-          nm build-littlefs/libart-storage-littlefs.a | grep -q LittleFsFileSystemBase
+          if nm build-littlefs/libart-core.a | grep -E "lfs_|LittleFs" >/dev/null; then echo "littlefs code in art-core"; exit 1; fi
+          nm build-littlefs/libart-storage-littlefs.a | grep LittleFsFileSystemBase >/dev/null
