@@ -112,7 +112,9 @@ class ModbusSlave {
    public:
    /**
     * @brief Construct a new Modbus Slave object
-    * @param readable The readable stream to receive data from
+    * @param readable The readable stream to receive data from. After each reply the slave clears it, to drop the echo
+    *                 of the reply on a half-duplex line. For that, writable.flush() must return only after the last
+    *                 byte is sent.
     * @param writable The writable stream to send data to
     * @param buffer A buffer for the data of write requests and read replies. Its size limits the registers per request
     *               (size / 2); a full Modbus frame needs 250 bytes. The buffer must remain valid for the lifetime of
