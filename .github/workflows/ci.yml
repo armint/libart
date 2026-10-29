@@ -1,0 +1,214 @@
+name: CI
+
+# The same checks as .gitlab-ci.yml, in the public image of https://github.com/armint/firmware-build-image.
+# The comments of .gitlab-ci.yml explain each job in more detail. The exhaustive FloatText test is in
+# float-exhaustive.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to a pull request cancels its old run. Each commit on main keeps its run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+# The scripts in tests/ read the FetchContent dependencies (ETL, span-compat, Ryu) from this directory. There is no
+# cache: each job downloads the dependencies again.
+env:
+  FETCHCONTENT_BASE_DIR: ${{ github.workspace }}/.fetchcontent
+
+jobs:
+  # Builds art-core, and art-core with art-storage-littlefs with LOGGING_DISABLED. Then checks that the minimum
+  # standard of art-core and the span-compat use follow ART_USE_STD_EXPECTED_SPAN (README.md, "Requirements").
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/armint/firmware-build-image:v1.15.0
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          configure() { cmake -B "$1" -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release "${@:2}"; }
+          configure build
+          cmake --build build --target art-core -j$(nproc)
+          configure build-logging-disabled -D ART_STORAGE_LITTLEFS=ON -D CMAKE_CXX_FLAGS=-DLOGGING_DISABLED
+          cmake --build build-logging-disabled --target art-core art-storage-littlefs -j$(nproc)
+          # Default (no CMAKE_CXX_STANDARD): std types at C++23.
+          flags=build/CMakeFiles/art-core.dir/flags.make
+          grep -q "ART_USE_STD_EXPECTED_SPAN=1" $flags
+          grep -Eq "std=(gnu|c)\+\+23" $flags
+          if grep -Eq "span_compat|SPAN_COMPAT" $flags; then echo "C++23 default uses span-compat"; exit 1; fi
+          # OFF set explicitly at C++23: the own types, still compiled at C++23.
+          configure build-own-cpp23 -D CMAKE_CXX_STANDARD=23 -D ART_USE_STD_EXPECTED_SPAN=OFF
+          cmake --build build-own-cpp23 --target art-core -j$(nproc)
+          flags=build-own-cpp23/CMakeFiles/art-core.dir/flags.make
+          grep -q "ART_USE_STD_EXPECTED_SPAN=0" $flags
+          grep -q "SPAN_COMPAT_USE_STD_SPAN=0" $flags
+          grep -Eq "std=(gnu|c)\+\+23" $flags
+          # OFF without CMAKE_CXX_STANDARD: the minimum is cxx_std_17, so CMake adds no -std flag of C++20 or later.
+          configure build-own-default -D ART_USE_STD_EXPECTED_SPAN=OFF
+          cmake --build build-own-default --target art-core -j$(nproc)
+          flags=build-own-default/CMakeFiles/art-core.dir/flags.make
+          grep -q "ART_USE_STD_EXPECTED_SPAN=0" $flags
+          if grep -Eq "std=(gnu|c)\+\+2[0-9]" $flags; then echo "OFF default compiles above C++17"; exit 1; fi
+          grep -q "SPAN_COMPAT_USE_STD_SPAN=0" $flags
+          grep -q "span_compat-src/include" $flags
+          # ON with a standard below C++23 must stop the configure.
+          mixed_output=$(configure build-mixed -D CMAKE_CXX_STANDARD=17 -D ART_USE_STD_EXPECTED_SPAN=ON 2>&1 && echo "configured" || true)
+          echo "$mixed_output" | grep -q "ART_USE_STD_EXPECTED_SPAN=ON needs C++23"
+
+  # Fails if a source in src/ or tests/ is not formatted, or if the configure finds no clang-format.
+  format:
+    runs-on: ubuntu-latest
+    container: ghcr.io/armint/firmware-build-image:v1.15.0
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" | tee configure.log
+          grep "clangformat targets:" configure.log
+          cmake --build build --target clangformat-check
+
+  # Builds and runs the native unit tests for each compiler and standard. The C++17 and C++20 cells reject code of a
+  # newer standard (-Wpedantic and -Werror=c++2x-extensions). Each binary writes a JUnit report; after a failure it
+  # runs again with the console reporter, so the log shows the failed checks.
+  test:
+    name: test ${{ matrix.compiler }} C++${{ matrix.cxx }}
+    runs-on: ubuntu-latest
+    container: ghcr.io/armint/firmware-build-image:v1.15.0
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { compiler: gcc, cxx: "17" }
+          - { compiler: clang, cxx: "17" }
+          - { compiler: gcc, cxx: "20" }
+          - { compiler: gcc, cxx: "23" }
+          - { compiler: clang, cxx: "23" }
+    env:
+      COMPILER: ${{ matrix.compiler }}
+      CXX_STANDARD: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          if [ "$COMPILER" = clang ]; then export CC=clang CXX=clang++; else export CC=gcc CXX=g++; fi
+          $CXX --version
+          if [ "$CXX_STANDARD" -lt 23 ]; then
+            cxx_extensions=OFF; strict_cxx_flags="-Wpedantic -Werror=pedantic -Werror=c++20-extensions -Werror=c++23-extensions"
+          else
+            cxx_extensions=ON; strict_cxx_flags=""
+          fi
+          cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Debug \
+            -D CMAKE_CXX_STANDARD=$CXX_STANDARD -D CMAKE_CXX_EXTENSIONS=$cxx_extensions -D CMAKE_CXX_FLAGS="$strict_cxx_flags" \
+            -D ART_STORAGE_LITTLEFS=ON
+          # The default of ART_USE_STD_EXPECTED_SPAN: ON at C++23, OFF below.
+          if [ "$CXX_STANDARD" -ge 23 ]; then expected_option=ON; else expected_option=OFF; fi
+          grep -x "ART_USE_STD_EXPECTED_SPAN:BOOL=$expected_option" build/CMakeCache.txt
+          test_binaries="libArT-tests libArT-tests-64bit libArT-tests-float libArT-tests-float-64bit"
+          if [ "$CXX_STANDARD" = 23 ]; then test_binaries="$test_binaries libArT-compat-tests-cpp17 libArT-compat-tests-cpp23-own"; fi
+          cmake --build build --target art-core art-storage-littlefs $test_binaries -j$(nproc)
+          # The invalid inputs of the USB descriptor builders must fail to compile (tests/usb/compile_fail/check.cmake).
+          if [ "$CXX_STANDARD" = 17 ]; then
+            cmake -D CXX=$CXX -D ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" \
+              -D SPAN_COMPAT_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/span_compat-src/include" -P tests/usb/compile_fail/check.cmake
+          fi
+          for binary in $test_binaries; do
+            echo "== $binary (C++$CXX_STANDARD, $COMPILER) =="
+            if ! ./build/tests/$binary --reporters=junit --out=build/junit-$binary.xml; then
+              ./build/tests/$binary
+              exit 1
+            fi
+            grep -o '<testsuite [^>]*>' build/junit-$binary.xml
+          done
+          # ART_USE_STD_EXPECTED_SPAN=1 must stop the build below C++23 (#error in utils/compat/config.h), and must
+          # compile at C++23.
+          std_output=$(echo '#include "utils/compat/expected.h"' | $CXX -std=c++$CXX_STANDARD -DART_USE_STD_EXPECTED_SPAN=1 -Isrc -fsyntax-only -x c++ - 2>&1 && echo "compiled" || true)
+          echo "$std_output"
+          if [ "$CXX_STANDARD" -ge 23 ]; then
+            [ "$std_output" = "compiled" ]
+          else
+            echo "$std_output" | grep -q "error.*ART_USE_STD_EXPECTED_SPAN is 1, but"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-${{ matrix.compiler }}-cpp${{ matrix.cxx }}
+          path: build/junit-*.xml
+          if-no-files-found: ignore
+
+  # FloatText and Ryu are absent from a firmware that does not call them, and a firmware that calls them does not pull
+  # in the assert/printf/malloc chain of newlib (tests/check-floattext-zero-cost.sh). The image has arm-none-eabi-gcc
+  # on PATH. REQUIRE_TOOLCHAIN=1 turns a missing toolchain into a failure instead of a skip.
+  floattext-zero-cost:
+    runs-on: ubuntu-latest
+    container: ghcr.io/armint/firmware-build-image:v1.15.0
+    env:
+      REQUIRE_TOOLCHAIN: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
+          CXX_STANDARD=17 ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" \
+            SPAN_COMPAT_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/span_compat-src/include" \
+            RYU_SOURCE_DIR="$FETCHCONTENT_BASE_DIR/ryu-src" ./tests/check-floattext-zero-cost.sh
+          CXX_STANDARD=23 RYU_SOURCE_DIR="$FETCHCONTENT_BASE_DIR/ryu-src" ./tests/check-floattext-zero-cost.sh
+
+  # Compiles the compat headers (src/utils/compat/) like firmware: arm-none-eabi-g++ with -fno-exceptions and
+  # -fno-rtti (tests/check-compat-firmware-build.sh).
+  compat-firmware:
+    runs-on: ubuntu-latest
+    container: ghcr.io/armint/firmware-build-image:v1.15.0
+    env:
+      REQUIRE_TOOLCHAIN: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          cmake -B build -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
+          ETL_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/etl-src/include" \
+            SPAN_COMPAT_INCLUDE_DIR="$FETCHCONTENT_BASE_DIR/span_compat-src/include" ./tests/check-compat-firmware-build.sh
+
+  # Installs art-core and builds tests/install-consumer/ against it with find_package(art-core)
+  # (tests/check-install.sh), at C++17 and at C++23.
+  install:
+    runs-on: ubuntu-latest
+    container: ghcr.io/armint/firmware-build-image:v1.15.0
+    steps:
+      - uses: actions/checkout@v5
+      # check-install.sh runs git ls-files. The checkout belongs to another user than the container user.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: |
+          CXX_STANDARD=17 ./tests/check-install.sh
+          CXX_STANDARD=23 ./tests/check-install.sh
+
+  # Adds libArT to tests/subproject-consumer/ with add_subdirectory() and checks "one span type per build"
+  # (tests/check-subproject.sh).
+  subproject:
+    runs-on: ubuntu-latest
+    container: ghcr.io/armint/firmware-build-image:v1.15.0
+    steps:
+      - uses: actions/checkout@v5
+      - run: ./tests/check-subproject.sh
+
+  # art-core stays free of littlefs with and without the optional art-storage-littlefs target, and that target builds.
+  littlefs:
+    runs-on: ubuntu-latest
+    container: ghcr.io/armint/firmware-build-image:v1.15.0
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          # Default (option off): no binding target, no littlefs symbols in art-core.
+          cmake -B build-default -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release
+          cmake --build build-default --target art-core -j$(nproc)
+          if cmake --build build-default --target help | grep -q art-storage-littlefs; then echo "binding target without the option"; exit 1; fi
+          if nm build-default/libart-core.a | grep -Eq "lfs_|LittleFs"; then echo "littlefs code in art-core"; exit 1; fi
+          # Option on: the target builds, and art-core still contains no littlefs code.
+          cmake -B build-littlefs -G "Unix Makefiles" -D FETCHCONTENT_BASE_DIR="$FETCHCONTENT_BASE_DIR" -D CMAKE_BUILD_TYPE=Release -D ART_STORAGE_LITTLEFS=ON
+          cmake --build build-littlefs --target art-storage-littlefs art-core -j$(nproc)
+          if nm build-littlefs/libart-core.a | grep -Eq "lfs_|LittleFs"; then echo "littlefs code in art-core"; exit 1; fi
+          nm build-littlefs/libart-storage-littlefs.a | grep -q LittleFsFileSystemBase
