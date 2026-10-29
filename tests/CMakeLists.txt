@@ -20,7 +20,7 @@ FetchContent_MakeAvailable(ArduinoJson)
 FetchContent_Declare(
         etl
         GIT_REPOSITORY https://github.com/ETLCPP/etl.git
-        GIT_TAG 20.37.0
+        GIT_TAG 20.49.0
         GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(etl)
