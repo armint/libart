@@ -514,3 +514,60 @@ TEST_CASE_FIXTURE(ReadReplyFixture, "[Modbus] Slave replies to a read that fills
    CHECK(reply[11] == crc[0]);
    CHECK(reply[12] == crc[1]);
 }
+
+namespace {
+// A half-duplex line: every byte that the slave sends is also received by the slave
+class HalfDuplexLine : public BufferedReadable, public Writable {
+   public:
+   std::vector<uint8_t> rx;
+   std::vector<uint8_t> tx;
+
+   art::expected<char, Readable::Error> read() override {
+      if(rx.empty()) {
+         return art::unexpected(Readable::EndOfStream);
+      }
+      char c = static_cast<char>(rx.front());
+      rx.erase(rx.begin());
+      return c;
+   }
+   bool available() override {
+      return !rx.empty();
+   }
+   void clear() override {
+      rx.clear();
+   }
+   art::expected<size_t, Writable::Error> write(art::span<const uint8_t> data) override {
+      tx.insert(tx.end(), data.begin(), data.end());
+      rx.insert(rx.end(), data.begin(), data.end());
+      return data.size();
+   }
+   art::expected<void, Writable::Error> flush() override {
+      return {};
+   }
+};
+} // namespace
+
+TEST_CASE("[Modbus] Slave drops the echo of its reply on a half-duplex line") {
+   HalfDuplexLine line;
+   uint8_t tmpBuf[8]{};
+   ModbusSlave slave(static_cast<BufferedReadable &>(line), line, tmpBuf);
+   int calls = 0;
+   slave.setReadHoldingCallback(
+   +[](void *arg, uint16_t, uint16_t count, Writable &w) -> ModbusSlave::Result {
+      ++*static_cast<int *>(arg);
+      for(uint16_t i = 0; i < count; ++i) {
+         (void)w.writeNumber<uint16_t, Endian::Big>(0x0103);
+      }
+      return ModbusSlave::Result::Ok;
+   },
+   &calls);
+
+   // A reply to a read from address 1 of 0x0103 starts like a request for this slave
+   line.rx = read_request(FunctionCode::ReadHoldingRegisters, 0, 1);
+   CHECK(slave.poll());
+   CHECK(calls == 1);
+   CHECK(line.tx.size() == 7);
+   CHECK_FALSE(line.available());
+   CHECK_FALSE(slave.poll());
+   CHECK(calls == 1);
+}

@@ -58,6 +58,16 @@ uint8_t ModbusSlave::exceptionCode(Result result) {
    }
 }
 
+void ModbusSlave::endReply() {
+   writable_.flush();
+   enableTx(false);
+   // On a half-duplex line the receiver also gets our own reply. Drop it, so that it is not parsed as a request.
+   if(buffered_readable_ != nullptr) {
+      buffered_readable_->clear();
+   }
+   enableRx(true);
+}
+
 art::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t function, uint8_t exceptionCode) {
    enableRx(false);
    enableTx(true);
@@ -65,16 +75,12 @@ art::expected<size_t, Writable::Error> ModbusSlave::writeException(uint8_t funct
    uint8_t header[3] = { address_, static_cast<uint8_t>(function | 0x80), exceptionCode };
    auto res = w.write(header);
    if(!res) {
-      writable_.flush();
-      enableTx(false);
-      enableRx(true);
+      endReply();
       return res;
    }
    auto count = res.value();
    res = w.writeCRC();
-   writable_.flush();
-   enableTx(false);
-   enableRx(true);
+   endReply();
    if(!res) {
       return res;
    }
@@ -142,9 +148,7 @@ bool ModbusSlave::handleReadRegisters(ModbusSlave::CRCReadable &r, const uint8_t
    if(res) {
       res = w.writeCRC();
    }
-   writable_.flush();
-   enableTx(false);
-   enableRx(true);
+   endReply();
    if(!res) {
       // TODO logging!
    }
@@ -214,9 +218,7 @@ bool ModbusSlave::handleWriteMultipleRegisters(ModbusSlave::CRCReadable &r, cons
       } else {
          res = w.writeCRC();
       }
-      writable_.flush();
-      enableTx(false);
-      enableRx(true);
+      endReply();
       if(!res) {
          // TODO LOGGING!
       }

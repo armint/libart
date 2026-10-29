@@ -102,6 +102,8 @@ class ModbusSlave {
    }
    // helpers
    static uint8_t exceptionCode(Result result);
+   // Flushes the reply, switches back to receive and drops the received echo of the reply
+   void endReply();
    art::expected<size_t, Writable::Error> writeException(uint8_t function, uint8_t exceptionCode);
    bool handleReadRegisters(CRCReadable &r, uint8_t function, bool isBroadcast);
    bool handleWriteMultipleRegisters(CRCReadable &r, uint8_t function, bool isBroadcast);
