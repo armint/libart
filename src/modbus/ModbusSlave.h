@@ -75,6 +75,7 @@ class ModbusSlave {
    BufferedReadable *buffered_readable_ = nullptr;
    Writable &writable_;
    uint8_t address_ = 1; // default slave address
+   bool broadcast_ = false;
    art::span<uint8_t> buffer_;
    utils::Timeout packet_timeout_;
 
@@ -137,6 +138,14 @@ class ModbusSlave {
 
    void setAddress(uint8_t addr) {
       address_ = addr;
+   }
+
+   /**
+    * True while the slave handles a broadcast request (address 0). A callback can use it to refuse a write that must
+    * not reach every slave, for example a new slave address.
+    */
+   [[nodiscard]] bool isBroadcast() const {
+      return broadcast_;
    }
 
    [[nodiscard]] uint8_t getAddress() const {

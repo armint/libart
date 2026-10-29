@@ -605,3 +605,35 @@ TEST_CASE("[Modbus] Slave refuses a write of more than 123 registers") {
    CHECK(std::vector<uint8_t>(txBuffer, txBuffer + writable.position()) ==
          exception_frame(FunctionCode::WriteMultipleHoldingRegisters, ResultCode::ILLEGAL_VALUE));
 }
+
+TEST_CASE("[Modbus] Slave tells the write callback whether the request is a broadcast") {
+   for(uint8_t address : { 0x00, 0x01 }) {
+      CAPTURE(address);
+      std::vector<uint8_t> request = {
+         address, FunctionCode::WriteMultipleHoldingRegisters, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00, 0x05
+      };
+      uint8_t crc[2];
+      compute_crc(request, crc);
+      request.push_back(crc[0]);
+      request.push_back(crc[1]);
+      ArrayReadable readable(request);
+      uint8_t txBuffer[16]{};
+      ArrayWritable writable(txBuffer);
+      uint8_t tmpBuf[8]{};
+      ModbusSlave slave(readable, writable, tmpBuf);
+      struct Context {
+         ModbusSlave *slave;
+         std::optional<bool> broadcast;
+      } context{ &slave, {} };
+      slave.setWriteHoldingCallback(
+      +[](void *arg, uint16_t, BoundedReadable &) -> ModbusSlave::Result {
+         auto *c = static_cast<Context *>(arg);
+         c->broadcast = c->slave->isBroadcast();
+         return ModbusSlave::Result::Ok;
+      },
+      &context);
+      CHECK(slave.poll());
+      REQUIRE(context.broadcast.has_value());
+      CHECK(*context.broadcast == (address == 0));
+   }
+}

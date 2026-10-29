@@ -281,6 +281,7 @@ bool ModbusSlave::poll() {
 
    // Determine if this is for us or broadcast
    const bool isBroadcast = (rxAddress == 0);
+   broadcast_ = isBroadcast;
    if(rxAddress != address_ && !isBroadcast) {
       // Still consume frame payload+CRC to keep stream in sync, but ignore it
       read_state_ = ReadState::WaitForIdle;
