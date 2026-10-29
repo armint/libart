@@ -141,8 +141,9 @@ class ModbusSlave {
    }
 
    /**
-    * True while the slave handles a broadcast request (address 0). A callback can use it to refuse a write that must
-    * not reach every slave, for example a new slave address.
+    * True if the request that poll() handles now is a broadcast (address 0). Only valid inside a write callback: read
+    * callbacks never run for a broadcast, and outside a callback the value belongs to the last frame. A write callback
+    * can use it to refuse a write that must not reach every slave, for example a new slave address.
     */
    [[nodiscard]] bool isBroadcast() const {
       return broadcast_;
