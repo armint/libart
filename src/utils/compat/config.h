@@ -6,7 +6,8 @@
  *
  * ART_USE_STD_EXPECTED_SPAN decides what art::expected, art::unexpected and art::span are:
  * - 1: aliases of std::expected, std::unexpected and std::span (needs a C++23 standard library).
- * - 0: libArT's own art::expected / art::unexpected (utils/compat/expected.h) and etl::span.
+ * - 0: libArT's own art::expected / art::unexpected (utils/compat/expected.h) and the own span of span-compat
+ *   (span_compat::span).
  *
  * The CMake build of art-core sets it as a PUBLIC compile definition (option ART_USE_STD_EXPECTED_SPAN), so that
  * libArT, libArT-proto and the application all compile with the same choice. Readable and Writable have virtual

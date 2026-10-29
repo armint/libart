@@ -117,8 +117,8 @@ format:
 # - C++23 (GCC, Clang): the default, with std::expected and std::span (ART_USE_STD_EXPECTED_SPAN=ON). These cells
 #   also build and run the two compat binaries, whose standard is fixed (see tests/CMakeLists.txt):
 #   libArT-compat-tests-cpp17 and libArT-compat-tests-cpp23-own.
-# - C++20 (GCC): the own art::expected and etl::span (ART_USE_STD_EXPECTED_SPAN=OFF, C++20 has std::span but not
-#   std::expected), with all tests.
+# - C++20 (GCC): the own art::expected and the own span of span-compat (ART_USE_STD_EXPECTED_SPAN=OFF, C++20 has
+#   std::span but not std::expected), with all tests.
 # - C++17 (GCC, Clang): the own types, without the storage tests that need C++20 (tests/CMakeLists.txt).
 # The C++17 and C++20 cells build with CMAKE_CXX_EXTENSIONS=OFF, -Wpedantic -Werror=pedantic and
 # -Werror=c++20-extensions -Werror=c++23-extensions. GCC and Clang accept code of a newer standard in an older mode
