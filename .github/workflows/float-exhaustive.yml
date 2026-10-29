@@ -17,6 +17,12 @@ defaults:
   run:
     shell: bash
 
+# The same git settings as ci.yml: cmake/generate_version.cmake runs git describe in the checkout.
+env:
+  GIT_CONFIG_COUNT: 1
+  GIT_CONFIG_KEY_0: safe.directory
+  GIT_CONFIG_VALUE_0: ${{ github.workspace }}
+
 jobs:
   float-exhaustive:
     runs-on: ubuntu-latest
@@ -24,6 +30,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - run: |
           cmake -B build -G "Unix Makefiles" -D CMAKE_BUILD_TYPE=Debug
           cmake --build build --target libArT-tests -j$(nproc)
