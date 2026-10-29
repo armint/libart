@@ -420,3 +420,97 @@ TEST_CASE("[Modbus] Slave does not disable RX on address mismatch") {
    REQUIRE(log.calls.size() == 1);
    CHECK(log.calls[0] == std::make_pair("rx", true));
 }
+
+namespace {
+std::vector<uint8_t> read_request(uint8_t function, uint16_t start, uint16_t count) {
+   std::vector<uint8_t> frame = { 0x01,
+                                  function,
+                                  static_cast<uint8_t>(start >> 8),
+                                  static_cast<uint8_t>(start),
+                                  static_cast<uint8_t>(count >> 8),
+                                  static_cast<uint8_t>(count) };
+   uint8_t crc[2];
+   compute_crc(frame, crc);
+   frame.push_back(crc[0]);
+   frame.push_back(crc[1]);
+   return frame;
+}
+
+std::vector<uint8_t> exception_frame(uint8_t function, uint8_t code) {
+   std::vector<uint8_t> frame = { 0x01, static_cast<uint8_t>(function | 0x80), code };
+   uint8_t crc[2];
+   compute_crc(frame, crc);
+   frame.push_back(crc[0]);
+   frame.push_back(crc[1]);
+   return frame;
+}
+
+struct ReadReplyFixture {
+   uint8_t txBuffer[64]{};
+   ArrayWritable writable{ txBuffer };
+   uint8_t tmpBuf[8]{};
+   ModbusSlave::Result result = ModbusSlave::Result::Ok;
+   uint16_t registers_written = 0;
+   int calls = 0;
+
+   std::vector<uint8_t> poll(const std::vector<uint8_t> &request) {
+      ArrayReadable readable(request);
+      ModbusSlave slave(readable, writable, tmpBuf);
+      slave.setReadInputCallback(
+      +[](void *arg, uint16_t, uint16_t, Writable &w) -> ModbusSlave::Result {
+         auto *self = static_cast<ReadReplyFixture *>(arg);
+         ++self->calls;
+         for(uint16_t i = 0; i < self->registers_written; ++i) {
+            (void)w.writeNumber<uint16_t, Endian::Big>(0x1234);
+         }
+         return self->result;
+      },
+      this);
+      REQUIRE(slave.poll());
+      return { txBuffer, txBuffer + writable.position() };
+   }
+};
+} // namespace
+
+TEST_CASE_FIXTURE(ReadReplyFixture, "[Modbus] Slave sends only an exception when the read callback fails after writing") {
+   registers_written = 1;
+   SUBCASE("address out of range") {
+      result = ModbusSlave::Result::AddressOutOfRange;
+      CHECK(poll(read_request(FunctionCode::ReadInputRegisters, 0, 2)) ==
+            exception_frame(FunctionCode::ReadInputRegisters, ResultCode::ILLEGAL_ADDRESS));
+   }
+   SUBCASE("illegal value") {
+      result = ModbusSlave::Result::IllegalValue;
+      CHECK(poll(read_request(FunctionCode::ReadInputRegisters, 0, 2)) ==
+            exception_frame(FunctionCode::ReadInputRegisters, ResultCode::ILLEGAL_VALUE));
+   }
+   SUBCASE("could not read") {
+      result = ModbusSlave::Result::CouldNotRead;
+      CHECK(poll(read_request(FunctionCode::ReadInputRegisters, 0, 2)) ==
+            exception_frame(FunctionCode::ReadInputRegisters, ResultCode::FAILURE));
+   }
+}
+
+TEST_CASE_FIXTURE(ReadReplyFixture, "[Modbus] Slave sends a failure when the read callback writes too little") {
+   registers_written = 1;
+   CHECK(poll(read_request(FunctionCode::ReadInputRegisters, 0, 2)) ==
+         exception_frame(FunctionCode::ReadInputRegisters, ResultCode::FAILURE));
+}
+
+TEST_CASE_FIXTURE(ReadReplyFixture, "[Modbus] Slave refuses a read larger than its buffer") {
+   registers_written = 5;
+   CHECK(poll(read_request(FunctionCode::ReadInputRegisters, 0, 5)) ==
+         exception_frame(FunctionCode::ReadInputRegisters, ResultCode::ILLEGAL_VALUE));
+   CHECK(calls == 0);
+}
+
+TEST_CASE_FIXTURE(ReadReplyFixture, "[Modbus] Slave replies to a read that fills its buffer") {
+   registers_written = 4;
+   auto reply = poll(read_request(FunctionCode::ReadInputRegisters, 0, 4));
+   REQUIRE(reply.size() == 3 + 8 + 2);
+   CHECK(reply[2] == 8);
+   uint8_t crc[2];
+   compute_crc({ reply.data(), 11 }, crc);
+   CHECK(reply[11] == crc[0]);
+   CHECK(reply[12] == crc[1]);
+}

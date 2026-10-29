@@ -101,6 +101,7 @@ class ModbusSlave {
       }
    }
    // helpers
+   static uint8_t exceptionCode(Result result);
    art::expected<size_t, Writable::Error> writeException(uint8_t function, uint8_t exceptionCode);
    bool handleReadRegisters(CRCReadable &r, uint8_t function, bool isBroadcast);
    bool handleWriteMultipleRegisters(CRCReadable &r, uint8_t function, bool isBroadcast);
@@ -111,7 +112,9 @@ class ModbusSlave {
     * @brief Construct a new Modbus Slave object
     * @param readable The readable stream to receive data from
     * @param writable The writable stream to send data to
-    * @param buffer A buffer to store incoming data for write requests. The buffer must remain valid for the lifetime of this object.
+    * @param buffer A buffer for the data of write requests and read replies. Its size limits the registers per request
+    *               (size / 2); a full Modbus frame needs 250 bytes. The buffer must remain valid for the lifetime of
+    * this object.
     * @param rxEnabler An optional function to enable/disable the receiver (e.g. for RS-485 transceivers)
     * @param txEnabler An optional function to enable/disable the transmitter (e.g. for RS-485 transceivers)
     */
@@ -120,7 +123,9 @@ class ModbusSlave {
     * @brief Construct a new Modbus Slave object
     * @param readable The readable stream to receive data from
     * @param writable The writable stream to send data to
-    * @param buffer A buffer to store incoming data for write requests. The buffer must remain valid for the lifetime of this object.
+    * @param buffer A buffer for the data of write requests and read replies. Its size limits the registers per request
+    *               (size / 2); a full Modbus frame needs 250 bytes. The buffer must remain valid for the lifetime of
+    * this object.
     * @param rxEnabler An optional function to enable/disable the receiver (e.g. for RS-485 transceivers)
     * @param txEnabler An optional function to enable/disable the transmitter (e.g. for RS-485 transceivers)
     */
