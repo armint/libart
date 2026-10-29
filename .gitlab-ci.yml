@@ -48,9 +48,10 @@ default:
 # just doesn't build the test binary — the test job below does that.
 # The second build compiles art-core and art-storage-littlefs with LOGGING_DISABLED, the form of the LOG_* macros
 # (src/logging/Logger.h) that no test binary uses, so that a mistake in it breaks the pipeline.
-# The last checks show that the minimum standard of art-core follows ART_USE_STD_EXPECTED_SPAN (see README.md,
-# "Requirements"), by the -std flag and the definition that CMake generates for art-core. They also show that art-core
-# uses span-compat with SPAN_COMPAT_USE_STD_SPAN=0 only with OFF, and that ON below C++23 stops the configure.
+# The last checks show that the minimum standard of art-core follows ART_USE_STD_EXPECTED_SPAN (see
+# docs/cmake-integration.md, "Requirements"), by the -std flag and the definition that CMake generates for art-core.
+# They also show that art-core uses span-compat with SPAN_COMPAT_USE_STD_SPAN=0 only with OFF, and that ON below
+# C++23 stops the configure.
 build:
   stage: build
   cache:

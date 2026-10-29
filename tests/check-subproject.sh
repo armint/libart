@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the superproject tests/subproject-consumer/, which adds libArT with add_subdirectory(), and checks the rule
-# "one span type per build" (README.md, "span-compat"):
+# "one span type per build" (docs/vocabulary-types.md, "span-compat"):
 #
 #   - C++17 with a span-compat library (as system-stm32) and SPAN_COMPAT_USE_STD_SPAN=OFF: art::span is the span of
 #     span-compat, and the consumer passes it to the library. It builds and runs.

@@ -11,7 +11,7 @@ namespace art::usb {
  *
  * The controller calls these from the context that runs the protocol logic, normally the main loop, not from the
  * interrupt handler. A controller that takes the events in an interrupt queues them and delivers them later (see
- * the threading model in README.md, "USB device stack"). The calls for one controller must not overlap.
+ * "Threading" in docs/usb-device-stack.md). The calls for one controller must not overlap.
  */
 class ControllerEvents {
    public:
