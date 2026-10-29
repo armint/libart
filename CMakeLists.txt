@@ -15,7 +15,7 @@ if(ESP_PLATFORM)
     FetchContent_Declare(
             etl
             GIT_REPOSITORY https://github.com/ETLCPP/etl.git
-            GIT_TAG 20.41.7
+            GIT_TAG 20.49.0
             GIT_SHALLOW TRUE
     )
     FetchContent_GetProperties(etl)
@@ -85,7 +85,7 @@ endif()
 FetchContent_Declare(
         etl
         GIT_REPOSITORY https://github.com/ETLCPP/etl.git
-        GIT_TAG 20.41.7
+        GIT_TAG 20.49.0
         GIT_SHALLOW TRUE
 )
 
