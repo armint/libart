@@ -497,6 +497,12 @@ TEST_CASE_FIXTURE(ReadReplyFixture, "[Modbus] Slave sends a failure when the rea
          exception_frame(FunctionCode::ReadInputRegisters, ResultCode::FAILURE));
 }
 
+TEST_CASE_FIXTURE(ReadReplyFixture, "[Modbus] Slave sends a failure when the read callback writes too much") {
+   registers_written = 3;
+   CHECK(poll(read_request(FunctionCode::ReadInputRegisters, 0, 2)) ==
+         exception_frame(FunctionCode::ReadInputRegisters, ResultCode::FAILURE));
+}
+
 TEST_CASE_FIXTURE(ReadReplyFixture, "[Modbus] Slave refuses a read larger than its buffer") {
    registers_written = 5;
    CHECK(poll(read_request(FunctionCode::ReadInputRegisters, 0, 5)) ==

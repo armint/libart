@@ -8,6 +8,23 @@
 
 namespace modbus {
 
+namespace {
+// ArrayWritable reports a write that does not fit only to the caller. The read callback can ignore it, so remember it.
+class ReplyWritable : public ArrayWritable {
+   public:
+   using ArrayWritable::ArrayWritable;
+   bool overflow = false;
+
+   art::expected<size_t, Error> write(art::span<const uint8_t> data) override {
+      auto res = ArrayWritable::write(data);
+      if(!res) {
+         overflow = true;
+      }
+      return res;
+   }
+};
+} // namespace
+
 ModbusSlave::ModbusSlave(Readable &readable, Writable &writable, art::span<uint8_t> buffer, enabler_t rxEnabler, enabler_t txEnabler)
    : readable_(readable)
    , writable_(writable)
@@ -127,13 +144,13 @@ bool ModbusSlave::handleReadRegisters(ModbusSlave::CRCReadable &r, const uint8_t
       return true;
    }
    // The callback writes into the buffer first, so that an error gives an exception frame and never a partial reply
-   ArrayWritable data(buffer_.subspan(0, byteCount));
+   ReplyWritable data(buffer_.subspan(0, byteCount));
    const Result result = cb(cb_arg, start, count, data);
    if(result != Result::Ok) {
       (void)writeException(function, exceptionCode(result));
       return true;
    }
-   if(data.position() != byteCount) {
+   if(data.overflow || data.position() != byteCount) {
       (void)writeException(function, ResultCode::FAILURE);
       return true;
    }
