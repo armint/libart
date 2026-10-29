@@ -1,7 +1,7 @@
 name: FloatText exhaustive
 
 # FloatText's exhaustive round-trip test (TestFloatText.cpp) formats and parses all 2^32 float bit patterns. It is
-# doctest::skip()'d by default, so the CI workflow never runs it. It takes about 8 minutes, too slow for each push:
+# doctest::skip()'d by default, so the CI workflow never runs it. It takes about 10 minutes with the build, too slow for each push:
 # it runs each Sunday at 03:00 UTC on main, and by hand ("Run workflow"). GCC at C++23, one of the four binaries
 # (FloatText does not depend on LIBART_ENABLE_64BIT or PRINTF_ENABLE_FLOATING_POINT).
 on:
@@ -20,7 +20,7 @@ jobs:
   float-exhaustive:
     runs-on: ubuntu-latest
     container: ghcr.io/armint/firmware-build-image:v1.15.0
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - run: |
