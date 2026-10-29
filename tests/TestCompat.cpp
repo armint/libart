@@ -485,6 +485,16 @@ struct FromInt {
    int value;
 };
 
+// Constructible from a MoveOnly by move only.
+struct Holder {
+   Holder(MoveOnly &&value)
+      : moveOnly(std::move(value)) {
+   }
+   MoveOnly moveOnly;
+};
+
+static_assert(std::is_convertible_v<art::expected<MoveOnly, Error>, art::expected<Holder, Error>>);
+static_assert(!std::is_constructible_v<art::expected<Holder, Error>, const art::expected<MoveOnly, Error> &>);
 static_assert(std::is_convertible_v<const art::expected<int, int32_t> &, art::expected<int, uint32_t>>);
 static_assert(std::is_convertible_v<art::expected<int, int32_t> &&, art::expected<int64_t, uint32_t>>);
 static_assert(std::is_convertible_v<art::expected<void, int32_t>, art::expected<void, uint32_t>>);
@@ -520,14 +530,23 @@ TEST_CASE("[compat] expected: converting constructors") {
    REQUIRE(!voidError.has_value());
    CHECK(voidError.error() == 3u);
 
-   // The move constructor moves the value and the error, and destroys the source normally.
+   // Non-trivial storage, move-only source: the value and the error are moved into the new type, not copied.
    {
-      art::expected<MoveOnly, Error> source(std::in_place, 9);
-      art::expected<MoveOnly, Error> moved = std::move(source);
-      art::expected<MoveOnly, Error> again(std::move(moved));
-      REQUIRE(again.has_value());
-      CHECK(again->handle() == 9);
-      CHECK(MoveOnly::live == 3);
+      art::expected<Holder, Error> holder = art::expected<MoveOnly, Error>(std::in_place, 9);
+      REQUIRE(holder.has_value());
+      CHECK(holder->moveOnly.handle() == 9);
+      CHECK(MoveOnly::live == 1);
+
+      art::expected<int, Holder> holderError = art::expected<int, MoveOnly>(art::unexpect, 4);
+      REQUIRE(!holderError.has_value());
+      CHECK(holderError.error().moveOnly.handle() == 4);
+      CHECK(MoveOnly::live == 2);
+
+      art::expected<int, MoveOnly> source(art::unexpect, 6);
+      art::expected<int, Holder> fromLvalueMove(std::move(source));
+      REQUIRE(!fromLvalueMove.has_value());
+      CHECK(fromLvalueMove.error().moveOnly.handle() == 6);
+      CHECK(source.error().handle() == 0);
    }
    CHECK(MoveOnly::live == 0);
 }
