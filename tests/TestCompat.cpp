@@ -508,8 +508,11 @@ static_assert(!std::is_constructible_v<art::expected<void, Error>, art::expected
 static_assert(!std::is_constructible_v<art::expected<int, Error>, art::expected<void, Error>>);
 // A move-only source converts by move only.
 static_assert(!std::is_constructible_v<art::expected<MoveOnly, Error>, const art::expected<MoveOnly, Error> &>);
-// bool is constructible from any expected (explicit operator bool), so T = bool skips that rule of the conversion.
+#if !ART_USE_STD_EXPECTED_SPAN
+// bool is constructible from any expected (explicit operator bool), so T = bool skips the converts-from-any rule.
+// Own implementation only: std::expected has this since LWG 3836, which libstdc++ 14 does not implement.
 static_assert(std::is_convertible_v<art::expected<int, Error>, art::expected<bool, Error>>);
+#endif
 
 TEST_CASE("[compat] expected: converting constructors") {
    const art::expected<int, int32_t> value = 5;
