@@ -13,7 +13,9 @@
 //
 // Configuration macros (define before including):
 //   RB_NO_STD_ATOMIC        Force the volatile+fence path even if <atomic>
-//                           is available.
+//                           is available. GCC and Clang select this path
+//                           without it when the target has no lock-free
+//                           atomics for the index types.
 //   RB_INDEX_ALIGNMENT      Alignment for the head/tail indices. Set to the
 //                           cache line size (e.g. 64) on cached/multi-core
 //                           targets to avoid false sharing. Default: pointer
@@ -30,6 +32,11 @@
 // ---------------------------------------------------------------------------
 #if !defined(RB_USE_STD_ATOMIC)
 #if defined(RB_NO_STD_ATOMIC)
+#define RB_USE_STD_ATOMIC 0
+#elif defined(__GCC_ATOMIC_LONG_LOCK_FREE) && (__GCC_ATOMIC_CHAR_LOCK_FREE < 2 || __GCC_ATOMIC_SHORT_LOCK_FREE < 2 || \
+                                               __GCC_ATOMIC_INT_LOCK_FREE < 2 || __GCC_ATOMIC_LONG_LOCK_FREE < 2)
+// No always-lock-free atomics for the index types (e.g. RV32EC without the A
+// extension, Cortex-M0+): std::atomic would fail the lock-free static_assert.
 #define RB_USE_STD_ATOMIC 0
 #elif defined(__has_include)
 #if __has_include(<atomic>)

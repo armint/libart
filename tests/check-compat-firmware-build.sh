@@ -11,6 +11,9 @@
 # exception or RTTI runtime (__cxa_throw, __cxa_begin_catch, std::__throw_out_of_range_fmt(), _Unwind_*,
 # __aeabi_unwind_cpp_pr*, the type_info vtables, ...).
 #
+# It also compiles tests/firmware/RingBufferBackend.cpp for Cortex-M0+ (no lock-free atomics) and Cortex-M4, and
+# checks that utils/RingBuffer.h selects the volatile backend on the first and std::atomic on the second.
+#
 # The own types use the span of span-compat with SPAN_COMPAT_USE_STD_SPAN=0, as the CMake build of art-core does.
 #
 # Needs arm-none-eabi-g++ and arm-none-eabi-nm (override with CROSS_CXX/CROSS_NM), the ETL include directory
@@ -69,6 +72,19 @@ for config in "17 0" "23 0" "23 1"; do
       status=1
    else
       echo "  compiled, no exception or RTTI runtime references - OK"
+   fi
+done
+
+# The RingBuffer backend: Cortex-M0+ has no lock-free atomics, Cortex-M4 has them.
+for config in "cortex-m0plus 0" "cortex-m4 1"; do
+   read -r cpu expected <<<"$config"
+   echo "== RingBuffer backend, $cpu: RB_USE_STD_ATOMIC=$expected =="
+   if "$CXX" -c -std=c++17 -Os -fno-exceptions -fno-rtti -Wall -Wextra -Wpedantic -Werror -mcpu="$cpu" -mthumb -I"$ROOT/src" \
+      -DEXPECTED_RB_USE_STD_ATOMIC="$expected" -o "$WORK/ringbuffer-$cpu.o" "$ROOT/tests/firmware/RingBufferBackend.cpp"; then
+      echo "  compiled - OK"
+   else
+      echo "FAIL: utils/RingBuffer.h does not compile, or selects the wrong backend, for $cpu." >&2
+      status=1
    fi
 done
 
