@@ -68,7 +68,8 @@ step. The CI job `subproject` runs it.
 The own `art::expected` is used instead of `etl::expected` because `etl::expected` stores its value in an
 `etl::variant`: `sizeof(etl::expected<char, E>)` is 24 bytes (2 bytes for `std::expected`), and the code of a
 typical call chain grows by 69 %. The own type has the same size and code size as `std::expected`. It implements
-the subset that libArT uses: construction from a value, from `unexpected` and with `unexpect`, `expected<void, E>`,
+the subset that libArT uses: construction from a value, from `unexpected` and with `unexpect`, conversion from an
+`expected<U, G>` (copy and move, with the constraints and the `explicit` rule of `std::expected`), `expected<void, E>`,
 `has_value()`, `operator bool`, `*`, `->`, `value()`, `error()`, `value_or()` and comparison. It is trivially
 copyable when `T` and `E` are, and it supports move-only `T` (for example `storage::File`). `*`, `->` and
 `error()` do not check the state, like `std::expected`.
