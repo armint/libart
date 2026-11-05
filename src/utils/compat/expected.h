@@ -18,8 +18,11 @@
  * - has_value(), operator bool, operator*, operator->, value(), error(), value_or().
  * - operator== (and != before C++20) with another expected, with a value and with an unexpected.
  *
- * Not implemented: emplace(), swap(), the monadic functions (and_then(), transform(), ...), error_or(), conversion
- * from an expected of another type, and bad_expected_access.
+ * - conversion from an expected<U, G> (copy and move), with the constraints and the explicit rule of std::expected.
+ *   It is not constexpr (C++17 cannot change the active member of a union in a constant expression).
+ *
+ * Not implemented: emplace(), swap(), the monadic functions (and_then(), transform(), ...), error_or(), and
+ * bad_expected_access.
  *
  * expected<T, E> is trivially copyable when T and E are, so that returning it costs no more than returning the
  * union. Otherwise it has user-provided copy and move operations, which are deleted when T or E cannot be copied
@@ -161,6 +164,12 @@ namespace detail {
 /** Stands for the (absent) value of expected<void, E>, so that both share one storage implementation. */
 struct expected_void_value {};
 
+/** Tag to construct the storage from an expected of other types (the converting constructors of expected). */
+struct expected_convert_t {
+   explicit expected_convert_t() = default;
+};
+inline constexpr expected_convert_t expected_convert{};
+
 template <typename T>
 struct is_unexpected : std::false_type {};
 template <typename E>
@@ -199,6 +208,21 @@ struct expected_storage {
       : error_(std::forward<Args>(args)...)
       , hasValue_(false) {
    }
+
+   // Not constexpr: C++17 cannot start the lifetime of a union member in a constant expression.
+   template <typename Other>
+   expected_storage(expected_convert_t, Other &&other)
+      : hasValue_(other.has_value()) {
+      if(hasValue_) {
+         if constexpr(std::is_same_v<T, expected_void_value>) {
+            ::new(static_cast<void *>(std::addressof(value_))) T();
+         } else {
+            ::new(static_cast<void *>(std::addressof(value_))) T(*std::forward<Other>(other));
+         }
+      } else {
+         ::new(static_cast<void *>(std::addressof(error_))) E(std::forward<Other>(other).error());
+      }
+   }
 };
 
 /**
@@ -224,6 +248,21 @@ struct expected_storage<T, E, false> {
    explicit expected_storage(unexpect_t, Args &&...args)
       : error_(std::forward<Args>(args)...)
       , hasValue_(false) {
+   }
+
+   // Not constexpr: C++17 cannot start the lifetime of a union member in a constant expression.
+   template <typename Other>
+   expected_storage(expected_convert_t, Other &&other)
+      : hasValue_(other.has_value()) {
+      if(hasValue_) {
+         if constexpr(std::is_same_v<T, expected_void_value>) {
+            ::new(static_cast<void *>(std::addressof(value_))) T();
+         } else {
+            ::new(static_cast<void *>(std::addressof(value_))) T(*std::forward<Other>(other));
+         }
+      } else {
+         ::new(static_cast<void *>(std::addressof(error_))) E(std::forward<Other>(other).error());
+      }
    }
 
    expected_storage(const expected_storage &other)
@@ -379,6 +418,35 @@ inline constexpr bool expected_value_argument_v =
 !std::is_same_v<remove_cvref_t<U>, std::in_place_t> && !std::is_same_v<remove_cvref_t<U>, unexpect_t> &&
 !is_expected<remove_cvref_t<U>>::value && !is_unexpected<remove_cvref_t<U>>::value && std::is_constructible_v<T, U>;
 
+
+/** True if T is constructible or convertible from any const/ref form of the expected X. */
+template <typename T, typename X>
+inline constexpr bool expected_from_any_v =
+std::is_constructible_v<T, X &> || std::is_constructible_v<T, X> || std::is_constructible_v<T, const X &> ||
+std::is_constructible_v<T, const X> || std::is_convertible_v<X &, T> || std::is_convertible_v<X, T> ||
+std::is_convertible_v<const X &, T> || std::is_convertible_v<const X, T>;
+
+/**
+ * The constraints of the converting constructors of std::expected, for a source expected<U, G> that is copied
+ * (Move false, arguments const U& and const G&) or moved (Move true, arguments U and G). T may be void, then U must be
+ * void as well. Besides the constructibility, a constructor is disabled when T (unless it is bool) or unexpected<E>
+ * could be constructed from the whole expected<U, G>; that conversion is the one to prefer.
+ */
+template <typename T, typename E, typename U, typename G, bool Move>
+struct expected_converting {
+   using UArg = std::conditional_t<Move, U, std::add_lvalue_reference_t<const U>>;
+   using GArg = std::conditional_t<Move, G, std::add_lvalue_reference_t<const G>>;
+   using Source = expected<U, G>;
+
+   static constexpr bool enabled =
+   (std::is_void_v<T> ? std::is_void_v<U> : std::is_constructible_v<T, UArg>) && std::is_constructible_v<E, GArg> &&
+   (std::is_void_v<T> || std::is_same_v<std::remove_cv_t<T>, bool> || !expected_from_any_v<T, Source>) &&
+   !(std::is_constructible_v<unexpected<E>, Source &> || std::is_constructible_v<unexpected<E>, Source> ||
+     std::is_constructible_v<unexpected<E>, const Source &> || std::is_constructible_v<unexpected<E>, const Source>);
+
+   static constexpr bool implicit = (std::is_void_v<T> || std::is_convertible_v<UArg, T>) && std::is_convertible_v<GArg, E>;
+};
+
 } // namespace detail
 
 /**
@@ -440,6 +508,26 @@ class expected : private detail::expected_storage<T, E>,
    template <typename G, std::enable_if_t<std::is_constructible_v<E, G> && !std::is_convertible_v<G, E>, int> = 0>
    constexpr explicit expected(unexpected<G> &&error)
       : Storage(unexpect, std::move(error).error()) {
+   }
+
+   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, false>, std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
+   expected(const expected<U, G> &other)
+      : Storage(detail::expected_convert, other) {
+   }
+
+   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, false>, std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
+   explicit expected(const expected<U, G> &other)
+      : Storage(detail::expected_convert, other) {
+   }
+
+   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, true>, std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
+   expected(expected<U, G> &&other)
+      : Storage(detail::expected_convert, std::move(other)) {
+   }
+
+   template <typename U, typename G, typename Conv = detail::expected_converting<T, E, U, G, true>, std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
+   explicit expected(expected<U, G> &&other)
+      : Storage(detail::expected_convert, std::move(other)) {
    }
 
    template <typename... Args, std::enable_if_t<std::is_constructible_v<T, Args...>, int> = 0>
@@ -638,6 +726,26 @@ class expected<void, E> : private detail::expected_storage<detail::expected_void
    template <typename G, std::enable_if_t<std::is_constructible_v<E, G> && !std::is_convertible_v<G, E>, int> = 0>
    constexpr explicit expected(unexpected<G> &&error)
       : Storage(unexpect, std::move(error).error()) {
+   }
+
+   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, false>, std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
+   expected(const expected<U, G> &other)
+      : Storage(detail::expected_convert, other) {
+   }
+
+   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, false>, std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
+   explicit expected(const expected<U, G> &other)
+      : Storage(detail::expected_convert, other) {
+   }
+
+   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, true>, std::enable_if_t<Conv::enabled && Conv::implicit, int> = 0>
+   expected(expected<U, G> &&other)
+      : Storage(detail::expected_convert, std::move(other)) {
+   }
+
+   template <typename U, typename G, typename Conv = detail::expected_converting<void, E, U, G, true>, std::enable_if_t<Conv::enabled && !Conv::implicit, int> = 0>
+   explicit expected(expected<U, G> &&other)
+      : Storage(detail::expected_convert, std::move(other)) {
    }
 
    constexpr explicit expected(std::in_place_t) noexcept
