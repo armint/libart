@@ -508,6 +508,8 @@ static_assert(!std::is_constructible_v<art::expected<void, Error>, art::expected
 static_assert(!std::is_constructible_v<art::expected<int, Error>, art::expected<void, Error>>);
 // A move-only source converts by move only.
 static_assert(!std::is_constructible_v<art::expected<MoveOnly, Error>, const art::expected<MoveOnly, Error> &>);
+// bool is constructible from any expected (explicit operator bool), so T = bool skips that rule of the conversion.
+static_assert(std::is_convertible_v<art::expected<int, Error>, art::expected<bool, Error>>);
 
 TEST_CASE("[compat] expected: converting constructors") {
    const art::expected<int, int32_t> value = 5;
