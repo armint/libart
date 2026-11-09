@@ -231,6 +231,8 @@ class Device final : public ControllerEvents {
    [[nodiscard]] uint8_t configurationAttributes() const;
    [[nodiscard]] uint8_t configurationValue() const;
    [[nodiscard]] uint8_t interfaceCount() const;
+   /// Takes the speed from the controller (highSpeed_).
+   void updateSpeed();
    /// The configuration descriptor set of the current speed.
    [[nodiscard]] art::span<const uint8_t> activeConfiguration() const;
 

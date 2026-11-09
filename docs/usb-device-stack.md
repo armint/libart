@@ -67,7 +67,9 @@ the enumeration sequences of Linux and Windows in both modes.
 A device that sets `Descriptors::highSpeedConfiguration` and `Descriptors::deviceQualifier` runs at the speed of the
 bus:
 
-- At each bus reset, `Device` asks `DeviceController::isHighSpeed()`. If it is true, the device serves
+- At each bus reset, and for each SETUP packet before SET_CONFIGURATION, `Device` asks
+  `DeviceController::isHighSpeed()`. A high-speed controller knows the speed only at the end of the reset, after the
+  chirp handshake. The host sends its first SETUP packet after the reset. If it is true, the device serves
   `highSpeedConfiguration` as its configuration and opens the endpoints from it. Otherwise it serves
   `configuration`. `Device::isHighSpeed()` gives the result.
 - GET_DESCRIPTOR(DEVICE_QUALIFIER) returns `deviceQualifier`. Build it with `deviceQualifier()`. One qualifier
@@ -285,8 +287,8 @@ with NAK. The protocol layer splits transfers into packets and adds zero-length 
   controller drops a pending address on the next SETUP packet and on a bus reset. With queued events, the main loop
   sees the acknowledgement too late for the host, which uses the new address 2 ms after the status stage.
 - A control endpoint is opened once, with its OUT address, and covers both directions.
-- `isHighSpeed()` gives the speed of the last bus reset. It must be valid when the controller reports the bus
-  reset. The default is `false`, for a full-speed-only controller.
+- `isHighSpeed()` gives the speed of the last bus reset. It must be valid when the first SETUP packet after the
+  reset arrives. The default is `false`, for a full-speed-only controller.
 
 ## Threading
 

@@ -440,6 +440,17 @@ TEST_CASE("[usb::Device] a dual-speed device serves the descriptors of the bus s
       CHECK(fixture.device.endpointMaxPacketSize(0x02u) == 64u);
    }
 
+   SUBCASE("the speed is known only after the reset event") {
+      // A high-speed controller reports the reset before the chirp handshake ends.
+      fixture.controller.busReset();
+      fixture.controller.setHighSpeed(true);
+      CHECK(fixture.getDescriptor(DescriptorType::Configuration, 0u, 255u) == bytesOf(highSpeed));
+      REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 7u, 0u));
+      REQUIRE(fixture.out(kStandardDeviceOut, kSetConfiguration, 1u, 0u));
+      CHECK(fixture.device.isHighSpeed());
+      CHECK(fixture.device.endpointMaxPacketSize(0x02u) == 512u);
+   }
+
    SUBCASE("only the first bytes of a short read") {
       fixture.controller.setHighSpeed(true);
       fixture.enumerate();

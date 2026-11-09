@@ -99,8 +99,10 @@ class DeviceController {
    /**
     * @brief True if the last bus reset ended in high speed (480 Mbit/s).
     *
-    * usb::Device calls this in ControllerEvents::busReset() to select the descriptors of the speed. So the value
-    * must be valid when the controller reports the bus reset. A full-speed-only controller keeps the default.
+    * usb::Device calls this in ControllerEvents::busReset() and for each SETUP packet before SET_CONFIGURATION, to
+    * select the descriptors of the speed. The value must be valid when the first SETUP packet after the reset
+    * arrives: a controller that reports the reset when it starts does not know the speed yet in busReset(). A
+    * full-speed-only controller keeps the default.
     */
    [[nodiscard]] virtual bool isHighSpeed() const {
       return false;

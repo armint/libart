@@ -157,6 +157,10 @@ uint16_t Device::endpointMaxPacketSize(uint8_t endpointAddress) const {
    return size;
 }
 
+void Device::updateSpeed() {
+   highSpeed_ = controller_.isHighSpeed() && !descriptors_.highSpeedConfiguration.empty();
+}
+
 art::span<const uint8_t> Device::activeConfiguration() const {
    return highSpeed_ ? descriptors_.highSpeedConfiguration : descriptors_.configuration;
 }
@@ -211,7 +215,7 @@ void Device::busReset() {
    remoteWakeupEnabled_ = false;
    controlStage_ = ControlStage::Idle;
    state_ = DeviceState::Default;
-   highSpeed_ = controller_.isHighSpeed() && !descriptors_.highSpeedConfiguration.empty();
+   updateSpeed();
    controller_.openEndpoint(EndpointConfig{ kEndpoint0Out, EndpointType::Control, maxPacketSize0_ });
 }
 
@@ -238,6 +242,12 @@ void Device::setupReceived(const SetupPacket &setup) {
    }
    // A SETUP packet means that the bus is active, even if the controller missed the resume.
    resumed();
+   // The speed is known only when the reset ends: a high-speed controller reports the reset when it starts, before
+   // the chirp handshake. The host sends the first SETUP packet after the reset. The endpoints open in Configured,
+   // so the speed must not change there.
+   if(state_ == DeviceState::Default || state_ == DeviceState::Address) {
+      updateSpeed();
+   }
 
    // A new SETUP packet aborts the control transfer before it, including a SET_ADDRESS whose status stage did not
    // complete.
