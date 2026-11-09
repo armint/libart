@@ -151,19 +151,21 @@ class CommandFunction final : public art::usb::VendorBulkFunction {
 
 - **Descriptors**: one interface with two bulk endpoints, for example
   `interfaceDescriptor(InterfaceFields{ 0, 0, classcode::kVendorSpecific, 0, 0, 0 }, endpoint(0x03, Bulk, 64),
-  endpoint(0x82, Bulk, 64))`. The endpoints and `maxPacketSize` (8, 16, 32 or 64) of `VendorBulkEndpoints` must match
-  them.
+  endpoint(0x82, Bulk, 64))`. The endpoints of `VendorBulkEndpoints` must match them.
+- **Packet size**: from SET_CONFIGURATION on, `packetSize()` is the `wMaxPacketSize` of the IN endpoint at the bus
+  speed (`Device::endpointMaxPacketSize()`). Both endpoints must have the same size. `VendorBulkEndpoints::maxPacketSize`
+  is used only before the configuration.
 - **OUT**: the OUT endpoint is armed after SET_CONFIGURATION. Each packet goes to `dataReceived()`. If it returns
   `true`, the endpoint is armed again at once. If it returns `false`, the endpoint NAKs until the subclass calls
   `resumeOut()`. So a command can wait for the main loop, and no packet is lost. The base does not join packets: the
   protocol knows where a command ends.
-- **IN**: `sendInTransfer(data)` sends a buffer of any size in packets of `maxPacketSize` bytes. The buffer is not
+- **IN**: `sendInTransfer(data)` sends a buffer of any size in packets of `packetSize()` bytes. The buffer is not
   copied: keep it valid until `transferSent()` or `dataPathClosed()`. One transfer at a time: a second call returns
   `false` until `transferSent()`. It also returns `false` if the controller refuses the first packet, for example
-  when `maxPacketSize` is larger than the descriptor. On a halted IN endpoint the transfer starts and waits for the
+  when the endpoint is not open. On a halted IN endpoint the transfer starts and waits for the
   clear. The hook may start the next transfer.
 - **ZLP**: with `ZeroLengthPacket::Auto` (the default), a zero-length packet follows a transfer whose size is a
-  multiple of `maxPacketSize`. Use `ZeroLengthPacket::Never` when the host reads exactly the size of the transfer:
+  multiple of `packetSize()`. Use `ZeroLengthPacket::Never` when the host reads exactly the size of the transfer:
   then the ZLP would end the next read of the host. An empty buffer sends one ZLP in both modes.
 - **Endpoint halt**: the subclass halts an endpoint with `device()->haltEndpoint()`, for example on a protocol
   error. After CLEAR_FEATURE(ENDPOINT_HALT) or SET_INTERFACE, the function arms the OUT endpoint again (unless it is
