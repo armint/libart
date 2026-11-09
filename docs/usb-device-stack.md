@@ -73,7 +73,8 @@ bus:
   `highSpeedConfiguration` as its configuration and opens the endpoints from it. Otherwise it serves
   `configuration`. `Device::isHighSpeed()` gives the result.
 - GET_DESCRIPTOR(DEVICE_QUALIFIER) returns `deviceQualifier`. Build it with `deviceQualifier()`. One qualifier
-  serves both speeds, so the device fields must be the same at both speeds.
+  serves both speeds, so the device fields must be the same at both speeds. A high-speed device must have a
+  `bMaxPacketSize0` of 64 (USB 2.0 section 5.5.3), so use 64 in the device descriptor.
 - GET_DESCRIPTOR(OTHER_SPEED_CONFIGURATION) returns the configuration of the other speed, with `bDescriptorType` 7.
 - Both configurations must have the same interfaces, alternate settings and endpoint addresses. Only the packet
   sizes and the intervals change. A bulk endpoint has a `wMaxPacketSize` of 512 at high speed (USB 2.0 section

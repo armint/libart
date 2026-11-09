@@ -708,8 +708,9 @@ void Device::sendNextControlPacket(uint8_t descriptorType) {
    art::span<const uint8_t> packet = controlInData_.first(length);
    controlInData_ = controlInData_.subspan(length);
    // A descriptor sent with another bDescriptorType: the controller copies the packet, so a copy on the stack is
-   // enough. maxPacketSize0_ is at most kDefaultMaxPacketSize0 (maxPacketSize0Of()).
-   std::array<uint8_t, kDefaultMaxPacketSize0> retyped{};
+   // enough. maxPacketSize0_ is at most kDefaultMaxPacketSize0 (maxPacketSize0Of()). Not zeroed: only the copied
+   // bytes are sent.
+   std::array<uint8_t, kDefaultMaxPacketSize0> retyped;
    if(descriptorType != 0u && length >= 2u) {
       std::copy(packet.begin(), packet.end(), retyped.begin());
       retyped[1] = descriptorType;

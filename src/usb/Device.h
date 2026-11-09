@@ -41,7 +41,7 @@ struct Descriptors {
    art::span<const uint8_t> highSpeedConfiguration{};
    /// The 10-byte device qualifier descriptor (DescriptorBuilder: deviceQualifier()). Used only with
    /// highSpeedConfiguration. It describes the device at the other speed. Its fields must be the same at both speeds,
-   /// because the device serves one qualifier at both.
+   /// because the device serves one qualifier at both. bMaxPacketSize0 must be 64 (USB 2.0 section 5.5.3).
    art::span<const uint8_t> deviceQualifier{};
 };
 
