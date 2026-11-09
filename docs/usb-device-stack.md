@@ -111,10 +111,12 @@ size_t taken = serial.write(data);
     `cdcAcm(cdc::kAcmLineCoding | cdc::kAcmSendBreak)`.
   - Without an event handler, the function accepts every line coding and stalls SEND_BREAK.
 - **Queues**: two `etl::circular_buffer` queues, with the capacities `RxSize` and `TxSize` in bytes. `RxSize` must
-  be at least 64. `CdcAcmFunctionBase` has the API without the sizes, for code that only reads and writes.
+  be at least 64, and at least 512 on a device that runs at high speed. `CdcAcmFunctionBase` has the API without the sizes, for code that only reads and writes.
 - **TX**: `write()` takes the data that fits into the TX queue and never waits. The function sends the queue in
-  packets of 64 bytes. If the last packet is a full packet, a zero-length packet (ZLP) ends the transfer.
-- **RX and flow control**: the OUT endpoint accepts a packet only while the RX queue has at least 64 free bytes.
+  packets of 64 bytes, also at high speed. If the last packet fills the `wMaxPacketSize` of the IN endpoint, a
+  zero-length packet (ZLP) ends the transfer. At high speed a 64-byte packet is a short packet, so no ZLP follows.
+- **RX and flow control**: the OUT endpoint accepts a packet only while the RX queue has room for one packet of the
+  `wMaxPacketSize` of the OUT endpoint (64 bytes, or 512 bytes at high speed).
   Otherwise the endpoint NAKs and the host waits until `read()` makes room. No received byte is lost.
 - **Endpoint halt**: the function sends and arms nothing on a halted endpoint. After CLEAR_FEATURE(ENDPOINT_HALT)
   on a data endpoint, or SET_INTERFACE on the data interface, it arms the OUT endpoint again and sends the dropped IN
@@ -125,7 +127,7 @@ size_t taken = serial.write(data);
   queues and the control line state. The line coding stays.
 - **Threading**: call `read()` and `write()` from the context that delivers the controller events (normally the
   main loop). The function does no locking.
-- **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64. The `wMaxPacketSize` of the notification
+- **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64 at full speed and 512 at high speed. The `wMaxPacketSize` of the notification
   endpoint must not divide 10 (use 8, 16 or 64), because no ZLP follows the notification.
   `CdcAcmFunction<256, 256>` uses 624 bytes of RAM on Cortex-M0+.
 
