@@ -34,6 +34,15 @@ struct Descriptors {
    /// has none: then GET_DESCRIPTOR(BOS) stalls. A device with a BOS sets bcdUSB to 0x0201 or more, so that the host
    /// asks for it.
    art::span<const uint8_t> bos{};
+   /// The configuration descriptor set at high speed. Empty for a full-speed-only device. If it is set, `configuration`
+   /// is the set at full speed, and the device serves the one of the speed that DeviceController::isHighSpeed()
+   /// reports at the bus reset. It must have the same interfaces, alternate settings and endpoint addresses: only the
+   /// packet sizes and intervals change.
+   art::span<const uint8_t> highSpeedConfiguration{};
+   /// The 10-byte device qualifier descriptor (DescriptorBuilder: deviceQualifier()). Used only with
+   /// highSpeedConfiguration. It describes the device at the other speed. Its fields must be the same at both speeds,
+   /// because the device serves one qualifier at both.
+   art::span<const uint8_t> deviceQualifier{};
 };
 
 /**
@@ -50,7 +59,8 @@ struct Descriptors {
  *
  * @par Standard requests
  * GET_DESCRIPTOR (device, configuration, string, BOS if Descriptors::bos is set; device qualifier and other-speed
- * configuration stall, because a full-speed-only device has none), SET_ADDRESS (applied after the status stage),
+ * configuration if Descriptors::highSpeedConfiguration is set, else they stall, because a full-speed-only device has
+ * none), SET_ADDRESS (applied after the status stage),
  * GET_CONFIGURATION, SET_CONFIGURATION, GET_STATUS, CLEAR_FEATURE and SET_FEATURE (endpoint halt; device remote wakeup
  * only if the configuration descriptor declares it), GET_INTERFACE and SET_INTERFACE. Everything else stalls:
  * SET_DESCRIPTOR, SYNCH_FRAME, TEST_MODE, requests in a state where USB 2.0 does not define them, unknown interfaces
@@ -129,6 +139,14 @@ class Device final : public ControllerEvents {
       return configuration_ != 0u;
    }
 
+   /// True if the last bus reset ended in high speed and the device has high-speed descriptors.
+   [[nodiscard]] bool isHighSpeed() const {
+      return highSpeed_;
+   }
+
+   /// wMaxPacketSize of an open endpoint, from the configuration descriptor of the speed; 0 if it is not open.
+   [[nodiscard]] uint16_t endpointMaxPacketSize(uint8_t endpointAddress) const;
+
    /// The active alternate setting of an interface, 0 for an unknown interface.
    [[nodiscard]] uint8_t alternateSetting(uint8_t interfaceNumber) const;
 
@@ -197,8 +215,8 @@ class Device final : public ControllerEvents {
    bool forwardToVendorRequestHandler(const SetupPacket &setup);
 
    // Control transfer stages.
-   void sendControlData(art::span<const uint8_t> data);
-   void sendNextControlPacket();
+   void sendControlData(art::span<const uint8_t> data, uint8_t firstPacketDescriptorType = 0u);
+   void sendNextControlPacket(uint8_t descriptorType = 0u);
    void startStatusIn();
    void startStatusOut();
    void stallControl();
@@ -213,6 +231,8 @@ class Device final : public ControllerEvents {
    [[nodiscard]] uint8_t configurationAttributes() const;
    [[nodiscard]] uint8_t configurationValue() const;
    [[nodiscard]] uint8_t interfaceCount() const;
+   /// The configuration descriptor set of the current speed.
+   [[nodiscard]] art::span<const uint8_t> activeConfiguration() const;
 
    [[nodiscard]] Function *functionForInterface(uint8_t interfaceNumber) const;
    [[nodiscard]] Function *functionForEndpoint(uint8_t endpointAddress) const;
@@ -235,6 +255,7 @@ class Device final : public ControllerEvents {
    uint8_t address_{ 0u };
    uint8_t configuration_{ 0u };
    bool remoteWakeupEnabled_{ false };
+   bool highSpeed_{ false };
 
    VendorRequestHandler *vendorRequestHandler_{ nullptr };
    std::array<Function *, kMaxFunctions> functions_{};

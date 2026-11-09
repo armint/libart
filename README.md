@@ -11,7 +11,7 @@ It contains:
 - **Modbus**: Modbus RTU master and slave.
 - **Settings**: device settings with defaults, stored as JSON.
 - **Storage**: block device and file system interfaces, with FatFs and LittleFS file systems.
-- **USB**: a USB full-speed device stack with CDC-ACM (virtual COM port), a vendor bulk function and MS OS 2.0
+- **USB**: a USB full-speed and high-speed device stack with CDC-ACM (virtual COM port), a vendor bulk function and MS OS 2.0
   descriptors for WinUSB.
 - **Sensors**: thermocouple and thermistor temperature sensors.
 - **FreeRTOS wrappers**: RAII classes for threads, mutexes, queues, semaphores and timers.

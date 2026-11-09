@@ -78,6 +78,12 @@ uint8_t maxPacketSize0Of(art::span<const uint8_t> deviceDescriptor) {
    return size == 8u || size == 16u || size == 32u || size == 64u ? size : kDefaultMaxPacketSize0;
 }
 
+/// wMaxPacketSize of an endpoint descriptor, without the bits of the additional transactions (bits 11 and 12).
+uint16_t maxPacketSizeOf(art::span<const uint8_t> endpointDescriptor) {
+   return static_cast<uint16_t>(
+   (endpointDescriptor[kEndpointMaxPacketSize] | (endpointDescriptor[kEndpointMaxPacketSize + 1u] << 8u)) & 0x07FFu);
+}
+
 } // namespace
 
 Device::Device(DeviceController &controller, const Descriptors &descriptors)
@@ -137,6 +143,24 @@ uint8_t Device::alternateSetting(uint8_t interfaceNumber) const {
    return interfaceNumber < kMaxInterfaces ? alternateSettings_[interfaceNumber] : 0u;
 }
 
+uint16_t Device::endpointMaxPacketSize(uint8_t endpointAddress) const {
+   if(!isEndpointOpen(endpointAddress)) {
+      return 0u;
+   }
+   const uint8_t interfaceNumber = endpointInterface_[endpointSlot(endpointAddress)];
+   uint16_t size = 0u;
+   forEachEndpoint(activeConfiguration(), interfaceNumber, alternateSetting(interfaceNumber), [&](art::span<const uint8_t> descriptor) {
+      if(descriptor[kEndpointAddress] == endpointAddress) {
+         size = maxPacketSizeOf(descriptor);
+      }
+   });
+   return size;
+}
+
+art::span<const uint8_t> Device::activeConfiguration() const {
+   return highSpeed_ ? descriptors_.highSpeedConfiguration : descriptors_.configuration;
+}
+
 bool Device::isEndpointHalted(uint8_t endpointAddress) const {
    return (haltedEndpoints_ & (1u << endpointSlot(endpointAddress))) != 0u;
 }
@@ -187,6 +211,7 @@ void Device::busReset() {
    remoteWakeupEnabled_ = false;
    controlStage_ = ControlStage::Idle;
    state_ = DeviceState::Default;
+   highSpeed_ = controller_.isHighSpeed() && !descriptors_.highSpeedConfiguration.empty();
    controller_.openEndpoint(EndpointConfig{ kEndpoint0Out, EndpointType::Control, maxPacketSize0_ });
 }
 
@@ -423,11 +448,27 @@ bool Device::handleGetDescriptor(const SetupPacket &setup) {
       return true;
    case DescriptorType::Configuration:
       // The device has a single configuration, index 0.
-      if(index != 0u || descriptors_.configuration.empty()) {
+      if(index != 0u || activeConfiguration().empty()) {
          return false;
       }
-      sendControlData(descriptors_.configuration);
+      sendControlData(activeConfiguration());
       return true;
+   case DescriptorType::DeviceQualifier:
+      // A full-speed-only device has no qualifier and stalls (USB 2.0 section 9.6.2).
+      if(index != 0u || descriptors_.highSpeedConfiguration.empty() || descriptors_.deviceQualifier.empty()) {
+         return false;
+      }
+      sendControlData(descriptors_.deviceQualifier);
+      return true;
+   case DescriptorType::OtherSpeedConfiguration: {
+      // The configuration of the speed that is not active, with bDescriptorType 7 (USB 2.0 section 9.6.4).
+      const art::span<const uint8_t> other = highSpeed_ ? descriptors_.configuration : descriptors_.highSpeedConfiguration;
+      if(index != 0u || descriptors_.highSpeedConfiguration.empty() || other.empty()) {
+         return false;
+      }
+      sendControlData(other, static_cast<uint8_t>(DescriptorType::OtherSpeedConfiguration));
+      return true;
+   }
    case DescriptorType::String:
       if(index >= descriptors_.strings.size() || descriptors_.strings[index].empty()) {
          return false;
@@ -441,7 +482,6 @@ bool Device::handleGetDescriptor(const SetupPacket &setup) {
       sendControlData(descriptors_.bos);
       return true;
    default:
-      // A full-speed-only device stalls DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION (USB 2.0 section 9.6.2).
       // Interface and endpoint descriptors cannot be read on their own.
       return false;
    }
@@ -634,7 +674,7 @@ bool Device::forwardToVendorRequestHandler(const SetupPacket &setup) {
    return true;
 }
 
-void Device::sendControlData(art::span<const uint8_t> data) {
+void Device::sendControlData(art::span<const uint8_t> data, uint8_t firstPacketDescriptorType) {
    // Without a data stage (wLength 0) the status stage is IN, also for a device-to-host request.
    if(controlSetup_.wLength == 0u) {
       startStatusIn();
@@ -650,13 +690,21 @@ void Device::sendControlData(art::span<const uint8_t> data) {
    // Accept the status stage from the start of the data stage: the host may end the data stage early, and with
    // queued events the host sends the status before the main loop has seen the last data packet acknowledged.
    controller_.armOutTransfer(kEndpoint0Out);
-   sendNextControlPacket();
+   sendNextControlPacket(firstPacketDescriptorType);
 }
 
-void Device::sendNextControlPacket() {
+void Device::sendNextControlPacket(uint8_t descriptorType) {
    const size_t length = std::min<size_t>(controlInData_.size(), maxPacketSize0_);
-   const art::span<const uint8_t> packet = controlInData_.first(length);
+   art::span<const uint8_t> packet = controlInData_.first(length);
    controlInData_ = controlInData_.subspan(length);
+   // A descriptor sent with another bDescriptorType: the controller copies the packet, so a copy on the stack is
+   // enough. maxPacketSize0_ is at most kDefaultMaxPacketSize0 (maxPacketSize0Of()).
+   std::array<uint8_t, kDefaultMaxPacketSize0> retyped{};
+   if(descriptorType != 0u && length >= 2u) {
+      std::copy(packet.begin(), packet.end(), retyped.begin());
+      retyped[1] = descriptorType;
+      packet = art::span<const uint8_t>(retyped.data(), length);
+   }
    if(length == 0u) {
       controlZlpPending_ = false;
    }
@@ -694,7 +742,7 @@ void Device::finishControlOut() {
 
 bool Device::openInterfaceEndpoints(uint8_t interfaceNumber, uint8_t alternateSetting) {
    bool success = true;
-   forEachEndpoint(descriptors_.configuration, interfaceNumber, alternateSetting, [&](art::span<const uint8_t> descriptor) {
+   forEachEndpoint(activeConfiguration(), interfaceNumber, alternateSetting, [&](art::span<const uint8_t> descriptor) {
       const uint8_t endpointAddress = descriptor[kEndpointAddress];
       const size_t slot = endpointSlot(endpointAddress);
       // Endpoint 0 and reserved address bits cannot appear in an endpoint descriptor; an endpoint used twice is a
@@ -704,10 +752,8 @@ bool Device::openInterfaceEndpoints(uint8_t interfaceNumber, uint8_t alternateSe
          success = false;
          return;
       }
-      const EndpointConfig config{
-         endpointAddress, static_cast<EndpointType>(descriptor[kEndpointAttributes] & 0x03u),
-         static_cast<uint16_t>((descriptor[kEndpointMaxPacketSize] | (descriptor[kEndpointMaxPacketSize + 1u] << 8u)) & 0x07FFu)
-      };
+      const EndpointConfig config{ endpointAddress, static_cast<EndpointType>(descriptor[kEndpointAttributes] & 0x03u),
+                                   maxPacketSizeOf(descriptor) };
       if(!controller_.openEndpoint(config)) {
          success = false;
          return;
@@ -748,7 +794,7 @@ void Device::deconfigure() {
 
 bool Device::hasAlternateSetting(uint8_t interfaceNumber, uint8_t alternateSetting) const {
    bool found = false;
-   forEachDescriptor(descriptors_.configuration, [&](art::span<const uint8_t> descriptor) {
+   forEachDescriptor(activeConfiguration(), [&](art::span<const uint8_t> descriptor) {
       if(isDescriptorOfType(descriptor, DescriptorType::Interface, kInterfaceDescriptorSize) &&
          descriptor[kInterfaceNumber] == interfaceNumber && descriptor[kInterfaceAlternateSetting] == alternateSetting) {
          found = true;
@@ -758,19 +804,15 @@ bool Device::hasAlternateSetting(uint8_t interfaceNumber, uint8_t alternateSetti
 }
 
 uint8_t Device::configurationAttributes() const {
-   return descriptors_.configuration.size() >= kConfigurationDescriptorSize ?
-          descriptors_.configuration[kConfigurationAttributes] :
-          0u;
+   return activeConfiguration().size() >= kConfigurationDescriptorSize ? activeConfiguration()[kConfigurationAttributes] : 0u;
 }
 
 uint8_t Device::configurationValue() const {
-   return descriptors_.configuration.size() >= kConfigurationDescriptorSize ? descriptors_.configuration[kConfigurationValue] : 0u;
+   return activeConfiguration().size() >= kConfigurationDescriptorSize ? activeConfiguration()[kConfigurationValue] : 0u;
 }
 
 uint8_t Device::interfaceCount() const {
-   return descriptors_.configuration.size() >= kConfigurationDescriptorSize ?
-          descriptors_.configuration[kConfigurationNumInterfaces] :
-          0u;
+   return activeConfiguration().size() >= kConfigurationDescriptorSize ? activeConfiguration()[kConfigurationNumInterfaces] : 0u;
 }
 
 Function *Device::functionForInterface(uint8_t interfaceNumber) const {

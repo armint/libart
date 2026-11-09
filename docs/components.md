@@ -10,7 +10,7 @@ documentation. Include the headers with their path below `src/`, for example `#i
 | `modbus/` | `modbus` | `ModbusMaster` and `ModbusSlave` for Modbus RTU. |
 | `settings/` | global | `SettingsManager` and `Setting<T>`: device settings stored as JSON. |
 | `storage/` | `art::storage`; `FatFileSystem`, `FatFile` and `FatDir` are global | Block devices and file systems (FatFs, LittleFS). See [Storage](storage.md). |
-| `usb/` | `art::usb` | USB full-speed device stack. See [USB device stack](usb-device-stack.md). |
+| `usb/` | `art::usb` | USB full-speed and high-speed device stack. See [USB device stack](usb-device-stack.md). |
 | `sensors/` | global | Temperature sensors: thermocouples (K and S type), cold-junction compensation and thermistors. |
 | `freertos/` | `art::rtos` | C++ wrappers for FreeRTOS (target `art::rtos`). |
 | `utils/` | global; `utils::FloatText`; `art` for `utils/compat/` | CRC and SHA-256 digests, JSON, `FloatText`, `tfp_printf`, ring buffers, compat headers. |

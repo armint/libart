@@ -58,7 +58,7 @@ class ControllerEvents {
 };
 
 /**
- * @brief Hardware-independent interface to a USB full-speed device peripheral.
+ * @brief Hardware-independent interface to a USB device peripheral (full speed, or high speed with isHighSpeed()).
  *
  * usb::Device runs the chapter 9 protocol on top of this interface, so the protocol code has no hardware
  * dependency and runs in host tests against a fake controller. A port implements it on the register driver of its
@@ -95,6 +95,16 @@ class DeviceController {
 
    /// Turns the D+ pull-up off. The host sees a disconnect.
    virtual void disconnect() = 0;
+
+   /**
+    * @brief True if the last bus reset ended in high speed (480 Mbit/s).
+    *
+    * usb::Device calls this in ControllerEvents::busReset() to select the descriptors of the speed. So the value
+    * must be valid when the controller reports the bus reset. A full-speed-only controller keeps the default.
+    */
+   [[nodiscard]] virtual bool isHighSpeed() const {
+      return false;
+   }
 
    /**
     * @brief Sets the device address (0 to 127) that SET_ADDRESS requests.

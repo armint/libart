@@ -63,6 +63,15 @@ class FakeDeviceController : public DeviceController {
       connected_ = false;
    }
 
+   [[nodiscard]] bool isHighSpeed() const override {
+      return highSpeed_;
+   }
+
+   /// The speed that the next bus reset ends in.
+   void setHighSpeed(bool highSpeed) {
+      highSpeed_ = highSpeed;
+   }
+
    /// Like an STM32 FS peripheral: the address is pending until the host acknowledges the status stage on EP0.
    void setAddress(uint8_t address) override {
       pendingAddress_ = address;
@@ -408,6 +417,7 @@ class FakeDeviceController : public DeviceController {
    bool queueEvents_{ false };
    std::vector<std::function<void()>> queuedEvents_;
    std::map<uint8_t, EndpointConfig> endpoints_;
+   bool highSpeed_{ false };
    std::set<uint8_t> stalled_;
    std::set<uint8_t> armed_;
    std::map<uint8_t, std::vector<uint8_t>> inPackets_;

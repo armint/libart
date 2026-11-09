@@ -1,6 +1,7 @@
 # USB device stack
 
-`src/usb/` contains a platform-independent USB 2.0 full-speed device stack, namespace `art::usb`. It has no
+`src/usb/` contains a platform-independent USB 2.0 device stack, namespace `art::usb`. It runs at full speed, and
+at high speed on a controller that supports it (see [High speed](#high-speed)). It has no
 hardware dependency, so the protocol code runs in the host tests. A port connects it to the USB peripheral of an MCU.
 
 | Header | Content |
@@ -12,7 +13,7 @@ hardware dependency, so the protocol code runs in the host tests. A port connect
 | `usb/CdcAcmFunction.h` | `CdcAcmFunction`: the CDC-ACM function (virtual COM port) with its RX and TX queues. |
 | `usb/VendorBulkFunction.h` | `VendorBulkFunction`: base of a function with one interface and a bulk OUT and IN endpoint, for a protocol of its own (vendor-specific class). |
 | `usb/VendorRequestHandler.h` | `VendorRequestHandler`: the interface of the handler of vendor requests whose recipient is the device. |
-| `usb/DescriptorBuilder.h` | `constexpr` builders for the device, configuration, interface association (IAD), interface, endpoint, BOS, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
+| `usb/DescriptorBuilder.h` | `constexpr` builders for the device, device qualifier, configuration, interface association (IAD), interface, endpoint, BOS, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
 | `usb/MsOs20.h` | MS OS 2.0 descriptors (namespace `art::usb::msos20`): `constexpr` builders for the descriptor set and the platform capability of the BOS, and `DescriptorSetHandler`, which answers the request of Windows for the set. |
 
 Use it like this:
@@ -31,7 +32,7 @@ device.start();                                    // pull-up on
 - **Standard requests**: GET_DESCRIPTOR (device, configuration, string, and BOS if `Descriptors::bos` is set), SET_ADDRESS, GET_CONFIGURATION,
   SET_CONFIGURATION, GET_STATUS, CLEAR_FEATURE and SET_FEATURE (endpoint halt; device remote wakeup only if the
   configuration descriptor declares it), GET_INTERFACE and SET_INTERFACE.
-- **STALL**: DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION (the device is full-speed only), SET_DESCRIPTOR,
+- **STALL**: DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION on a full-speed-only device, SET_DESCRIPTOR,
   SYNCH_FRAME, TEST_MODE, unknown interfaces and endpoints, and requests in a state where USB 2.0 does not define
   them. The next SETUP packet ends the stall.
 - **SET_ADDRESS**: the new address applies after the status stage, as USB 2.0 section 9.4.6 requires. The
@@ -52,6 +53,7 @@ device.start();                                    // pull-up on
   `Device::setVendorRequestHandler()`, in the states Address and Configured. Without a handler they stall. A
   device-to-host reply can point into flash, so it can be longer than the control buffer. Class requests to the
   device stall.
+- **High speed**: see [High speed](#high-speed).
 - **Limits**: one configuration, at most `Device::kMaxInterfaces` (8) interfaces and `Device::kMaxFunctions` (4)
   functions. No heap: all state is in the object (208 bytes on Cortex-M0+).
 
@@ -59,6 +61,26 @@ device.start();                                    // pull-up on
 `Function` through `Device`. With `queueEvents(true)`, it holds the events until `deliverQueuedEvents()`, as a
 controller does that queues them in its interrupt handler for the main loop. `tests/usb/TestUsbEnumeration.cpp` runs
 the enumeration sequences of Linux and Windows in both modes.
+
+## High speed
+
+A device that sets `Descriptors::highSpeedConfiguration` and `Descriptors::deviceQualifier` runs at the speed of the
+bus:
+
+- At each bus reset, `Device` asks `DeviceController::isHighSpeed()`. If it is true, the device serves
+  `highSpeedConfiguration` as its configuration and opens the endpoints from it. Otherwise it serves
+  `configuration`. `Device::isHighSpeed()` gives the result.
+- GET_DESCRIPTOR(DEVICE_QUALIFIER) returns `deviceQualifier`. Build it with `deviceQualifier()`. One qualifier
+  serves both speeds, so the device fields must be the same at both speeds.
+- GET_DESCRIPTOR(OTHER_SPEED_CONFIGURATION) returns the configuration of the other speed, with `bDescriptorType` 7.
+- Both configurations must have the same interfaces, alternate settings and endpoint addresses. Only the packet
+  sizes and the intervals change. A bulk endpoint has a `wMaxPacketSize` of 512 at high speed (USB 2.0 section
+  5.8.3).
+- `Device::endpointMaxPacketSize()` gives the `wMaxPacketSize` of an open endpoint at the current speed. The
+  functions use it for their packet size.
+- A device without `highSpeedConfiguration` stays at full speed. It also serves its full-speed configuration on a
+  controller that reports high speed. Do not let such a controller connect at high speed: the packet sizes of the
+  descriptors are then not valid.
 
 ## `usb::CdcAcmFunction`
 
@@ -259,6 +281,8 @@ with NAK. The protocol layer splits transfers into packets and adds zero-length 
   controller drops a pending address on the next SETUP packet and on a bus reset. With queued events, the main loop
   sees the acknowledgement too late for the host, which uses the new address 2 ms after the status stage.
 - A control endpoint is opened once, with its OUT address, and covers both directions.
+- `isHighSpeed()` gives the speed of the last bus reset. It must be valid when the controller reports the bus
+  reset. The default is `false`, for a full-speed-only controller.
 
 ## Threading
 
