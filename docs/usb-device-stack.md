@@ -1,6 +1,7 @@
 # USB device stack
 
-`src/usb/` contains a platform-independent USB 2.0 full-speed device stack, namespace `art::usb`. It has no
+`src/usb/` contains a platform-independent USB 2.0 device stack, namespace `art::usb`. It runs at full speed, and
+at high speed on a controller that supports it (see [High speed](#high-speed)). It has no
 hardware dependency, so the protocol code runs in the host tests. A port connects it to the USB peripheral of an MCU.
 
 | Header | Content |
@@ -12,7 +13,7 @@ hardware dependency, so the protocol code runs in the host tests. A port connect
 | `usb/CdcAcmFunction.h` | `CdcAcmFunction`: the CDC-ACM function (virtual COM port) with its RX and TX queues. |
 | `usb/VendorBulkFunction.h` | `VendorBulkFunction`: base of a function with one interface and a bulk OUT and IN endpoint, for a protocol of its own (vendor-specific class). |
 | `usb/VendorRequestHandler.h` | `VendorRequestHandler`: the interface of the handler of vendor requests whose recipient is the device. |
-| `usb/DescriptorBuilder.h` | `constexpr` builders for the device, configuration, interface association (IAD), interface, endpoint, BOS, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
+| `usb/DescriptorBuilder.h` | `constexpr` builders for the device, device qualifier, configuration, interface association (IAD), interface, endpoint, BOS, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
 | `usb/MsOs20.h` | MS OS 2.0 descriptors (namespace `art::usb::msos20`): `constexpr` builders for the descriptor set and the platform capability of the BOS, and `DescriptorSetHandler`, which answers the request of Windows for the set. |
 
 Use it like this:
@@ -31,7 +32,7 @@ device.start();                                    // pull-up on
 - **Standard requests**: GET_DESCRIPTOR (device, configuration, string, and BOS if `Descriptors::bos` is set), SET_ADDRESS, GET_CONFIGURATION,
   SET_CONFIGURATION, GET_STATUS, CLEAR_FEATURE and SET_FEATURE (endpoint halt; device remote wakeup only if the
   configuration descriptor declares it), GET_INTERFACE and SET_INTERFACE.
-- **STALL**: DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION (the device is full-speed only), SET_DESCRIPTOR,
+- **STALL**: DEVICE_QUALIFIER and OTHER_SPEED_CONFIGURATION on a full-speed-only device, SET_DESCRIPTOR,
   SYNCH_FRAME, TEST_MODE, unknown interfaces and endpoints, and requests in a state where USB 2.0 does not define
   them. The next SETUP packet ends the stall.
 - **SET_ADDRESS**: the new address applies after the status stage, as USB 2.0 section 9.4.6 requires. The
@@ -52,6 +53,7 @@ device.start();                                    // pull-up on
   `Device::setVendorRequestHandler()`, in the states Address and Configured. Without a handler they stall. A
   device-to-host reply can point into flash, so it can be longer than the control buffer. Class requests to the
   device stall.
+- **High speed**: see [High speed](#high-speed).
 - **Limits**: one configuration, at most `Device::kMaxInterfaces` (8) interfaces and `Device::kMaxFunctions` (4)
   functions. No heap: all state is in the object (208 bytes on Cortex-M0+).
 
@@ -59,6 +61,29 @@ device.start();                                    // pull-up on
 `Function` through `Device`. With `queueEvents(true)`, it holds the events until `deliverQueuedEvents()`, as a
 controller does that queues them in its interrupt handler for the main loop. `tests/usb/TestUsbEnumeration.cpp` runs
 the enumeration sequences of Linux and Windows in both modes.
+
+## High speed
+
+A device that sets `Descriptors::highSpeedConfiguration` and `Descriptors::deviceQualifier` runs at the speed of the
+bus:
+
+- At each bus reset, and for each SETUP packet before SET_CONFIGURATION, `Device` asks
+  `DeviceController::isHighSpeed()`. A high-speed controller knows the speed only at the end of the reset, after the
+  chirp handshake. The host sends its first SETUP packet after the reset. If it is true, the device serves
+  `highSpeedConfiguration` as its configuration and opens the endpoints from it. Otherwise it serves
+  `configuration`. `Device::isHighSpeed()` gives the result.
+- GET_DESCRIPTOR(DEVICE_QUALIFIER) returns `deviceQualifier`. Build it with `deviceQualifier()`. One qualifier
+  serves both speeds, so the device fields must be the same at both speeds. A high-speed device must have a
+  `bMaxPacketSize0` of 64 (USB 2.0 section 5.5.3), so use 64 in the device descriptor.
+- GET_DESCRIPTOR(OTHER_SPEED_CONFIGURATION) returns the configuration of the other speed, with `bDescriptorType` 7.
+- Both configurations must have the same interfaces, alternate settings and endpoint addresses. Only the packet
+  sizes and the intervals change. A bulk endpoint has a `wMaxPacketSize` of 512 at high speed (USB 2.0 section
+  5.8.3).
+- `Device::endpointMaxPacketSize()` gives the `wMaxPacketSize` of an open endpoint at the current speed. The
+  functions use it for their packet size.
+- A device without `highSpeedConfiguration` stays at full speed. It also serves its full-speed configuration on a
+  controller that reports high speed. Do not let such a controller connect at high speed: the packet sizes of the
+  descriptors are then not valid.
 
 ## `usb::CdcAcmFunction`
 
@@ -89,10 +114,12 @@ size_t taken = serial.write(data);
     `cdcAcm(cdc::kAcmLineCoding | cdc::kAcmSendBreak)`.
   - Without an event handler, the function accepts every line coding and stalls SEND_BREAK.
 - **Queues**: two `etl::circular_buffer` queues, with the capacities `RxSize` and `TxSize` in bytes. `RxSize` must
-  be at least 64. `CdcAcmFunctionBase` has the API without the sizes, for code that only reads and writes.
+  be at least 64, and at least 512 on a device that runs at high speed. `CdcAcmFunctionBase` has the API without the sizes, for code that only reads and writes.
 - **TX**: `write()` takes the data that fits into the TX queue and never waits. The function sends the queue in
-  packets of 64 bytes. If the last packet is a full packet, a zero-length packet (ZLP) ends the transfer.
-- **RX and flow control**: the OUT endpoint accepts a packet only while the RX queue has at least 64 free bytes.
+  packets of 64 bytes, also at high speed. If the last packet fills the `wMaxPacketSize` of the IN endpoint, a
+  zero-length packet (ZLP) ends the transfer. At high speed a 64-byte packet is a short packet, so no ZLP follows.
+- **RX and flow control**: the OUT endpoint accepts a packet only while the RX queue has room for one packet of the
+  `wMaxPacketSize` of the OUT endpoint (64 bytes, or 512 bytes at high speed).
   Otherwise the endpoint NAKs and the host waits until `read()` makes room. No received byte is lost.
 - **Endpoint halt**: the function sends and arms nothing on a halted endpoint. After CLEAR_FEATURE(ENDPOINT_HALT)
   on a data endpoint, or SET_INTERFACE on the data interface, it arms the OUT endpoint again and sends the dropped IN
@@ -103,7 +130,7 @@ size_t taken = serial.write(data);
   queues and the control line state. The line coding stays.
 - **Threading**: call `read()` and `write()` from the context that delivers the controller events (normally the
   main loop). The function does no locking.
-- **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64. The `wMaxPacketSize` of the notification
+- **Limits**: the bulk endpoints must have a `wMaxPacketSize` of 64 at full speed and 512 at high speed. The `wMaxPacketSize` of the notification
   endpoint must not divide 10 (use 8, 16 or 64), because no ZLP follows the notification.
   `CdcAcmFunction<256, 256>` uses 624 bytes of RAM on Cortex-M0+.
 
@@ -129,19 +156,21 @@ class CommandFunction final : public art::usb::VendorBulkFunction {
 
 - **Descriptors**: one interface with two bulk endpoints, for example
   `interfaceDescriptor(InterfaceFields{ 0, 0, classcode::kVendorSpecific, 0, 0, 0 }, endpoint(0x03, Bulk, 64),
-  endpoint(0x82, Bulk, 64))`. The endpoints and `maxPacketSize` (8, 16, 32 or 64) of `VendorBulkEndpoints` must match
-  them.
+  endpoint(0x82, Bulk, 64))`. The endpoints of `VendorBulkEndpoints` must match them.
+- **Packet size**: from SET_CONFIGURATION on, `packetSize()` is the `wMaxPacketSize` of the IN endpoint at the bus
+  speed (`Device::endpointMaxPacketSize()`). Both endpoints must have the same size. `VendorBulkEndpoints::maxPacketSize`
+  is used only before the configuration.
 - **OUT**: the OUT endpoint is armed after SET_CONFIGURATION. Each packet goes to `dataReceived()`. If it returns
   `true`, the endpoint is armed again at once. If it returns `false`, the endpoint NAKs until the subclass calls
   `resumeOut()`. So a command can wait for the main loop, and no packet is lost. The base does not join packets: the
   protocol knows where a command ends.
-- **IN**: `sendInTransfer(data)` sends a buffer of any size in packets of `maxPacketSize` bytes. The buffer is not
+- **IN**: `sendInTransfer(data)` sends a buffer of any size in packets of `packetSize()` bytes. The buffer is not
   copied: keep it valid until `transferSent()` or `dataPathClosed()`. One transfer at a time: a second call returns
   `false` until `transferSent()`. It also returns `false` if the controller refuses the first packet, for example
-  when `maxPacketSize` is larger than the descriptor. On a halted IN endpoint the transfer starts and waits for the
+  when the endpoint is not open. On a halted IN endpoint the transfer starts and waits for the
   clear. The hook may start the next transfer.
 - **ZLP**: with `ZeroLengthPacket::Auto` (the default), a zero-length packet follows a transfer whose size is a
-  multiple of `maxPacketSize`. Use `ZeroLengthPacket::Never` when the host reads exactly the size of the transfer:
+  multiple of `packetSize()`. Use `ZeroLengthPacket::Never` when the host reads exactly the size of the transfer:
   then the ZLP would end the next read of the host. An empty buffer sends one ZLP in both modes.
 - **Endpoint halt**: the subclass halts an endpoint with `device()->haltEndpoint()`, for example on a protocol
   error. After CLEAR_FEATURE(ENDPOINT_HALT) or SET_INTERFACE, the function arms the OUT endpoint again (unless it is
@@ -259,6 +288,8 @@ with NAK. The protocol layer splits transfers into packets and adds zero-length 
   controller drops a pending address on the next SETUP packet and on a bus reset. With queued events, the main loop
   sees the acknowledgement too late for the host, which uses the new address 2 ms after the status stage.
 - A control endpoint is opened once, with its OUT address, and covers both directions.
+- `isHighSpeed()` gives the speed of the last bus reset. It must be valid when the first SETUP packet after the
+  reset arrives. The default is `false`, for a full-speed-only controller.
 
 ## Threading
 

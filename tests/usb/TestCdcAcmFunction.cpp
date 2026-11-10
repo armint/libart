@@ -314,6 +314,66 @@ TEST_CASE("[usb::CdcAcmFunction] the OUT endpoint NAKs while the RX queue has no
    }
 }
 
+namespace {
+
+constexpr auto kHighSpeedConfiguration =
+configuration(ConfigurationFields{},
+              interfaceAssociation(0u, 2u, classcode::kCdc, cdc::kSubclassAcm, 0u),
+              interfaceDescriptor(InterfaceFields{ 0u, 0u, classcode::kCdc, cdc::kSubclassAcm, 0u, 0u },
+                                  cdcHeader(),
+                                  cdcCallManagement(0u, 1u),
+                                  cdcAcm(),
+                                  cdcUnion(0u, 1u),
+                                  endpoint(kNotification, EndpointType::Interrupt, 8u, 9u)),
+              interfaceDescriptor(InterfaceFields{ 1u, 0u, classcode::kCdcData, 0u, 0u, 0u },
+                                  endpoint(kDataOut, EndpointType::Bulk, CdcAcmFunctionBase::kHighSpeedDataPacketSize),
+                                  endpoint(kDataIn, EndpointType::Bulk, CdcAcmFunctionBase::kHighSpeedDataPacketSize)));
+
+constexpr auto kQualifier = deviceQualifier(makeDeviceFields());
+
+} // namespace
+
+TEST_CASE("[usb::CdcAcmFunction] at high speed the RX room is one 512-byte packet") {
+   Descriptors descriptors{ asSpan(kDevice), asSpan(kConfiguration), art::span<const art::span<const uint8_t>>() };
+   descriptors.highSpeedConfiguration = asSpan(kHighSpeedConfiguration);
+   descriptors.deviceQualifier = asSpan(kQualifier);
+   FakeDeviceController controller;
+   Device device(controller, descriptors);
+   CdcAcmFunction<1024u, 256u> cdc{ 0u, kEndpoints };
+   REQUIRE(device.addFunction(cdc));
+   device.start();
+   controller.setHighSpeed(true);
+   controller.busReset();
+   bool ok = false;
+   CHECK_FALSE(
+   controller.controlOut(setupPacket(kStandardDeviceOut, kSetAddress, 5u, 0u, 0u), art::span<const uint8_t>(), &ok).stalled);
+   CHECK_FALSE(controller
+               .controlOut(setupPacket(kStandardDeviceOut, kSetConfiguration, 1u, 0u, 0u), art::span<const uint8_t>(), &ok)
+               .stalled);
+   REQUIRE(cdc.isConfigured());
+   REQUIRE(device.isHighSpeed());
+
+   // RX: two full packets fill the 1024-byte queue. Room for less than 512 bytes keeps the endpoint NAKed.
+   const std::vector<uint8_t> packet = pattern(512u);
+   CHECK(controller.sendOut(kDataOut, art::span<const uint8_t>(packet.data(), packet.size())));
+   CHECK(controller.sendOut(kDataOut, art::span<const uint8_t>(packet.data(), packet.size())));
+   CHECK_FALSE(controller.isArmed(kDataOut));
+   std::array<uint8_t, 511> buffer{};
+   CHECK(cdc.read(art::span<uint8_t>(buffer.data(), buffer.size())) == 511u);
+   CHECK_FALSE(controller.isArmed(kDataOut));
+   CHECK(cdc.read(art::span<uint8_t>(buffer.data(), 1u)) == 1u);
+   CHECK(controller.isArmed(kDataOut));
+
+   // TX: packets of 64 bytes are short packets at high speed, so no ZLP follows.
+   const std::vector<uint8_t> data = pattern(128u);
+   REQUIRE(cdc.write(art::span<const uint8_t>(data.data(), data.size())) == data.size());
+   std::vector<size_t> sizes;
+   while(std::optional<std::vector<uint8_t>> in = controller.takeIn(kDataIn)) {
+      sizes.push_back(in->size());
+   }
+   CHECK(sizes == std::vector<size_t>{ 64u, 64u });
+}
+
 TEST_CASE("[usb::CdcAcmFunction] SET_CONTROL_LINE_STATE sets DTR and RTS") {
    Bench bench(false);
    bench.enumerate();

@@ -73,6 +73,13 @@ configuration(ConfigurationFields{},
                                   endpoint(kVendorOut, EndpointType::Bulk, 32u),
                                   endpoint(kVendorIn, EndpointType::Bulk, 32u)));
 
+/// A vendor-only device with the packet size of a high-speed bulk endpoint.
+constexpr auto kConfiguration512 =
+configuration(ConfigurationFields{},
+              interfaceDescriptor(InterfaceFields{ 0u, 0u, classcode::kVendorSpecific, 0u, 0u, 0u },
+                                  endpoint(kVendorOut, EndpointType::Bulk, 512u),
+                                  endpoint(kVendorIn, EndpointType::Bulk, 512u)));
+
 /// A test protocol: records the OUT packets and the hook calls, and holds the OUT endpoint on request.
 class RecordingFunction final : public VendorBulkFunction {
    public:
@@ -194,10 +201,12 @@ class Bench {
    /// The host reads IN packets until a short packet (or a ZLP) ends the transfer, or the endpoint NAKs.
    std::vector<size_t> readTransfer(uint8_t endpointAddress, std::vector<uint8_t> &data) {
       std::vector<size_t> packetSizes;
+      const std::optional<EndpointConfig> endpoint = controller_.endpoint(endpointAddress);
+      const size_t packetSize = endpoint.has_value() ? endpoint->maxPacketSize : kPacketSize;
       while(std::optional<std::vector<uint8_t>> packet = takeIn(endpointAddress)) {
          packetSizes.push_back(packet->size());
          data.insert(data.end(), packet->begin(), packet->end());
-         if(packet->size() < kPacketSize) {
+         if(packet->size() < packetSize) {
             break;
          }
       }
@@ -496,22 +505,30 @@ TEST_CASE("[usb::VendorBulkFunction] works next to a CDC-ACM function") {
    }
 }
 
-TEST_CASE("[usb::VendorBulkFunction] a transfer whose first packet the controller refuses does not start") {
-   // maxPacketSize 64 of the function against a descriptor of 32 bytes.
-   Bench bench(false, asSpan(kConfiguration32));
-   bench.enumerate();
-   const std::vector<uint8_t> data = pattern(64u);
-   CHECK_FALSE(bench.vendor.sendInTransfer(asBytes(data)));
-   CHECK_FALSE(bench.vendor.isInTransferBusy());
-   CHECK_FALSE(bench.takeIn(kVendorIn).has_value());
-   CHECK(bench.vendor.transfersSent == 0);
+TEST_CASE("[usb::VendorBulkFunction] the packet size comes from the endpoint descriptor") {
+   SUBCASE("smaller than VendorBulkEndpoints::maxPacketSize") {
+      Bench bench(false, asSpan(kConfiguration32));
+      CHECK(bench.vendor.packetSize() == kPacketSize);
+      bench.enumerate();
+      CHECK(bench.vendor.packetSize() == 32u);
+      const std::vector<uint8_t> data = pattern(64u);
+      REQUIRE(bench.vendor.sendInTransfer(asBytes(data)));
+      std::vector<uint8_t> received;
+      // A multiple of the packet size of the descriptor gets a ZLP.
+      CHECK(bench.readTransfer(kVendorIn, received) == std::vector<size_t>{ 32u, 32u, 0u });
+      CHECK(received == data);
+   }
 
-   // A transfer whose packets fit works afterwards.
-   const std::vector<uint8_t> small = pattern(10u);
-   REQUIRE(bench.vendor.sendInTransfer(asBytes(small)));
-   CHECK(bench.takeIn(kVendorIn) == small);
-   CHECK(bench.vendor.transfersSent == 1);
-   CHECK_FALSE(bench.vendor.isInTransferBusy());
+   SUBCASE("512 bytes, as at high speed") {
+      Bench bench(false, asSpan(kConfiguration512));
+      bench.enumerate();
+      CHECK(bench.vendor.packetSize() == 512u);
+      const std::vector<uint8_t> data = pattern(600u);
+      REQUIRE(bench.vendor.sendInTransfer(asBytes(data)));
+      std::vector<uint8_t> received;
+      CHECK(bench.readTransfer(kVendorIn, received) == std::vector<size_t>{ 512u, 88u });
+      CHECK(received == data);
+   }
 }
 
 TEST_CASE("[usb::VendorBulkFunction] a transfer on a halted IN endpoint waits for the clear") {

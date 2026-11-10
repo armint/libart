@@ -7,9 +7,10 @@ namespace art::usb {
 
 VendorBulkFunction::VendorBulkFunction(uint8_t interfaceNumber, const VendorBulkEndpoints &endpoints)
    : Function(interfaceNumber, 1u)
-   , endpoints_(endpoints) {
+   , endpoints_(endpoints)
    // A packet size of 0 would never send the data of a transfer.
-   endpoints_.maxPacketSize = std::max<uint16_t>(endpoints_.maxPacketSize, 1u);
+   , packetSize_(std::max<uint16_t>(endpoints.maxPacketSize, 1u)) {
+   endpoints_.maxPacketSize = packetSize_;
 }
 
 bool VendorBulkFunction::sendInTransfer(art::span<const uint8_t> data, ZeroLengthPacket zeroLengthPacket) {
@@ -20,11 +21,11 @@ bool VendorBulkFunction::sendInTransfer(art::span<const uint8_t> data, ZeroLengt
    inSent_ = 0u;
    inPacketSize_ = 0u;
    // An empty transfer is a ZLP. Otherwise a full last packet does not end a bulk transfer for the host.
-   inZlpPending_ = data.empty() || (zeroLengthPacket == ZeroLengthPacket::Auto && data.size() % endpoints_.maxPacketSize == 0u);
+   inZlpPending_ = data.empty() || (zeroLengthPacket == ZeroLengthPacket::Auto && data.size() % packetSize_ == 0u);
    inTransferBusy_ = true;
    sendNextInPacket();
    if(!inPacketBusy_ && device() != nullptr && !device()->isEndpointHalted(endpoints_.in)) {
-      // The controller refused the first packet (endpoint not open, or maxPacketSize larger than the descriptor).
+      // The controller refused the first packet (the endpoint is not open).
       // Nothing would retry it, so the transfer does not start. On a halted endpoint it waits for the clear instead.
       inTransferBusy_ = false;
       inData_ = art::span<const uint8_t>();
@@ -44,6 +45,7 @@ void VendorBulkFunction::resumeOut() {
 
 void VendorBulkFunction::configured() {
    resetDataPath();
+   updatePacketSize();
    configured_ = true;
    armOut();
    dataPathOpened();
@@ -59,6 +61,7 @@ void VendorBulkFunction::alternateSettingChanged(uint8_t interfaceNumber, uint8_
    static_cast<void>(alternateSetting);
    // SET_INTERFACE closed and reopened the endpoints: the controller dropped the packet on its way and the OUT arm.
    if(interfaceNumber == firstInterface()) {
+      updatePacketSize();
       restartOut();
       restartIn();
    }
@@ -119,7 +122,7 @@ void VendorBulkFunction::sendNextInPacket() {
    if(!configured_ || !inTransferBusy_ || inPacketBusy_ || device() == nullptr || device()->isEndpointHalted(endpoints_.in)) {
       return;
    }
-   const size_t count = std::min<size_t>(inData_.size() - inSent_, endpoints_.maxPacketSize);
+   const size_t count = std::min<size_t>(inData_.size() - inSent_, packetSize_);
    if(count == 0u && !inZlpPending_) {
       return;
    }
@@ -130,6 +133,11 @@ void VendorBulkFunction::sendNextInPacket() {
    }
    inPacketSize_ = count;
    inPacketBusy_ = true;
+}
+
+void VendorBulkFunction::updatePacketSize() {
+   const uint16_t size = device() != nullptr ? device()->endpointMaxPacketSize(endpoints_.in) : 0u;
+   packetSize_ = size != 0u ? size : endpoints_.maxPacketSize;
 }
 
 void VendorBulkFunction::restartOut() {

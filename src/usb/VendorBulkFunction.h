@@ -14,7 +14,8 @@ struct VendorBulkEndpoints {
    uint8_t out{ 0x01u };
    /// The bulk IN endpoint (bit 7 set).
    uint8_t in{ 0x81u };
-   /// wMaxPacketSize of both endpoints: 8, 16, 32 or 64 at full speed.
+   /// The packet size when the descriptor gives none. After the configuration, the function uses the wMaxPacketSize
+   /// of the open IN endpoint at the bus speed (packetSize()). Both endpoints must have the same wMaxPacketSize.
    uint16_t maxPacketSize{ 64u };
 };
 
@@ -33,8 +34,8 @@ struct VendorBulkEndpoints {
  * The base does not join packets into transfers: the protocol knows where a command ends.
  *
  * @par IN path
- * sendInTransfer() sends a buffer of any size in packets of maxPacketSize bytes. With ZeroLengthPacket::Auto, a
- * zero-length packet (ZLP) follows when the size is a multiple of maxPacketSize, so that a host that reads more than
+ * sendInTransfer() sends a buffer of any size in packets of packetSize() bytes. With ZeroLengthPacket::Auto, a
+ * zero-length packet (ZLP) follows when the size is a multiple of packetSize(), so that a host that reads more than
  * the transfer sees its end. With ZeroLengthPacket::Never no ZLP follows: use it when the host reads exactly the
  * size of the transfer, because the ZLP would end its next read. An empty buffer sends one ZLP in both modes. The
  * buffer is not copied: it must stay valid and unchanged until transferSent() or dataPathClosed().
@@ -57,9 +58,9 @@ struct VendorBulkEndpoints {
  */
 class VendorBulkFunction : public Function {
    public:
-   /// The end of an IN transfer whose size is a multiple of maxPacketSize (see "IN path").
+   /// The end of an IN transfer whose size is a multiple of packetSize() (see "IN path").
    enum class ZeroLengthPacket : uint8_t {
-      /// A ZLP follows a transfer whose size is a multiple of maxPacketSize.
+      /// A ZLP follows a transfer whose size is a multiple of packetSize().
       Auto,
       /// No ZLP follows (except for an empty transfer).
       Never,
@@ -72,9 +73,8 @@ class VendorBulkFunction : public Function {
     * dataPathClosed().
     * @param zeroLengthPacket See "IN path".
     * @return false if the function is not configured, the last transfer is still on its way, or the controller
-    * refused the first packet (the endpoint is not open, or VendorBulkEndpoints::maxPacketSize is larger than the
-    * wMaxPacketSize of the descriptor). Nothing is sent then. On a halted IN endpoint the transfer starts (true) and
-    * waits until the halt is cleared.
+    * refused the first packet (the endpoint is not open). Nothing is sent then. On a halted IN endpoint the transfer
+    * starts (true) and waits until the halt is cleared.
     */
    bool sendInTransfer(art::span<const uint8_t> data, ZeroLengthPacket zeroLengthPacket = ZeroLengthPacket::Auto);
 
@@ -104,6 +104,12 @@ class VendorBulkFunction : public Function {
       return endpoints_;
    }
 
+   /// The packet size of the data path: the wMaxPacketSize of the IN endpoint at the bus speed from configured() on
+   /// (64 at full speed and 512 at high speed for a bulk endpoint), else VendorBulkEndpoints::maxPacketSize.
+   [[nodiscard]] uint16_t packetSize() const {
+      return packetSize_;
+   }
+
    // Function. A subclass that overrides controlRequest() (for vendor requests) or the suspend hooks may do so; the
    // data path hooks are final, use the protected hooks below instead.
    void configured() final;
@@ -123,7 +129,7 @@ class VendorBulkFunction : public Function {
    /**
     * @brief An OUT packet arrived.
     *
-    * @param packet The packet, at most maxPacketSize bytes; empty for a ZLP. Valid only during the call: copy what
+    * @param packet The packet, at most packetSize() bytes; empty for a ZLP. Valid only during the call: copy what
     * is needed later.
     * @return true to accept the next packet at once. false holds the OUT endpoint (it NAKs) until resumeOut().
     */
@@ -154,7 +160,11 @@ class VendorBulkFunction : public Function {
    /// Forgets the endpoint state and the IN transfer.
    void resetDataPath();
 
+   /// Takes packetSize_ from the open IN endpoint.
+   void updatePacketSize();
+
    VendorBulkEndpoints endpoints_;
+   uint16_t packetSize_;
    bool configured_{ false };
    /// The OUT endpoint is armed.
    bool outArmed_{ false };

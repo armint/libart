@@ -100,6 +100,14 @@ TEST_CASE("[usb::descriptor] the device descriptor matches the reference") {
    CHECK(bytesOf(kDevice) == kReferenceDevice);
 }
 
+TEST_CASE("[usb::descriptor] the device qualifier has the fields of the device descriptor") {
+   // USB 2.0 table 9-9: bLength, bDescriptorType, bcdUSB, class, subclass, protocol, bMaxPacketSize0,
+   // bNumConfigurations, bReserved.
+   constexpr auto qualifier = deviceQualifier(makeDeviceFields());
+   CHECK(bytesOf(qualifier) == std::vector<uint8_t>{ 10u, 6u, kDevice[2], kDevice[3], kDevice[4], kDevice[5],
+                                                     kDevice[6], kDevice[7], kDevice[17], 0u });
+}
+
 TEST_CASE("[usb::descriptor] the CDC + mass storage configuration matches the reference") {
    CHECK(bytesOf(kConfiguration) == kReferenceConfiguration);
 }

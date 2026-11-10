@@ -199,6 +199,21 @@ constexpr std::array<uint8_t, 18> device(const DeviceFields &fields) {
             fields.bNumConfigurations };
 }
 
+/// The 10-byte device qualifier descriptor (USB 2.0 table 9-9) of a device that has the same device fields at both
+/// speeds. It takes the fields that the qualifier has from `fields`; bcdUSB must be 0x0200 or more.
+constexpr std::array<uint8_t, 10> deviceQualifier(const DeviceFields &fields) {
+   return { 10u,
+            static_cast<uint8_t>(DescriptorType::DeviceQualifier),
+            detail::lowByte(fields.bcdUSB),
+            detail::highByte(fields.bcdUSB),
+            fields.bDeviceClass,
+            fields.bDeviceSubClass,
+            fields.bDeviceProtocol,
+            fields.bMaxPacketSize0,
+            fields.bNumConfigurations,
+            0u };
+}
+
 /**
  * @brief The configuration descriptor followed by the descriptors of its interfaces (the full set that GET_DESCRIPTOR
  * of the configuration returns).

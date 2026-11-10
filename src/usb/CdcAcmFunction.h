@@ -116,9 +116,9 @@ struct CdcAcmEndpoints {
    /// use 8, 16 or 64, not 1, 2, 5 or 10. Otherwise a host that reads more than one packet does not see the end of
    /// the notification.
    uint16_t notificationMaxPacketSize{ 16u };
-   /// The bulk OUT endpoint of the data interface (bit 7 clear). Its wMaxPacketSize must be kDataPacketSize.
+   /// The bulk OUT endpoint of the data interface (bit 7 clear). Its wMaxPacketSize is 64, or 512 at high speed.
    uint8_t dataOut{ 0x02u };
-   /// The bulk IN endpoint of the data interface (bit 7 set). Its wMaxPacketSize must be kDataPacketSize.
+   /// The bulk IN endpoint of the data interface (bit 7 set). Its wMaxPacketSize is 64, or 512 at high speed.
    uint8_t dataIn{ 0x82u };
 };
 
@@ -140,12 +140,14 @@ struct CdcAcmEndpoints {
  *
  * @par Data path
  * The bulk endpoints move data between the host and two fixed-size queues. write() puts data into the TX queue and
- * the function sends it in packets of kDataPacketSize bytes. If the last packet of the queue is a full packet, a
- * zero-length packet (ZLP) follows, so that the host sees the end of the transfer. read() takes data from the RX
+ * the function sends it in packets of kDataPacketSize bytes, also at high speed: a short packet is valid there, and it
+ * keeps the packet buffer on the stack small. If the last packet of the queue fills the wMaxPacketSize of the IN
+ * endpoint, a zero-length packet (ZLP) follows, so that the host sees the end of the transfer. read() takes data from the RX
  * queue.
  *
  * @par Flow control
- * The OUT endpoint is armed only while the RX queue has at least kDataPacketSize free bytes. Otherwise it NAKs and
+ * The OUT endpoint is armed only while the RX queue has room for one packet of the wMaxPacketSize of the OUT
+ * endpoint (64, or 512 at high speed). Otherwise it NAKs and
  * the host waits, until read() makes room. So no received byte is ever dropped.
  *
  * @par Configuration changes
@@ -165,8 +167,11 @@ struct CdcAcmEndpoints {
  */
 class CdcAcmFunctionBase : public Function {
    public:
-   /// wMaxPacketSize of the bulk endpoints (the maximum for full speed).
+   /// wMaxPacketSize of the bulk endpoints at full speed, and the size of the IN packets at both speeds.
    static constexpr uint16_t kDataPacketSize = 64u;
+   /// wMaxPacketSize of the bulk endpoints at high speed. A device that runs at high speed needs an RX queue of this
+   /// size: a smaller queue never has room for a packet, so the OUT endpoint stays NAKed.
+   static constexpr uint16_t kHighSpeedDataPacketSize = 512u;
 
    /// Class request codes (CDC 1.20 table 19, PSTN 1.20 table 13).
    static constexpr uint8_t kSetLineCoding = 0x20u;
@@ -195,7 +200,7 @@ class CdcAcmFunctionBase : public Function {
    /**
     * @brief Takes received data out of the RX queue.
     *
-    * If this makes kDataPacketSize bytes free, the OUT endpoint is armed again.
+    * If this makes room for one OUT packet, the OUT endpoint is armed again.
     *
     * @return The number of bytes copied into `buffer`; 0 if the RX queue is empty.
     */
@@ -292,6 +297,8 @@ class CdcAcmFunctionBase : public Function {
                       etl::icircular_buffer<uint8_t> &txQueue);
 
    private:
+   /// Takes the packet sizes of the data endpoints at the bus speed from the descriptor.
+   void updatePacketSizes();
    /// Arms the OUT endpoint if it is not armed and the RX queue has room for a full packet.
    void armOutIfRoom();
    /// Sends the next packet of the TX queue, or the ZLP, if the IN endpoint is free.
@@ -321,6 +328,9 @@ class CdcAcmFunctionBase : public Function {
    bool outArmed_{ false };
    /// An IN data packet waits for its acknowledgement.
    bool txBusy_{ false };
+   /// wMaxPacketSize of the bulk endpoints at the bus speed, from configured() on.
+   uint16_t outPacketSize_{ kDataPacketSize };
+   uint16_t inPacketSize_{ kDataPacketSize };
    /// The size of that packet. Its bytes are still at the front of the TX queue.
    size_t txInFlight_{ 0u };
    /// The last acknowledged data packet was a full packet: a ZLP must follow if the TX queue is empty.
@@ -336,8 +346,9 @@ class CdcAcmFunctionBase : public Function {
 /**
  * @brief The CDC-ACM function with its RX and TX queues (see CdcAcmFunctionBase).
  *
- * @tparam RxSize Capacity of the RX queue in bytes, at least CdcAcmFunctionBase::kDataPacketSize. With exactly
- * kDataPacketSize, the OUT endpoint accepts the next packet only when the queue is empty.
+ * @tparam RxSize Capacity of the RX queue in bytes, at least CdcAcmFunctionBase::kDataPacketSize, and at least
+ * kHighSpeedDataPacketSize on a device that runs at high speed. With exactly one packet, the OUT endpoint accepts the
+ * next packet only when the queue is empty.
  * @tparam TxSize Capacity of the TX queue in bytes.
  *
  * Register it with Device::addFunction(). Code that only reads and writes can take a CdcAcmFunctionBase &, so it

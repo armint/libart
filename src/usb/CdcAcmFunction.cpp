@@ -114,6 +114,7 @@ std::optional<uint16_t> CdcAcmFunctionBase::controlRequest(const SetupPacket &se
 
 void CdcAcmFunctionBase::configured() {
    configured_ = true;
+   updatePacketSizes();
    rxQueue_.clear();
    txQueue_.clear();
    resetDataEndpoints();
@@ -136,6 +137,7 @@ void CdcAcmFunctionBase::alternateSettingChanged(uint8_t interfaceNumber, uint8_
    // SET_INTERFACE closed and reopened the endpoints of the interface: the controller dropped the packet on its way
    // and the OUT arm. The packet is still in the TX queue, so it goes out again.
    if(interfaceNumber == dataInterface()) {
+      updatePacketSizes();
       restartOut();
       restartIn();
    } else if(interfaceNumber == firstInterface()) {
@@ -161,7 +163,7 @@ void CdcAcmFunctionBase::outPacketReceived(uint8_t endpointAddress, art::span<co
    }
    outArmed_ = false;
    // The endpoint was armed only with room for a full packet, so everything fits. The check protects the queue
-   // against a controller that delivers a packet larger than kDataPacketSize.
+   // against a controller that delivers a packet larger than the wMaxPacketSize of the endpoint.
    const size_t count = std::min(packet.size(), rxQueue_.available());
    for(size_t index = 0u; index < count; ++index) {
       rxQueue_.push(packet[index]);
@@ -177,7 +179,7 @@ void CdcAcmFunctionBase::inPacketSent(uint8_t endpointAddress) {
       // The packet leaves the queue only now, so a packet that the controller drops is sent again.
       txQueue_.pop(txInFlight_);
       // A full packet does not end a bulk transfer for the host; a short packet or a ZLP does.
-      zlpPending_ = txInFlight_ == kDataPacketSize;
+      zlpPending_ = txInFlight_ == inPacketSize_;
       txInFlight_ = 0u;
       txBusy_ = false;
       sendNextInPacket();
@@ -187,8 +189,15 @@ void CdcAcmFunctionBase::inPacketSent(uint8_t endpointAddress) {
    }
 }
 
+void CdcAcmFunctionBase::updatePacketSizes() {
+   const uint16_t outSize = device() != nullptr ? device()->endpointMaxPacketSize(endpoints_.dataOut) : 0u;
+   const uint16_t inSize = device() != nullptr ? device()->endpointMaxPacketSize(endpoints_.dataIn) : 0u;
+   outPacketSize_ = outSize != 0u ? outSize : kDataPacketSize;
+   inPacketSize_ = inSize != 0u ? inSize : kDataPacketSize;
+}
+
 void CdcAcmFunctionBase::armOutIfRoom() {
-   if(!configured_ || outArmed_ || rxQueue_.available() < kDataPacketSize || device() == nullptr ||
+   if(!configured_ || outArmed_ || rxQueue_.available() < outPacketSize_ || device() == nullptr ||
       device()->isEndpointHalted(endpoints_.dataOut)) {
       return;
    }

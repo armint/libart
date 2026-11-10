@@ -370,6 +370,106 @@ TEST_CASE("[usb::Device] enumeration script of a host") {
    CHECK(fixture.cdc.deconfiguredCount == 1);
 }
 
+namespace {
+
+// The configuration of kConfigurationDescriptor at high speed: the bulk endpoints have 512 bytes.
+constexpr std::array<uint8_t, kConfigurationDescriptor.size()> makeHighSpeedConfiguration() {
+   std::array<uint8_t, kConfigurationDescriptor.size()> configuration = kConfigurationDescriptor;
+   for(size_t offset = 0u; offset + 7u <= configuration.size(); offset += configuration[offset]) {
+      if(configuration[offset + 1u] == 0x05u && (configuration[offset + 3u] & 0x03u) == 0x02u) {
+         configuration[offset + 4u] = 0x00u;
+         configuration[offset + 5u] = 0x02u;
+      }
+   }
+   return configuration;
+}
+
+constexpr auto kHighSpeedConfiguration = makeHighSpeedConfiguration();
+constexpr std::array<uint8_t, 10> kDeviceQualifier{ 0x0A, 0x06, 0x00, 0x02, 0xEF, 0x02, 0x01, 0x40, 0x01, 0x00 };
+
+Descriptors makeDualSpeedDescriptors() {
+   Descriptors descriptors = makeDescriptors();
+   descriptors.highSpeedConfiguration = art::span<const uint8_t>(kHighSpeedConfiguration.data(), kHighSpeedConfiguration.size());
+   descriptors.deviceQualifier = art::span<const uint8_t>(kDeviceQualifier.data(), kDeviceQualifier.size());
+   return descriptors;
+}
+
+std::vector<uint8_t> retyped(art::span<const uint8_t> configuration) {
+   std::vector<uint8_t> bytes(configuration.begin(), configuration.end());
+   bytes[1] = static_cast<uint8_t>(DescriptorType::OtherSpeedConfiguration);
+   return bytes;
+}
+
+} // namespace
+
+TEST_CASE("[usb::Device] a dual-speed device serves the descriptors of the bus speed") {
+   Fixture fixture(makeDualSpeedDescriptors());
+   const auto fullSpeed = art::span<const uint8_t>(kConfigurationDescriptor.data(), kConfigurationDescriptor.size());
+   const auto highSpeed = art::span<const uint8_t>(kHighSpeedConfiguration.data(), kHighSpeedConfiguration.size());
+
+   SUBCASE("high speed") {
+      fixture.controller.setHighSpeed(true);
+      fixture.enumerate();
+      CHECK(fixture.device.isHighSpeed());
+      CHECK(fixture.getDescriptor(DescriptorType::Configuration, 0u, 255u) == bytesOf(highSpeed));
+      // The other-speed configuration is longer than one EP0 packet: only the first packet has the new type.
+      CHECK(fixture.getDescriptor(DescriptorType::OtherSpeedConfiguration, 0u, 255u) == retyped(fullSpeed));
+      CHECK(fixture.getDescriptor(DescriptorType::DeviceQualifier, 0u, 10u) == bytesOf(kDeviceQualifier));
+      REQUIRE(fixture.controller.endpoint(0x02u).has_value());
+      CHECK(fixture.controller.endpoint(0x02u)->maxPacketSize == 512u);
+      CHECK(fixture.device.endpointMaxPacketSize(0x82u) == 512u);
+      CHECK(fixture.device.endpointMaxPacketSize(0x81u) == 16u);
+      CHECK(fixture.device.endpointMaxPacketSize(0x84u) == 0u);
+   }
+
+   SUBCASE("full speed") {
+      fixture.enumerate();
+      CHECK_FALSE(fixture.device.isHighSpeed());
+      CHECK(fixture.getDescriptor(DescriptorType::Configuration, 0u, 255u) == bytesOf(fullSpeed));
+      CHECK(fixture.getDescriptor(DescriptorType::OtherSpeedConfiguration, 0u, 255u) == retyped(highSpeed));
+      CHECK(fixture.getDescriptor(DescriptorType::DeviceQualifier, 0u, 10u) == bytesOf(kDeviceQualifier));
+      CHECK(fixture.device.endpointMaxPacketSize(0x82u) == 64u);
+   }
+
+   SUBCASE("the speed of the last bus reset counts") {
+      fixture.controller.setHighSpeed(true);
+      fixture.enumerate();
+      fixture.controller.setHighSpeed(false);
+      fixture.enumerate();
+      CHECK_FALSE(fixture.device.isHighSpeed());
+      CHECK(fixture.device.endpointMaxPacketSize(0x02u) == 64u);
+   }
+
+   SUBCASE("the speed is known only after the reset event") {
+      // A high-speed controller reports the reset before the chirp handshake ends.
+      fixture.controller.busReset();
+      fixture.controller.setHighSpeed(true);
+      CHECK(fixture.getDescriptor(DescriptorType::Configuration, 0u, 255u) == bytesOf(highSpeed));
+      REQUIRE(fixture.out(kStandardDeviceOut, kSetAddress, 7u, 0u));
+      REQUIRE(fixture.out(kStandardDeviceOut, kSetConfiguration, 1u, 0u));
+      CHECK(fixture.device.isHighSpeed());
+      CHECK(fixture.device.endpointMaxPacketSize(0x02u) == 512u);
+   }
+
+   SUBCASE("only the first bytes of a short read") {
+      fixture.controller.setHighSpeed(true);
+      fixture.enumerate();
+      const std::vector<uint8_t> expected = retyped(fullSpeed.first(9u));
+      CHECK(fixture.getDescriptor(DescriptorType::OtherSpeedConfiguration, 0u, 9u) == expected);
+   }
+}
+
+TEST_CASE("[usb::Device] a full-speed-only device stays at full speed on a high-speed bus") {
+   Fixture fixture;
+   fixture.controller.setHighSpeed(true);
+   fixture.enumerate();
+   CHECK_FALSE(fixture.device.isHighSpeed());
+   CHECK(fixture.device.endpointMaxPacketSize(0x02u) == 64u);
+   CHECK(fixture.in(kStandardDeviceIn, kGetDescriptor, descriptorValue(DescriptorType::DeviceQualifier), 0u, 10u).stalled);
+   CHECK(
+   fixture.in(kStandardDeviceIn, kGetDescriptor, descriptorValue(DescriptorType::OtherSpeedConfiguration), 0u, 255u).stalled);
+}
+
 TEST_CASE("[usb::Device] SET_ADDRESS takes effect after the status stage") {
    Fixture fixture;
    FakeDeviceController &controller = fixture.controller;
