@@ -100,6 +100,7 @@ file(GLOB TEST_SOURCES
         usb/TestUsbEnumeration.cpp
         usb/TestCdcAcmFunction.cpp
         usb/TestVendorBulkFunction.cpp
+        usb/TestHidFunction.cpp
         usb/TestMsOs20.cpp
 )
 
@@ -171,6 +172,7 @@ file(GLOB TO_TEST_SOURCES
         ../src/usb/Device.cpp
         ../src/usb/CdcAcmFunction.cpp
         ../src/usb/VendorBulkFunction.cpp
+        ../src/usb/HidFunction.cpp
 )
 
 file(GLOB ADDITIONAL_SOURCES
@@ -352,6 +354,7 @@ set(_ART_COMPAT_MODULE_SOURCES
         usb/TestUsbEnumeration.cpp
         usb/TestCdcAcmFunction.cpp
         usb/TestVendorBulkFunction.cpp
+        usb/TestHidFunction.cpp
         usb/TestMsOs20.cpp
         stubs/timestamp.cpp
         stubs/delay.cpp
@@ -370,6 +373,7 @@ set(_ART_COMPAT_MODULE_SOURCES
         ../src/usb/Device.cpp
         ../src/usb/CdcAcmFunction.cpp
         ../src/usb/VendorBulkFunction.cpp
+        ../src/usb/HidFunction.cpp
         ../src/utils/cstring.cpp
         ../src/utils/lists.cpp
         ../src/utils/JSONReader.cpp

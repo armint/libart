@@ -12,6 +12,7 @@ hardware dependency, so the protocol code runs in the host tests. A port connect
 | `usb/Device.h` | `Device`: the chapter 9 state machine, the standard requests on EP0 and the routing to the functions. `Descriptors`: the descriptors that `Device` serves. |
 | `usb/CdcAcmFunction.h` | `CdcAcmFunction`: the CDC-ACM function (virtual COM port) with its RX and TX queues. |
 | `usb/VendorBulkFunction.h` | `VendorBulkFunction`: base of a function with one interface and a bulk OUT and IN endpoint, for a protocol of its own (vendor-specific class). |
+| `usb/HidFunction.h` | `HidFunction`: a HID function with one interface and an interrupt OUT and IN endpoint, for fixed-size reports without report IDs (for example CMSIS-DAP v1). The HID descriptor builders `hidDescriptor()` and `vendorReportDescriptor()`. |
 | `usb/VendorRequestHandler.h` | `VendorRequestHandler`: the interface of the handler of vendor requests whose recipient is the device. |
 | `usb/DescriptorBuilder.h` | `constexpr` builders for the device, device qualifier, configuration, interface association (IAD), interface, endpoint, BOS, CDC functional and string descriptors, and `SerialNumber` for a serial number string that is set at run time. |
 | `usb/MsOs20.h` | MS OS 2.0 descriptors (namespace `art::usb::msos20`): `constexpr` builders for the descriptor set and the platform capability of the BOS, and `DescriptorSetHandler`, which answers the request of Windows for the set. |
@@ -183,6 +184,43 @@ class CommandFunction final : public art::usb::VendorBulkFunction {
 - **Threading**: call `sendInTransfer()` and `resumeOut()` from the context that delivers the controller events
   (normally the main loop). The hooks run there too. The function does no locking.
 - **Limits**: no buffer of its own; the base uses 40 bytes of RAM on Cortex-M0+.
+
+## `usb::HidFunction`
+
+`HidFunction` (`usb/HidFunction.h`) is a HID function (HID 1.11) with one interface, one interrupt OUT and one
+interrupt IN endpoint. It exchanges reports of a fixed size without report IDs, for example the reports of CMSIS-DAP
+v1 or of the Microchip EDBG tools. The host reaches it with hidapi. Windows and Linux need no driver.
+
+```cpp
+constexpr auto kReport = art::usb::descriptor::vendorReportDescriptor<64>();
+
+class ProbeHid final : public art::usb::HidFunction {
+   public:
+   ProbeHid() : HidFunction(0, art::usb::VendorBulkEndpoints{ 0x01, 0x81, 64 }, asSpan(kReport)) {}
+
+   protected:
+   bool dataReceived(art::span<const uint8_t> report) override {
+      // One OUT packet is one output report. Return false to hold the OUT endpoint until resumeOut().
+      return true;
+   }
+};
+```
+
+- **Descriptors**: `interfaceDescriptor(InterfaceFields{ 0, 0, hid::kInterfaceClass, 0, 0, 0 },
+  hidDescriptor(kReport.size()), endpoint(0x81, Interrupt, 64, 1), endpoint(0x01, Interrupt, 64, 1))`.
+  `vendorReportDescriptor<N>()` describes one vendor-defined input report and one output report of N bytes.
+- **Data path**: the data path of `VendorBulkFunction`. It works the same on interrupt endpoints. The report size
+  is `packetSize()`, the `wMaxPacketSize` of the endpoints. `sendReport()` sends one input report of exactly that
+  size, with no ZLP.
+- **Requests**: the function answers GET_DESCRIPTOR of the HID descriptor and of the report descriptor. GET_REPORT
+  (input) returns a report of zeros, because the reports use the interrupt endpoints. SET_IDLE is accepted and
+  ignored. GET_IDLE, SET_REPORT, GET_PROTOCOL and SET_PROTOCOL stall: they are optional for a device that is not a boot
+  device. A subclass that overrides `controlRequest()` calls `HidFunction::controlRequest()` for the other requests.
+- **High speed**: with `bInterval` 1, the host polls once per frame (1 ms) at full speed and once per microframe
+  (125 µs) at high speed. Keep the same `wMaxPacketSize` at both speeds: one report descriptor serves both.
+- **Limits**: the report descriptor must not be larger than `Device::kControlBufferSize` (64 bytes), because the
+  device sends it from its control buffer. The constructor traps if it is larger. `vendorReportDescriptor()` has 27
+  bytes (29 bytes above 255-byte reports).
 
 ## Descriptor builders
 
