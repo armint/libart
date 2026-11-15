@@ -213,8 +213,8 @@ class ProbeHid final : public art::usb::HidFunction {
   is `packetSize()`, the `wMaxPacketSize` of the endpoints. `sendReport()` sends one input report of exactly that
   size, with no ZLP.
 - **Requests**: the function answers GET_DESCRIPTOR of the HID descriptor and of the report descriptor. GET_REPORT
-  (input) returns a report of zeros, because the reports use the interrupt endpoints. SET_IDLE stores the idle rate
-  for GET_IDLE. SET_REPORT, GET_PROTOCOL and SET_PROTOCOL stall: they are optional for a device that is not a boot
+  (input) returns a report of zeros, because the reports use the interrupt endpoints. SET_IDLE is accepted and
+  ignored. GET_IDLE, SET_REPORT, GET_PROTOCOL and SET_PROTOCOL stall: they are optional for a device that is not a boot
   device. A subclass that overrides `controlRequest()` calls `HidFunction::controlRequest()` for the other requests.
 - **High speed**: with `bInterval` 1, the host polls once per frame (1 ms) at full speed and once per microframe
   (125 µs) at high speed. Keep the same `wMaxPacketSize` at both speeds: one report descriptor serves both.

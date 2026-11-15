@@ -184,14 +184,11 @@ TEST_CASE("[usb::HidFunction] class requests") {
       CHECK(bench.in(kClassInterfaceIn, hid::kGetReport, 0x0300u, kReportSize).stalled);
       CHECK(bench.in(kClassInterfaceIn, hid::kGetReport, 0x0101u, kReportSize).stalled);
    }
-   SUBCASE("SET_IDLE stores the idle rate for GET_IDLE") {
-      CHECK(bench.hid.idleRate() == 0u);
-      CHECK(bench.in(kClassInterfaceIn, hid::kGetIdle, 0u, 1u).data == std::vector<uint8_t>{ 0u });
+   SUBCASE("SET_IDLE is accepted, GET_IDLE stalls") {
       CHECK(bench.out(kClassInterfaceOut, hid::kSetIdle, 0x7D00u, 0u));
-      CHECK(bench.hid.idleRate() == 0x7Du);
-      CHECK(bench.in(kClassInterfaceIn, hid::kGetIdle, 0u, 1u).data == std::vector<uint8_t>{ 0x7Du });
       // The function has no report IDs.
       CHECK_FALSE(bench.out(kClassInterfaceOut, hid::kSetIdle, 0x0001u, 0u));
+      CHECK(bench.in(kClassInterfaceIn, hid::kGetIdle, 0u, 1u).stalled);
    }
    SUBCASE("the protocol requests and SET_REPORT stall") {
       CHECK(bench.in(kClassInterfaceIn, hid::kGetProtocol, 0u, 1u).stalled);

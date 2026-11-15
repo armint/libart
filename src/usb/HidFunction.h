@@ -39,24 +39,17 @@ constexpr uint8_t kReportTypeFeature = 0x03u;
 namespace descriptor {
 
 /**
- * @brief The 9-byte HID descriptor (HID 1.11 section 6.2.1) with one report descriptor.
+ * @brief The 9-byte HID descriptor (HID 1.11 section 6.2.1) with one report descriptor: HID 1.11, not localized.
  *
- * Put it into interfaceDescriptor() before the endpoint descriptors.
+ * Put it into interfaceDescriptor() before the endpoint descriptors. HidFunction answers GET_DESCRIPTOR(HID) with
+ * the same bytes, so the descriptor has no other fields to set.
  *
  * @param reportDescriptorLength The size of the report descriptor.
- * @param bcdHid The HID release (default 1.11).
- * @param countryCode bCountryCode (0: not localized).
  */
-constexpr std::array<uint8_t, 9> hidDescriptor(uint16_t reportDescriptorLength, uint16_t bcdHid = 0x0111u, uint8_t countryCode = 0u) {
-   return { 9u,
-            hid::kDescriptorTypeHid,
-            detail::lowByte(bcdHid),
-            detail::highByte(bcdHid),
-            countryCode,
-            1u,
-            hid::kDescriptorTypeReport,
-            detail::lowByte(reportDescriptorLength),
-            detail::highByte(reportDescriptorLength) };
+constexpr std::array<uint8_t, 9> hidDescriptor(uint16_t reportDescriptorLength) {
+   return {
+      9u, hid::kDescriptorTypeHid, 0x11u, 0x01u, 0u, 1u, hid::kDescriptorTypeReport, detail::lowByte(reportDescriptorLength), detail::highByte(reportDescriptorLength)
+   };
 }
 
 /**
@@ -125,9 +118,8 @@ constexpr auto vendorReportDescriptor(uint16_t usagePage = 0xFF00u) {
  * The function answers the HID requests itself:
  * - GET_DESCRIPTOR of the HID descriptor and of the report descriptor;
  * - GET_REPORT (input): a report of zeros, because the reports go through the interrupt endpoints;
- * - SET_IDLE and GET_IDLE: the idle rate is stored. It changes nothing, because the function sends input reports only
- *   on request;
- * - SET_REPORT, GET_PROTOCOL and SET_PROTOCOL stall (optional for a device that is not a boot device).
+ * - SET_IDLE: accepted and ignored, because the function sends input reports only on request;
+ * - GET_IDLE, SET_REPORT, GET_PROTOCOL and SET_PROTOCOL stall (optional for a device that is not a boot device).
  * A subclass that overrides controlRequest() calls HidFunction::controlRequest() for the requests it does not know.
  *
  * Build the descriptors with descriptor::hidDescriptor() and descriptor::vendorReportDescriptor():
@@ -156,11 +148,6 @@ class HidFunction : public VendorBulkFunction {
     */
    bool sendReport(art::span<const uint8_t> report);
 
-   /// The idle rate of the last SET_IDLE (in units of 4 ms; 0: infinite, the default).
-   [[nodiscard]] uint8_t idleRate() const {
-      return idleRate_;
-   }
-
    std::optional<uint16_t> controlRequest(const SetupPacket &setup, art::span<uint8_t> data) override;
 
    protected:
@@ -173,8 +160,6 @@ class HidFunction : public VendorBulkFunction {
 
    private:
    art::span<const uint8_t> reportDescriptor_;
-   std::array<uint8_t, 9> hidDescriptor_;
-   uint8_t idleRate_{ 0u };
 };
 
 } // namespace art::usb

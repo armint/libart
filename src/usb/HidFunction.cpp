@@ -7,8 +7,7 @@ namespace art::usb {
 
 HidFunction::HidFunction(uint8_t interfaceNumber, const VendorBulkEndpoints &endpoints, art::span<const uint8_t> reportDescriptor)
    : VendorBulkFunction(interfaceNumber, endpoints)
-   , reportDescriptor_(reportDescriptor)
-   , hidDescriptor_(descriptor::hidDescriptor(static_cast<uint16_t>(reportDescriptor.size()))) {
+   , reportDescriptor_(reportDescriptor) {
    if(reportDescriptor.size() > Device::kControlBufferSize) {
       // GET_DESCRIPTOR would send a truncated report descriptor (see "Limits").
       __builtin_trap();
@@ -32,9 +31,11 @@ std::optional<uint16_t> HidFunction::controlRequest(const SetupPacket &setup, ar
       if(setup.bRequest != static_cast<uint8_t>(StandardRequest::GetDescriptor) || !deviceToHost || valueLow != 0u) {
          return std::nullopt;
       }
+      // The same bytes as the HID descriptor in the configuration.
+      const auto hidDescriptor = descriptor::hidDescriptor(static_cast<uint16_t>(reportDescriptor_.size()));
       art::span<const uint8_t> reply;
       if(valueHigh == hid::kDescriptorTypeHid) {
-         reply = art::span<const uint8_t>(hidDescriptor_.data(), hidDescriptor_.size());
+         reply = art::span<const uint8_t>(hidDescriptor.data(), hidDescriptor.size());
       } else if(valueHigh == hid::kDescriptorTypeReport) {
          reply = reportDescriptor_;
       } else {
@@ -59,18 +60,11 @@ std::optional<uint16_t> HidFunction::controlRequest(const SetupPacket &setup, ar
       return static_cast<uint16_t>(count);
    }
    case hid::kSetIdle:
-      // The low byte selects the report ID: 0 means all reports.
+      // The low byte selects the report ID: 0 means all reports. The rate changes nothing (see the class comment).
       if(deviceToHost || setup.wLength != 0u || valueLow != 0u) {
          return std::nullopt;
       }
-      idleRate_ = valueHigh;
       return 0u;
-   case hid::kGetIdle:
-      if(!deviceToHost || setup.wValue != 0u || data.empty()) {
-         return std::nullopt;
-      }
-      data[0] = idleRate_;
-      return 1u;
    default:
       return std::nullopt;
    }
