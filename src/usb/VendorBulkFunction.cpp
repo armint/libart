@@ -64,6 +64,9 @@ void VendorBulkFunction::alternateSettingChanged(uint8_t interfaceNumber, uint8_
       updatePacketSize();
       restartOut();
       restartIn();
+      if(configured_) {
+         otherInPacketsDropped(0u);
+      }
    }
 }
 
@@ -74,6 +77,8 @@ void VendorBulkFunction::endpointHaltCleared(uint8_t endpointAddress) {
       restartOut();
    } else if(endpointAddress == endpoints_.in) {
       restartIn();
+   } else if(configured_ && (endpointAddress & 0x80u) != 0u) {
+      otherInPacketsDropped(endpointAddress);
    }
 }
 
@@ -91,7 +96,13 @@ void VendorBulkFunction::outPacketReceived(uint8_t endpointAddress, art::span<co
 }
 
 void VendorBulkFunction::inPacketSent(uint8_t endpointAddress) {
-   if(endpointAddress != endpoints_.in || !inPacketBusy_) {
+   if(endpointAddress != endpoints_.in) {
+      if(configured_) {
+         otherInPacketSent(endpointAddress);
+      }
+      return;
+   }
+   if(!inPacketBusy_) {
       return;
    }
    inPacketBusy_ = false;
