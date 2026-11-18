@@ -176,6 +176,14 @@ class CommandFunction final : public art::usb::VendorBulkFunction {
 - **Endpoint halt**: the subclass halts an endpoint with `device()->haltEndpoint()`, for example on a protocol
   error. After CLEAR_FEATURE(ENDPOINT_HALT) or SET_INTERFACE, the function arms the OUT endpoint again (unless it is
   held) and sends the dropped IN packet again. The transfer continues where it stopped.
+- **Other IN endpoints**: the interface can have more IN endpoints, for example the SWO trace endpoint of a
+  CMSIS-DAP v2 interface. `usb::Device` opens them from the descriptor. The subclass sends on them with
+  `device()->startInTransfer()`, one packet at a time. `otherInPacketSent(endpoint)` tells it that the host
+  acknowledged the packet. When the host clears the halt of such an endpoint, or SET_INTERFACE reopens the
+  endpoints, the controller drops their packets. The base then calls `otherInPacketsDropped(endpoint)` (endpoint 0
+  for SET_INTERFACE), and the subclass sends the packets again that got no `otherInPacketSent()`. Both hooks come
+  only while the function is configured. A bus reset or SET_CONFIGURATION 0 drops these packets too, before
+  `dataPathClosed()`.
 - **State**: `dataPathOpened()` follows SET_CONFIGURATION. A bus reset or SET_CONFIGURATION 0 drops the IN transfer,
   ends the hold of the OUT endpoint and calls `dataPathClosed()`; no `transferSent()` follows for the dropped
   transfer.

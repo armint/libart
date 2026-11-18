@@ -47,6 +47,13 @@ struct VendorBulkEndpoints {
  * DeviceController, "Endpoint halt"). The function then arms the OUT endpoint again (unless it is held) and sends
  * the dropped IN packet again: the transfer continues where it stopped, so no byte is lost or sent twice.
  *
+ * @par Other IN endpoints
+ * The interface can have more IN endpoints than VendorBulkEndpoints::in, for example the SWO trace endpoint of a
+ * CMSIS-DAP v2 interface. usb::Device opens them from the descriptor. The subclass sends on them with
+ * device()->startInTransfer(), one packet at a time, and gets otherInPacketSent() for each acknowledged packet. When
+ * the controller drops their packets (the host clears the halt of one of them, or SET_INTERFACE), the base calls
+ * otherInPacketsDropped(): the subclass sends the packets again that got no otherInPacketSent().
+ *
  * @par Configuration changes
  * configured() opens the data path and calls dataPathOpened(). deconfigured() (bus reset, SET_CONFIGURATION 0,
  * Device::stop()) drops the IN transfer, releases the hold of the OUT endpoint and calls dataPathClosed(). A suspend
@@ -144,8 +151,21 @@ class VendorBulkFunction : public Function {
    }
 
    /// The data path is closed (see "Configuration changes"). An IN transfer on its way is dropped: its buffer is
-   /// free, and no transferSent() follows.
+   /// free, and no transferSent() follows. The packets on the other IN endpoints are dropped too.
    virtual void dataPathClosed() {
+   }
+
+   /// The host acknowledged the packet on an IN endpoint of the interface other than VendorBulkEndpoints::in (see
+   /// "Other IN endpoints"). Only while the function is configured.
+   virtual void otherInPacketSent(uint8_t endpointAddress) {
+      static_cast<void>(endpointAddress);
+   }
+
+   /// The controller dropped the packets on the other IN endpoints of the interface: the host cleared the halt of
+   /// one of them (endpointAddress), or SET_INTERFACE reopened all of them (endpointAddress 0). Send again the packets
+   /// that got no otherInPacketSent(). Only while the function is configured.
+   virtual void otherInPacketsDropped(uint8_t endpointAddress) {
+      static_cast<void>(endpointAddress);
    }
 
    private:

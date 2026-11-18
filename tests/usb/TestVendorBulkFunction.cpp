@@ -80,6 +80,15 @@ configuration(ConfigurationFields{},
                                   endpoint(kVendorOut, EndpointType::Bulk, 512u),
                                   endpoint(kVendorIn, EndpointType::Bulk, 512u)));
 
+/// A vendor-only device with a third endpoint: bulk IN 0x86, as the SWO trace endpoint of CMSIS-DAP v2.
+constexpr uint8_t kTraceIn = 0x86u;
+constexpr auto kConfigurationTrace =
+configuration(ConfigurationFields{},
+              interfaceDescriptor(InterfaceFields{ 0u, 0u, classcode::kVendorSpecific, 0u, 0u, 0u },
+                                  endpoint(kVendorOut, EndpointType::Bulk, kPacketSize),
+                                  endpoint(kVendorIn, EndpointType::Bulk, kPacketSize),
+                                  endpoint(kTraceIn, EndpointType::Bulk, kPacketSize)));
+
 /// A test protocol: records the OUT packets and the hook calls, and holds the OUT endpoint on request.
 class RecordingFunction final : public VendorBulkFunction {
    public:
@@ -104,6 +113,9 @@ class RecordingFunction final : public VendorBulkFunction {
    /// dataReceived() returns this.
    bool accept{ true };
    int transfersSent{ 0 };
+   /// The arguments of otherInPacketSent() and otherInPacketsDropped()
+   std::vector<uint8_t> otherSent;
+   std::vector<uint8_t> otherDropped;
    int opened{ 0 };
    int closed{ 0 };
    /// If not empty, transferSent() starts a transfer of it, once. It must stay unchanged until that transfer is sent.
@@ -122,6 +134,16 @@ class RecordingFunction final : public VendorBulkFunction {
          chained_ = true;
          CHECK(sendInTransfer(art::span<const uint8_t>(chainedTransfer.data(), chainedTransfer.size())));
       }
+   }
+
+   void otherInPacketSent(uint8_t endpointAddress) override {
+      CHECK(isConfigured());
+      otherSent.push_back(endpointAddress);
+   }
+
+   void otherInPacketsDropped(uint8_t endpointAddress) override {
+      CHECK(isConfigured());
+      otherDropped.push_back(endpointAddress);
    }
 
    void dataPathOpened() override {
@@ -548,4 +570,44 @@ TEST_CASE("[usb::VendorBulkFunction] a transfer on a halted IN endpoint waits fo
       CHECK(received == data);
       CHECK(bench.vendor.transfersSent == 1);
    }
+}
+
+TEST_CASE("[usb::VendorBulkFunction] the events of another IN endpoint of the interface reach the subclass") {
+   for(const bool queueEvents : { false, true }) {
+      CAPTURE(queueEvents);
+      Bench bench(queueEvents, asSpan(kConfigurationTrace));
+      bench.enumerate();
+      const std::vector<uint8_t> trace = pattern(10u);
+      REQUIRE(bench.vendor.device()->startInTransfer(kTraceIn, asBytes(trace)));
+      CHECK(bench.takeIn(kTraceIn) == trace);
+      CHECK(bench.vendor.otherSent == std::vector<uint8_t>{ kTraceIn });
+      // The data path of the function does not see the packet.
+      CHECK(bench.vendor.transfersSent == 0);
+      CHECK_FALSE(bench.vendor.isInTransferBusy());
+
+      // A packet on the data IN endpoint does not reach the hook.
+      REQUIRE(bench.vendor.sendInTransfer(asBytes(trace)));
+      CHECK(bench.takeIn(kVendorIn) == trace);
+      CHECK(bench.vendor.transfersSent == 1);
+      CHECK(bench.vendor.otherSent.size() == 1u);
+   }
+}
+
+TEST_CASE("[usb::VendorBulkFunction] a halt clear or SET_INTERFACE reports the dropped packets of another IN "
+          "endpoint") {
+   Bench bench(false, asSpan(kConfigurationTrace));
+   bench.enumerate();
+   const std::vector<uint8_t> trace = pattern(10u);
+   REQUIRE(bench.vendor.device()->startInTransfer(kTraceIn, asBytes(trace)));
+   CHECK(bench.out(kStandardEndpointOut, kSetFeature, 0u, kTraceIn));
+   CHECK_FALSE(bench.takeIn(kTraceIn).has_value());
+   CHECK(bench.out(kStandardEndpointOut, kClearFeature, 0u, kTraceIn));
+   CHECK(bench.vendor.otherDropped == std::vector<uint8_t>{ kTraceIn });
+   // The halt clear of the data endpoints does not reach the hook.
+   CHECK(bench.out(kStandardEndpointOut, kClearFeature, 0u, kVendorIn));
+   CHECK(bench.out(kStandardEndpointOut, kClearFeature, 0u, kVendorOut));
+   CHECK(bench.vendor.otherDropped.size() == 1u);
+   CHECK(bench.out(kStandardInterfaceOut, kSetInterface, 0u, 0u));
+   CHECK(bench.vendor.otherDropped == std::vector<uint8_t>{ kTraceIn, 0u });
+   CHECK(bench.vendor.otherSent.empty());
 }
